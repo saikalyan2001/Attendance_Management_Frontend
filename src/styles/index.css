@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Default Light Theme */
+:root {
+  --color-bg: 255, 255, 255; /* #ffffff - white */
+  --color-complementary: 243, 244, 246; /* #f3f4f6 - light gray */
+  --color-accent: 59, 130, 246; /* #3b82f6 - blue */
+  --color-accent-hover: 59, 130, 246, 0.7; /* #3b82f6 with 70% opacity */
+  --color-text: 31, 41, 55; /* #1f2937 - dark gray */
+  --color-error: 220, 38, 38; /* #dc2626 - red */
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  --color-bg: 31, 41, 55; /* #1f2937 - dark gray */
+  --color-complementary: 55, 65, 81; /* #374151 - darker gray */
+  --color-accent: 96, 165, 250; /* #60a5fa - lighter blue */
+  --color-accent-hover: 96, 165, 250, 0.7; /* #60a5fa with 70% opacity */
+  --color-text: 241, 245, 249; /* #f1f5f9 - light gray */
+  --color-error: 248, 113, 113; /* #f87171 - lighter red */
+}
+
+/* Utility Layer */
+@layer utilities {
+  .bg-body {
+    background-color: rgb(var(--color-bg));
+  }
+
+  .text-body {
+    color: rgb(var(--color-text));
+  }
+
+  .bg-complementary {
+    background-color: rgb(var(--color-complementary));
+  }
+
+  .text-complementary {
+    color: rgb(var(--color-complementary));
+  }
+
+  .bg-accent {
+    background-color: rgb(var(--color-accent));
+  }
+
+  .text-accent {
+    color: rgb(var(--color-accent));
+  }
+
+  .bg-accent-hover {
+    background-color: rgb(var(--color-accent-hover));
+  }
+
+  .border-error {
+    border-color: rgb(var(--color-error));
+  }
+
+  .text-error {
+    color: rgb(var(--color-error));
+  }
+
+}
