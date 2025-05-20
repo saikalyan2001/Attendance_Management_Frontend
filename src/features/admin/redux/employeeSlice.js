@@ -10,6 +10,7 @@ export const fetchEmployees = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
+      console.error('Fetch employees error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employees');
     }
   }
@@ -17,11 +18,26 @@ export const fetchEmployees = createAsyncThunk(
 
 export const registerEmployee = createAsyncThunk(
   'employees/registerEmployee',
-  async (employeeData, { rejectWithValue }) => {
+  async ({ employeeData, documents }, { rejectWithValue }) => {
     try {
       const response = await axios.post('http://localhost:5000/api/admin/employees', employeeData);
-      return response.data;
+      const employeeId = response.data._id;
+
+      if (documents && documents.length > 0) {
+        const uploadPromises = documents.map(async (file) => {
+          const formData = new FormData();
+          formData.append('document', file);
+          await axios.post(`http://localhost:5000/api/admin/employees/${employeeId}/documents`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        });
+        await Promise.all(uploadPromises);
+      }
+
+      const updatedEmployee = await axios.get(`http://localhost:5000/api/admin/employees/${employeeId}`);
+      return updatedEmployee.data;
     } catch (error) {
+      console.error('Register employee error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to register employee');
     }
   }
@@ -34,7 +50,38 @@ export const updateEmployee = createAsyncThunk(
       const response = await axios.put(`http://localhost:5000/api/admin/employees/${id}`, data);
       return response.data;
     } catch (error) {
+      console.error('Update employee error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to update employee');
+    }
+  }
+);
+
+export const uploadDocument = createAsyncThunk(
+  'employees/uploadDocument',
+  async ({ id, file }, { rejectWithValue }) => {
+    try {
+      const formData = new FormData();
+      formData.append('document', file);
+      const response = await axios.post(`http://localhost:5000/api/admin/employees/${id}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Upload document error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to upload document');
+    }
+  }
+);
+
+export const deleteDocument = createAsyncThunk(
+  'employees/deleteDocument',
+  async ({ id, documentId }, { rejectWithValue }) => {
+    try {
+      const response = await axios.delete(`http://localhost:5000/api/admin/employees/${id}/documents/${documentId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete document error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to delete document');
     }
   }
 );
@@ -50,6 +97,7 @@ const employeesSlice = createSlice({
   reducers: {
     reset: (state) => {
       state.error = null;
+      state.loading = false;
       state.success = false;
     },
   },
@@ -61,11 +109,12 @@ const employeesSlice = createSlice({
       })
       .addCase(fetchEmployees.fulfilled, (state, action) => {
         state.loading = false;
-        state.employees = action.payload;
+        state.employees = action.payload || [];
       })
       .addCase(fetchEmployees.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.employees = []; // Ensure empty array on error
       })
       .addCase(registerEmployee.pending, (state) => {
         state.loading = true;
@@ -94,6 +143,36 @@ const employeesSlice = createSlice({
         }
       })
       .addCase(updateEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(uploadDocument.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(uploadDocument.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        if (index !== -1) {
+          state.employees[index] = action.payload;
+        }
+      })
+      .addCase(uploadDocument.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(deleteDocument.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteDocument.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        if (index !== -1) {
+          state.employees[index] = action.payload;
+        }
+      })
+      .addCase(deleteDocument.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

@@ -13,7 +13,7 @@ import AdminDashboard from './features/admin/pages/Dashboard';
 import AdminReports from './features/admin/pages/Reports';
 import AdminAttendance from './features/admin/pages/Attendance';
 import AdminEmployees from './features/admin/pages/Employees';
-import AdminEmployeeRegister from './features/admin/pages/AdminRegisterEmployee';
+import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
 import AdminProfile from './features/admin/pages/Profile';
 
 

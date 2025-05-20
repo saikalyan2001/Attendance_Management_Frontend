@@ -71,6 +71,15 @@ const Sidebar = () => {
           <User className="h-5 w-5 mr-2" />
           Profile
         </NavLink>
+        <NavLink
+          to="/admin/settings"
+          className={({ isActive }) =>
+            `flex items-center p-2 rounded-md ${isActive ? 'bg-accent text-body' : 'hover:bg-accent-hover hover:text-body'}`
+          }
+        >
+          <User className="h-5 w-5 mr-2" />
+          Settings
+        </NavLink>
       </nav>
     </aside>
   );

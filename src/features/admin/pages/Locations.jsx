@@ -10,21 +10,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogOut } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
+import { Loader2, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
+// Debug import
+console.log('Imported thunks:', { fetchLocations, addLocation, editLocation, deleteLocation });
+
 const Locations = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
   const { locations, loading, error } = useSelector((state) => state.adminLocations);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editLocation, setEditLocation] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLocationState, setEditLocationState] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLocationId, setDeleteLocationId] = useState(null);
   const [form, setForm] = useState({ name: '', address: '' });
 
@@ -34,6 +37,7 @@ const Locations = () => {
 
   useEffect(() => {
     if (error) {
+      console.error('Locations error:', error);
       toast.error(error);
       dispatch({ type: 'adminLocations/reset' });
     }
@@ -51,12 +55,17 @@ const Locations = () => {
         setAddOpen(false);
         setForm({ name: '', address: '' });
       })
-      .catch((err) => toast.error(err));
+      .catch((err) => {
+        console.error('Add location failed:', err);
+        toast.error(err || 'Failed to add location');
+      });
   };
 
   const handleEditOpen = (loc) => {
-    setEditLocation(loc);
+    console.log('Opening edit for location:', loc);
+    setEditLocationState(loc);
     setForm({ name: loc.name, address: loc.address });
+    setEditOpen(true);
   };
 
   const handleEditSubmit = () => {
@@ -64,29 +73,50 @@ const Locations = () => {
       toast.error('Name and address are required');
       return;
     }
-    dispatch(editLocation({ id: editLocation._id, data: form }))
+    if (!editLocation || typeof editLocation !== 'function') {
+      console.error('editLocation is not a function:', editLocation);
+      toast.error('Edit functionality is unavailable');
+      return;
+    }
+    console.log('Submitting edit for location:', { id: editLocationState._id, data: form });
+    dispatch(editLocation({ id: editLocationState._id, data: form }))
       .unwrap()
       .then(() => {
         toast.success('Location updated successfully');
-        setEditLocation(null);
+        setEditOpen(false);
+        setEditLocationState(null);
         setForm({ name: '', address: '' });
       })
-      .catch((err) => toast.error(err));
+      .catch((err) => {
+        console.error('Edit location failed:', err);
+        toast.error(err || 'Failed to edit location');
+      });
+  };
+
+  const handleDeleteOpen = (id) => {
+    console.log('Opening delete for location ID:', id);
+    setDeleteLocationId(id);
+    setDeleteOpen(true);
   };
 
   const handleDeleteConfirm = () => {
+    if (!deleteLocation || typeof deleteLocation !== 'function') {
+      console.error('deleteLocation is not a function:', deleteLocation);
+      toast.error('Delete functionality is unavailable');
+      return;
+    }
+    console.log('Confirming delete for location ID:', deleteLocationId);
     dispatch(deleteLocation(deleteLocationId))
       .unwrap()
       .then(() => {
         toast.success('Location deleted successfully');
+        setDeleteOpen(false);
         setDeleteLocationId(null);
       })
-      .catch((err) => toast.error(err));
-  };
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
+      .catch((err) => {
+        console.error('Delete location failed:', err);
+        toast.error(err || 'Failed to delete location');
+      });
   };
 
   return (
@@ -96,13 +126,11 @@ const Locations = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Locations</h1>
           <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
+            <span>Guest</span>
             <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
-              </Button>
-            )}
+            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Navigate to login">
+              <LogOut className="h-5 w-5 text-accent" />
+            </Button>
           </div>
         </header>
         <main className="flex-1 p-6">
@@ -125,14 +153,13 @@ const Locations = () => {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
-                       ``
-
                         <Label htmlFor="name">Name</Label>
                         <Input
                           id="name"
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
                           className="bg-complementary text-body border-accent"
+                          disabled={loading}
                         />
                       </div>
                       <div>
@@ -142,6 +169,7 @@ const Locations = () => {
                           value={form.address}
                           onChange={(e) => setForm({ ...form, address: e.target.value })}
                           className="bg-complementary text-body border-accent"
+                          disabled={loading}
                         />
                       </div>
                       <Button
@@ -149,7 +177,7 @@ const Locations = () => {
                         className="bg-accent text-body hover:bg-accent-hover"
                         disabled={loading}
                       >
-                        Add
+                        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Add'}
                       </Button>
                     </div>
                   </DialogContent>
@@ -181,13 +209,14 @@ const Locations = () => {
                         <TableCell className="text-body">{loc.address}</TableCell>
                         <TableCell className="text-body">
                           <div className="flex gap-2">
-                            <Dialog open={editLocation?._id === loc._id} onOpenChange={() => setEditLocation(null)}>
+                            <Dialog open={editOpen && editLocationState?._id === loc._id} onOpenChange={(open) => setEditOpen(open)}>
                               <DialogTrigger asChild>
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleEditOpen(loc)}
                                   className="border-accent text-accent hover:bg-accent-hover hover:text-body"
+                                  disabled={loading}
                                 >
                                   Edit
                                 </Button>
@@ -204,6 +233,7 @@ const Locations = () => {
                                       value={form.name}
                                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                                       className="bg-complementary text-body border-accent"
+                                      disabled={loading}
                                     />
                                   </div>
                                   <div>
@@ -213,6 +243,7 @@ const Locations = () => {
                                       value={form.address}
                                       onChange={(e) => setForm({ ...form, address: e.target.value })}
                                       className="bg-complementary text-body border-accent"
+                                      disabled={loading}
                                     />
                                   </div>
                                   <Button
@@ -220,18 +251,19 @@ const Locations = () => {
                                     className="bg-accent text-body hover:bg-accent-hover"
                                     disabled={loading}
                                   >
-                                    Save
+                                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save'}
                                   </Button>
                                 </div>
                               </DialogContent>
                             </Dialog>
-                            <AlertDialog open={deleteLocationId === loc._id} onOpenChange={() => setDeleteLocationId(null)}>
+                            <AlertDialog open={deleteOpen && deleteLocationId === loc._id} onOpenChange={(open) => setDeleteOpen(open)}>
                               <AlertDialogTrigger asChild>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setDeleteLocationId(loc._id)}
+                                  onClick={() => handleDeleteOpen(loc._id)}
                                   className="border-error text-error hover:bg-error hover:text-body"
+                                  disabled={loading}
                                 >
                                   Delete
                                 </Button>
@@ -250,8 +282,9 @@ const Locations = () => {
                                   <AlertDialogAction
                                     onClick={handleDeleteConfirm}
                                     className="bg-error text-body hover:bg-error"
+                                    disabled={loading}
                                   >
-                                    Delete
+                                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Delete'}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -263,7 +296,7 @@ const Locations = () => {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="text-complementary">No locations found</p>
+                <p className="text-body">No locations found. Add a location to get started.</p>
               )}
             </CardContent>
           </Card>

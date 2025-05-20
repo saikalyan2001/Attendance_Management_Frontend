@@ -10,6 +10,7 @@ export const fetchAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
+      console.error('Fetch attendance error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch attendance');
     }
   }
@@ -26,6 +27,7 @@ export const markAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
+      console.error('Mark attendance error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to mark attendance');
     }
   }
@@ -38,6 +40,7 @@ export const editAttendance = createAsyncThunk(
       const response = await axios.put(`http://localhost:5000/api/admin/attendance/${id}`, { status });
       return response.data;
     } catch (error) {
+      console.error('Edit attendance error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to edit attendance');
     }
   }
@@ -50,6 +53,7 @@ export const fetchAttendanceRequests = createAsyncThunk(
       const response = await axios.get('http://localhost:5000/api/admin/attendance/requests');
       return response.data;
     } catch (error) {
+      console.error('Fetch attendance requests error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch attendance requests');
     }
   }
@@ -62,7 +66,25 @@ export const handleAttendanceRequest = createAsyncThunk(
       const response = await axios.put(`http://localhost:5000/api/admin/attendance/requests/${id}`, { status });
       return response.data;
     } catch (error) {
+      console.error('Handle attendance request error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to handle attendance request');
+    }
+  }
+);
+
+export const requestAttendanceEdit = createAsyncThunk(
+  'attendance/requestAttendanceEdit',
+  async ({ attendanceId, requestedStatus, reason }, { rejectWithValue }) => {
+    try {
+      const response = await axios.post('http://localhost:5000/api/admin/attendance/requests', {
+        attendanceId,
+        requestedStatus,
+        reason,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Request attendance edit error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to request attendance edit');
     }
   }
 );
@@ -98,7 +120,7 @@ const attendanceSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(markAttendance.fulfilled, (state, action) => {
+      .addCase(markAttendance.fulfilled, (state) => {
         state.loading = false;
       })
       .addCase(markAttendance.rejected, (state, action) => {
@@ -109,7 +131,7 @@ const attendanceSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(editAttendance.fulfilled, (state, action) => {
+      .addCase(editAttendance.fulfilled, (state) => {
         state.loading = false;
       })
       .addCase(editAttendance.rejected, (state, action) => {
@@ -132,10 +154,22 @@ const attendanceSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(handleAttendanceRequest.fulfilled, (state, action) => {
+      .addCase(handleAttendanceRequest.fulfilled, (state) => {
         state.loading = false;
       })
       .addCase(handleAttendanceRequest.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(requestAttendanceEdit.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(requestAttendanceEdit.fulfilled, (state, action) => {
+        state.loading = false;
+        state.attendanceRequests.push(action.payload);
+      })
+      .addCase(requestAttendanceEdit.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

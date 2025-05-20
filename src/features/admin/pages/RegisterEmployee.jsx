@@ -9,8 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
+import { Loader2, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
@@ -33,6 +32,8 @@ const RegisterEmployee = () => {
     phone: '',
     dob: '',
   });
+  const [documents, setDocuments] = useState([]);
+  const [documentErrors, setDocumentErrors] = useState([]);
 
   useEffect(() => {
     dispatch(fetchLocations());
@@ -58,17 +59,45 @@ const RegisterEmployee = () => {
         phone: '',
         dob: '',
       });
+      setDocuments([]);
+      setDocumentErrors([]);
     }
   }, [employeesError, locationsError, success, dispatch]);
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+  };
+
+  const handleDocumentChange = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach((file) => {
+      const filetypes = /pdf|doc|docx|jpg|jpeg|png/;
+      const isValidType = filetypes.test(file.name.toLowerCase());
+      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
+
+      if (!isValidType) {
+        errors.push(`Invalid file type for ${file.name}. Only PDF, DOC, DOCX, JPG, JPEG, PNG allowed.`);
+      } else if (!isValidSize) {
+        errors.push(`File ${file.name} exceeds 5MB limit.`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    setDocuments([...documents, ...validFiles]);
+    setDocumentErrors(errors);
+    if (errors.length > 0) {
+      errors.forEach((error) => toast.error(error));
+    }
+    e.target.value = ''; // Reset file input
+  };
+
+  const handleRemoveDocument = (index) => {
+    setDocuments(documents.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e) => {
@@ -92,17 +121,20 @@ const RegisterEmployee = () => {
 
     dispatch(
       registerEmployee({
-        employeeId,
-        name,
-        email,
-        designation,
-        department,
-        salary: parseFloat(salary),
-        location,
-        phone,
-        dob: dob ? new Date(dob).toISOString() : undefined,
-        paidLeaves: { available: 3, used: 0, carriedForward: 0 },
-        documents: [],
+        employeeData: {
+          employeeId,
+          name,
+          email,
+          designation,
+          department,
+          salary: parseFloat(salary),
+          location,
+          phone,
+          dob: dob ? new Date(dob).toISOString() : undefined,
+          paidLeaves: { available: 3, used: 0, carriedForward: 0 },
+          documents: [],
+        },
+        documents,
       })
     );
   };
@@ -117,7 +149,7 @@ const RegisterEmployee = () => {
             <span>{user?.email || 'Guest'}</span>
             <ThemeToggle />
             {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
+              <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Log out">
                 <LogOut className="h-5 w-5 text-accent" />
               </Button>
             )}
@@ -248,6 +280,44 @@ const RegisterEmployee = () => {
                     onChange={handleInputChange}
                     className="bg-complementary text-body border-accent"
                   />
+                </div>
+                <div>
+                  <Label htmlFor="documents">Documents (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB)</Label>
+                  <Input
+                    id="documents"
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={handleDocumentChange}
+                    className="bg-complementary text-body border-accent"
+                  />
+                  {documents.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm text-body">Selected Files:</p>
+                      <ul className="space-y-1">
+                        {documents.map((file, index) => (
+                          <li key={index} className="flex items-center justify-between text-sm text-body">
+                            <span>{file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveDocument(index)}
+                              className="text-error hover:text-error-hover"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {documentErrors.length > 0 && (
+                    <div className="mt-2 text-sm text-error">
+                      {documentErrors.map((error, index) => (
+                        <p key={index}>{error}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <Button
                   type="submit"
