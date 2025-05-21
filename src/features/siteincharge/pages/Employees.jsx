@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchEmployees, editEmployee, transferEmployee, uploadDocument, deleteEmployee } from '../redux/employeeSlice';
+import { fetchEmployees, fetchLocations, editEmployee, transferEmployee, uploadDocument, deleteEmployee } from '../redux/employeeSlice';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '../../../components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -11,9 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Edit, Upload, Trash } from 'lucide-react';
-import { LogOut } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
+import { Edit, Upload, Trash, Loader2, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,7 +20,6 @@ import { toast } from 'sonner';
 const Employees = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
   const { employees, locations, loading, error } = useSelector((state) => state.siteInchargeEmployee);
 
   const [editForm, setEditForm] = useState(null);
@@ -31,8 +28,12 @@ const Employees = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [documentFile, setDocumentFile] = useState(null);
 
+  // Hardcoded location for no-auth
+  const locationId = '1234567890abcdef1234567a';
+
   useEffect(() => {
-    dispatch(fetchEmployees());
+    dispatch(fetchEmployees({ location: locationId }));
+    dispatch(fetchLocations());
   }, [dispatch]);
 
   useEffect(() => {
@@ -79,7 +80,12 @@ const Employees = () => {
     e.preventDefault();
     const { id, location } = transferForm;
 
-    dispatch(transferEmployee({ id, location: location === 'none' ? null : location }))
+    if (!location) {
+      toast.error('Location is required');
+      return;
+    }
+
+    dispatch(transferEmployee({ id, location }))
       .unwrap()
       .then(() => {
         toast.success('Employee transferred successfully');
@@ -118,11 +124,6 @@ const Employees = () => {
       .catch((err) => toast.error(err));
   };
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
-  };
-
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
       <Sidebar />
@@ -130,13 +131,11 @@ const Employees = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Employees</h1>
           <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
+            <span>Guest</span>
             <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
-              </Button>
-            )}
+            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Navigate to login">
+              <Loader2 className="h-5 w-5 text-accent" />
+            </Button>
           </div>
         </header>
         <main className="flex-1 p-6">
@@ -183,13 +182,20 @@ const Employees = () => {
                         <TableCell className="text-body">{emp.designation}</TableCell>
                         <TableCell className="text-body">{emp.department}</TableCell>
                         <TableCell className="text-body">₹{emp.salary.toFixed(2)}</TableCell>
-                        <TableCell className="text-body">{emp.location?.name || 'Not assigned'}</TableCell>
+                        <TableCell className="text-body">{emp.location?.name || 'Unknown'}</TableCell>
                         <TableCell className="text-body">{emp.phone || '-'}</TableCell>
                         <TableCell className="text-body">
                           {emp.dob ? new Date(emp.dob).toLocaleDateString() : '-'}
                         </TableCell>
                         <TableCell className="text-body">
                           <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => navigate(`/siteincharge/employees/${emp._id}`)}
+                            >
+                              <Eye className="h-4 w-4 text-accent" />
+                            </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button
@@ -306,7 +312,7 @@ const Employees = () => {
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  onClick={() => setTransferForm({ id: emp._id, location: emp.location?._id || 'none' })}
+                                  onClick={() => setTransferForm({ id: emp._id, location: emp.location?._id })}
                                 >
                                   <Upload className="h-4 w-4 text-accent" />
                                 </Button>
@@ -328,7 +334,6 @@ const Employees = () => {
                                           <SelectValue placeholder="Select location" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-complementary text-body">
-                                          <SelectItem value="none">Not assigned</SelectItem>
                                           {locations.map((loc) => (
                                             <SelectItem key={loc._id} value={loc._id}>
                                               {loc.name}
@@ -399,7 +404,7 @@ const Employees = () => {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="text-complementary">No employees found</p>
+                <p className="text-body">No employees found</p>
               )}
             </CardContent>
           </Card>

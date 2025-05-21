@@ -4,7 +4,7 @@ import { fetchAttendance, markAttendance, editAttendance, fetchAttendanceRequest
 import { fetchLocations } from '../redux/locationsSlice';
 import { fetchEmployees, reset as resetEmployees } from '../redux/employeeSlice';
 import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,13 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Loader2, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns';
+import { Loader2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Attendance = () => {
   const dispatch = useDispatch();
@@ -29,21 +29,21 @@ const Attendance = () => {
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [location, setLocation] = useState('');
+  const [location, setLocation] = useState('all');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [absentEmployees, setAbsentEmployees] = useState([]);
   const [editDialog, setEditDialog] = useState(null);
+  const [requestDialog, setRequestDialog] = useState(null);
 
   useEffect(() => {
     dispatch(fetchLocations());
-    dispatch(fetchEmployees({ location: location || 'all' }));
-    dispatch(fetchAttendance({ month, year, location: location || '' }));
+    dispatch(fetchEmployees({ location: location === 'all' ? undefined : location }));
+    dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
     dispatch(fetchAttendanceRequests());
   }, [dispatch, month, year, location]);
 
   useEffect(() => {
     if (attendanceError || locationsError || employeesError) {
-      console.error('Errors:', { attendanceError, locationsError, employeesError });
       toast.error(attendanceError || locationsError || employeesError || 'Failed to load data');
       dispatch({ type: 'adminAttendance/reset' });
       dispatch({ type: 'adminLocations/reset' });
@@ -52,8 +52,8 @@ const Attendance = () => {
   }, [attendanceError, locationsError, employeesError, dispatch]);
 
   const handleMarkAttendance = () => {
-    if (!location) {
-      toast.error('Please select a location');
+    if (!location || location === 'all') {
+      toast.error('Please select a specific location');
       return;
     }
     if (!employees.length) {
@@ -71,27 +71,24 @@ const Attendance = () => {
       .then(() => {
         toast.success('Attendance marked successfully');
         setAbsentEmployees([]);
-        dispatch(fetchAttendance({ month, year, location: location || '' }));
+        dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
       })
-      .catch((err) => {
-        console.error('Mark attendance failed:', err);
-        toast.error(err.message || 'Failed to mark attendance');
-      });
+      .catch((err) => toast.error(err.message || 'Failed to mark attendance'));
   };
 
   const handleEditAttendance = (attendanceId, newStatus) => {
-    console.log('Editing attendance:', { attendanceId, newStatus });
+    if (!newStatus) {
+      toast.error('Please select a status');
+      return;
+    }
     dispatch(editAttendance({ id: attendanceId, status: newStatus }))
       .unwrap()
       .then(() => {
         toast.success('Attendance updated successfully');
         setEditDialog(null);
-        dispatch(fetchAttendance({ month, year, location: location || '' }));
+        dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
       })
-      .catch((err) => {
-        console.error('Edit attendance failed:', err);
-        toast.error(err.message || 'Failed to edit attendance');
-      });
+      .catch((err) => toast.error(err.message || 'Failed to edit attendance'));
   };
 
   const handleRequestAction = (requestId, status) => {
@@ -99,19 +96,17 @@ const Attendance = () => {
       .unwrap()
       .then(() => {
         toast.success(`Request ${status} successfully`);
+        setRequestDialog(null);
         dispatch(fetchAttendanceRequests());
+        dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
       })
-      .catch((err) => {
-        console.error('Handle request failed:', err);
-        toast.error(err.message || 'Failed to handle request');
-      });
+      .catch((err) => toast.error(err.message || 'Failed to handle request'));
   };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
-    value: `${i + 1}`,
+    value: i + 1,
     label: format(new Date(2025, i), 'MMMM'),
   }));
-
   const years = [2024, 2025, 2026];
 
   const daysInMonth = eachDayOfInterval({
@@ -120,14 +115,12 @@ const Attendance = () => {
   });
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  console.log('Attendance data:', attendance, 'Days in month:', daysInMonth);
-
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Attendance</h1>
+          <h1 className="text-xl font-bold">Attendance Management</h1>
           <div className="flex items-center space-x-4">
             <span>Guest</span>
             <ThemeToggle />
@@ -139,10 +132,9 @@ const Attendance = () => {
         <main className="flex-1 p-6 space-y-6 overflow-x-hidden">
           {(attendanceError || locationsError || employeesError) && (
             <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{attendanceError || locationsError || employeesError || 'Error loading data'}</AlertDescription>
+              <AlertDescription>{attendanceError || locationsError || employeesError}</AlertDescription>
             </Alert>
           )}
-          
           {/* Mark Attendance Card */}
           <Card className="bg-complementary text-body">
             <CardHeader>
@@ -152,13 +144,13 @@ const Attendance = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div>
                   <Label htmlFor="month">Month</Label>
-                  <Select value={`${month}`} onValueChange={(val) => setMonth(parseInt(val))}>
+                  <Select value={month.toString()} onValueChange={(val) => setMonth(parseInt(val))}>
                     <SelectTrigger id="month" className="bg-complementary text-body border-accent">
                       <SelectValue placeholder="Select month" />
                     </SelectTrigger>
                     <SelectContent className="bg-complementary text-body">
                       {months.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
+                        <SelectItem key={m.value} value={m.value.toString()}>
                           {m.label}
                         </SelectItem>
                       ))}
@@ -167,13 +159,13 @@ const Attendance = () => {
                 </div>
                 <div>
                   <Label htmlFor="year">Year</Label>
-                  <Select value={`${year}`} onValueChange={(val) => setYear(parseInt(val))}>
+                  <Select value={year.toString()} onValueChange={(val) => setYear(parseInt(val))}>
                     <SelectTrigger id="year" className="bg-complementary text-body border-accent">
                       <SelectValue placeholder="Select year" />
                     </SelectTrigger>
                     <SelectContent className="bg-complementary text-body">
                       {years.map((y) => (
-                        <SelectItem key={y} value={`${y}`}>
+                        <SelectItem key={y} value={y.toString()}>
                           {y}
                         </SelectItem>
                       ))}
@@ -187,17 +179,12 @@ const Attendance = () => {
                       <SelectValue placeholder="Select location" />
                     </SelectTrigger>
                     <SelectContent className="bg-complementary text-body">
-                      {locationsLoading ? (
-                        <SelectItem value="loading">Loading...</SelectItem>
-                      ) : locations.length > 0 ? (
-                        locations.map((loc) => (
-                          <SelectItem key={loc._id} value={loc._id}>
-                            {loc.name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none">No locations available</SelectItem>
-                      )}
+                      <SelectItem value="all">All Locations</SelectItem>
+                      {locations.map((loc) => (
+                        <SelectItem key={loc._id} value={loc._id}>
+                          {loc.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -209,14 +196,13 @@ const Attendance = () => {
                   selected={selectedDate}
                   onSelect={setSelectedDate}
                   className="bg-complementary text-body border-accent rounded-md"
+                  disabled={{ after: new Date() }}
                 />
               </div>
               <div className="mb-4">
                 <Label>Select Absent Employees</Label>
                 {employeesLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : employeesError ? (
-                  <p className="text-error">Error loading employees: {employeesError}</p>
+                  <Skeleton className="h-12 w-full" />
                 ) : employees.length > 0 ? (
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {employees.map((emp) => (
@@ -231,7 +217,7 @@ const Attendance = () => {
                           }
                         />
                         <Label htmlFor={emp._id}>
-                          {emp.name} ({emp.employeeId})
+                          {emp.name} ({emp.employeeId}) - Leaves: {emp.paidLeaves.available}
                         </Label>
                       </div>
                     ))}
@@ -243,13 +229,12 @@ const Attendance = () => {
               <Button
                 onClick={handleMarkAttendance}
                 className="bg-accent text-body hover:bg-accent-hover"
-                disabled={attendanceLoading || locationsLoading || employeesLoading || !location || !employees.length}
+                disabled={attendanceLoading || locationsLoading || employeesLoading || !location || location === 'all'}
               >
                 {attendanceLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Mark Attendance'}
               </Button>
             </CardContent>
           </Card>
-
           {/* Attendance Overview Card */}
           <Card className="bg-complementary text-body">
             <CardHeader>
@@ -262,147 +247,73 @@ const Attendance = () => {
                     <Skeleton key={i} className="h-12 w-full" />
                   ))}
                 </div>
-              ) : attendanceError ? (
-                <p className="text-error">Error loading attendance: {attendanceError}</p>
               ) : attendance.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <div className="min-w-[800px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-body sticky left-0 bg-complementary z-10 min-w-[100px]">Employee ID</TableHead>
-                          <TableHead className="text-body sticky left-[100px] bg-complementary z-10 min-w-[150px]">Name</TableHead>
-                          {daysInMonth.map((day, index) => (
-                            <TableHead key={index} className="text-body min-w-[50px]">
-                              {weekDays[getDay(day)]}
-                              <br />
-                              {format(day, 'dd')}
-                            </TableHead>
-                          ))}
-                          <TableHead className="text-body min-w-[100px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.values(
-                          attendance.reduce((acc, record) => {
-                            if (!record.employee?._id) {
-                              console.warn('Invalid attendance record:', record);
-                              return acc;
-                            }
-                            const empId = record.employee._id;
-                            if (!acc[empId]) {
-                              acc[empId] = {
-                                employeeId: record.employee.employeeId || 'N/A',
-                                name: record.employee.name || 'Unknown',
-                                status: Array(daysInMonth.length).fill('-'),
-                                records: {},
-                              };
-                            }
-                            const recordDate = new Date(record.date);
-                            const dayIndex = daysInMonth.findIndex((d) => isSameDay(d, recordDate));
-                            if (dayIndex !== -1) {
-                              acc[empId].status[dayIndex] = record.status.charAt(0).toUpperCase();
-                              acc[empId].records[dayIndex] = record._id;
-                            } else {
-                              console.warn('Date out of range:', record.date, record);
-                            }
-                            return acc;
-                          }, {})
-                        ).map((emp) => {
-                          console.log('Employee attendance:', emp);
-                          return (
-                            <TableRow key={emp.employeeId}>
-                              <TableCell className="text-body sticky left-0 bg-complementary z-10">{emp.employeeId}</TableCell>
-                              <TableCell className="text-body sticky left-[100px] bg-complementary z-10">{emp.name}</TableCell>
-                              {emp.status.map((status, index) => (
-                                <TableCell
-                                  key={index}
-                                  className={`text-body text-center ${
-                                    status === 'P' ? 'text-green-600 dark:text-green-400' :
-                                    status === 'A' ? 'text-red-600 dark:text-red-400' :
-                                    status === 'L' ? 'text-yellow-600 dark:text-yellow-400' : ''
-                                  }`}
-                                >
-                                  {status}
-                                </TableCell>
-                              ))}
-                              <TableCell>
-                                <Dialog
-                                  open={editDialog?.employeeId === emp.employeeId}
-                                  onOpenChange={(open) => !open && setEditDialog(null)}
-                                >
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => setEditDialog({ employeeId: emp.employeeId, records: emp.records })}
-                                      className="border-accent text-accent hover:bg-accent-hover hover:text-body"
-                                      disabled={attendanceLoading}
-                                    >
-                                      Edit
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="sm:max-w-md bg-complementary text-body">
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Attendance for {emp.name}</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <Select
-                                        value={editDialog?.selectedDate || ''}
-                                        onValueChange={(date) => setEditDialog({ ...editDialog, selectedDate: date })}
-                                      >
-                                        <SelectTrigger className="bg-complementary text-body border-accent">
-                                          <SelectValue placeholder="Select date" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-complementary text-body">
-                                          {Object.entries(emp.records).map(([idx, recordId]) => (
-                                            <SelectItem key={idx} value={idx}>
-                                              {format(daysInMonth[parseInt(idx)], 'MMM dd, yyyy')}
-                                            </SelectItem>
-                                          ))}
-                                          {Object.keys(emp.records).length === 0 && (
-                                            <SelectItem value="none" disabled>
-                                              No attendance records
-                                            </SelectItem>
-                                          )}
-                                        </SelectContent>
-                                      </Select>
-                                      <Select
-                                        value={editDialog?.selectedStatus || ''}
-                                        onValueChange={(status) => {
-                                          if (editDialog?.selectedDate && emp.records[parseInt(editDialog.selectedDate)]) {
-                                            handleEditAttendance(emp.records[parseInt(editDialog.selectedDate)], status);
-                                          }
-                                        }}
-                                        disabled={!editDialog?.selectedDate}
-                                      >
-                                        <SelectTrigger className="bg-complementary text-body border-accent">
-                                          <SelectValue placeholder="Select status" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-complementary text-body">
-                                          <SelectItem value="present">Present</SelectItem>
-                                          <SelectItem value="absent">Absent</SelectItem>
-                                          <SelectItem value="leave">Leave</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                      {attendanceLoading && <Loader2 className="h-5 w-5 animate-spin mx-auto" />}
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-body sticky left-0 bg-complementary z-10">Employee</TableHead>
+                        <TableHead className="text-body">Location</TableHead>
+                        {daysInMonth.map((day) => (
+                          <TableHead key={format(day, 'yyyy-MM-dd')} className="text-body">
+                            {weekDays[getDay(day)]}
+                            <br />
+                            {format(day, 'dd')}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {employees.map((emp) => (
+                        <TableRow key={emp._id}>
+                          <TableCell className="text-body sticky left-0 bg-complementary z-10">
+                            {emp.name} ({emp.employeeId})
+                          </TableCell>
+                          <TableCell className="text-body">{locations.find((loc) => loc._id === emp.location)?.name || 'N/A'}</TableCell>
+                          {daysInMonth.map((day) => {
+                            const record = attendance.find(
+                              (att) =>
+                                att.employee?._id.toString() === emp._id.toString() &&
+                                format(new Date(att.date), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd')
+                            );
+                            return (
+                              <TableCell
+                                key={format(day, 'yyyy-MM-dd')}
+                                className={
+                                  record
+                                    ? record.status === 'present'
+                                      ? 'text-green-500 cursor-pointer'
+                                      : record.status === 'absent'
+                                      ? 'text-red-500 cursor-pointer'
+                                      : 'text-yellow-500 cursor-pointer'
+                                    : 'text-body'
+                                }
+                                onClick={() =>
+                                  record &&
+                                  setEditDialog({
+                                    attendanceId: record._id,
+                                    currentStatus: record.status,
+                                    employeeId: emp._id,
+                                    employeeName: emp.name,
+                                    availableLeaves: emp.paidLeaves.available,
+                                    date: day,
+                                  })
+                                }
+                              >
+                                {record ? record.status.charAt(0).toUpperCase() : '-'}
                               </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
                 <p className="text-body">No attendance records available</p>
               )}
             </CardContent>
           </Card>
-
           {/* Attendance Requests Card */}
           <Card className="bg-complementary text-body">
             <CardHeader>
@@ -415,84 +326,115 @@ const Attendance = () => {
                     <Skeleton key={i} className="h-12 w-full" />
                   ))}
                 </div>
-              ) : attendanceRequests?.length > 0 ? (
+              ) : attendanceRequests.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <div className="min-w-[800px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-body">Employee</TableHead>
-                          <TableHead className="text-body">Location</TableHead>
-                          <TableHead className="text-body">Date</TableHead>
-                          <TableHead className="text-body">Requested Status</TableHead>
-                          <TableHead className="text-body">Reason</TableHead>
-                          <TableHead className="text-body">Status</TableHead>
-                          <TableHead className="text-body">Actions</TableHead>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-body">Employee</TableHead>
+                        <TableHead className="text-body">Location</TableHead>
+                        <TableHead className="text-body">Date</TableHead>
+                        <TableHead className="text-body">Requested Status</TableHead>
+                        <TableHead className="text-body">Reason</TableHead>
+                        <TableHead className="text-body">Status</TableHead>
+                        <TableHead className="text-body">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {attendanceRequests.map((req) => (
+                        <TableRow key={req._id}>
+                          <TableCell className="text-body">
+                            {req.employee?.name} ({req.employee?.employeeId})
+                          </TableCell>
+                          <TableCell className="text-body">{req.location?.name}</TableCell>
+                          <TableCell className="text-body">{format(new Date(req.date), 'PPP')}</TableCell>
+                          <TableCell className="text-body">
+                            {req.requestedStatus.charAt(0).toUpperCase() + req.requestedStatus.slice(1)}
+                          </TableCell>
+                          <TableCell className="text-body">{req.reason}</TableCell>
+                          <TableCell className="text-body">
+                            {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                          </TableCell>
+                          <TableCell>
+                            {req.status === 'pending' && (
+                              <div className="flex space-x-2">
+                                <Button
+                                  onClick={() => handleRequestAction(req._id, 'approved')}
+                                  className="bg-green-500 text-body hover:bg-green-600"
+                                  disabled={attendanceLoading}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  onClick={() => handleRequestAction(req._id, 'rejected')}
+                                  className="bg-red-500 text-body hover:bg-red-600"
+                                  disabled={attendanceLoading}
+                                >
+                                  Reject
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {attendanceRequests.map((req) => (
-                          <TableRow key={req._id}>
-                            <TableCell className="text-body">
-                              {req.employee?.name || 'Unknown'} ({req.employee?.employeeId || 'N/A'})
-                            </TableCell>
-                            <TableCell className="text-body">{req.location?.name || 'N/A'}</TableCell>
-                            <TableCell className="text-body">{format(new Date(req.date), 'MM/dd/yyyy')}</TableCell>
-                            <TableCell className="text-body">
-                              {req.requestedStatus.charAt(0).toUpperCase() + req.requestedStatus.slice(1)}
-                            </TableCell>
-                            <TableCell className="text-body">{req.reason}</TableCell>
-                            <TableCell className="text-body">
-                              {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
-                            </TableCell>
-                            <TableCell>
-                              {req.status === 'pending' && (
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="border-accent text-accent hover:bg-accent-hover hover:text-body"
-                                      disabled={attendanceLoading}
-                                    >
-                                      Review
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="sm:max-w-md bg-complementary text-body">
-                                    <DialogHeader>
-                                      <DialogTitle>Review Request</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <Button
-                                        onClick={() => handleRequestAction(req._id, 'approved')}
-                                        className="bg-green-500 text-body hover:bg-green-600"
-                                        disabled={attendanceLoading}
-                                      >
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        onClick={() => handleRequestAction(req._id, 'rejected')}
-                                        className="bg-red-500 text-body hover:bg-red-600"
-                                        disabled={attendanceLoading}
-                                      >
-                                        Reject
-                                      </Button>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
-                <p className="text-body">No attendance edit requests available.</p>
+                <p className="text-body">No attendance edit requests available</p>
               )}
             </CardContent>
           </Card>
+          {/* Edit Attendance Dialog */}
+          {editDialog && (
+            <Dialog open={!!editDialog} onOpenChange={() => setEditDialog(null)}>
+              <DialogContent className="sm:max-w-md bg-complementary text-body">
+                <DialogHeader>
+                  <DialogTitle>
+                    Edit Attendance for {editDialog.employeeName} on {format(editDialog.date, 'PPP')}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Status</Label>
+                    <Select
+                      value={editDialog.currentStatus}
+                      onValueChange={(status) =>
+                        setEditDialog({ ...editDialog, currentStatus: status })
+                      }
+                    >
+                      <SelectTrigger className="bg-complementary text-body border-accent">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-complementary text-body">
+                        <SelectItem value="present">Present</SelectItem>
+                        <SelectItem value="absent">Absent</SelectItem>
+                        <SelectItem value="leave" disabled={editDialog.availableLeaves < 1}>
+                          Leave {editDialog.availableLeaves < 1 && '(No leaves available)'}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditDialog(null)}
+                      className="bg-complementary text-body border-accent"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => handleEditAttendance(editDialog.attendanceId, editDialog.currentStatus)}
+                      className="bg-accent text-body hover:bg-accent-hover"
+                      disabled={attendanceLoading}
+                    >
+                      Save
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </main>
       </div>
     </div>

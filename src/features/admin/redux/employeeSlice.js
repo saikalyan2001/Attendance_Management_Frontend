@@ -56,6 +56,19 @@ export const updateEmployee = createAsyncThunk(
   }
 );
 
+export const deleteEmployee = createAsyncThunk(
+  'employees/deleteEmployee',
+  async (id, { rejectWithValue }) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/admin/employees/${id}`);
+      return id;
+    } catch (error) {
+      console.error('Delete employee error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to delete employee');
+    }
+  }
+);
+
 export const uploadDocument = createAsyncThunk(
   'employees/uploadDocument',
   async ({ id, file }, { rejectWithValue }) => {
@@ -114,7 +127,7 @@ const employeesSlice = createSlice({
       .addCase(fetchEmployees.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-        state.employees = []; // Ensure empty array on error
+        state.employees = [];
       })
       .addCase(registerEmployee.pending, (state) => {
         state.loading = true;
@@ -143,6 +156,18 @@ const employeesSlice = createSlice({
         }
       })
       .addCase(updateEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(deleteEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteEmployee.fulfilled, (state, action) => {
+        state.loading = false;
+        state.employees = state.employees.filter((emp) => emp._id !== action.payload);
+      })
+      .addCase(deleteEmployee.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

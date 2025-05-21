@@ -3,11 +3,14 @@ import axios from 'axios';
 
 export const fetchDashboardData = createAsyncThunk(
   'siteInchargeDashboard/fetchDashboardData',
-  async (_, { rejectWithValue }) => {
+  async ({ location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/siteincharge/dashboard');
+      const response = await axios.get('http://localhost:5000/api/siteincharge/dashboard', {
+        params: { location },
+      });
       return response.data;
     } catch (error) {
+      console.error('Fetch dashboard error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch dashboard data');
     }
   }
@@ -20,7 +23,11 @@ const dashboardSlice = createSlice({
     loading: false,
     error: null,
   },
-  reducers: {},
+  reducers: {
+    reset: (state) => {
+      state.error = null;
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchDashboardData.pending, (state) => {
@@ -38,4 +45,5 @@ const dashboardSlice = createSlice({
   },
 });
 
+export const { reset } = dashboardSlice.actions;
 export default dashboardSlice.reducer;

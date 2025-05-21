@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
 export const fetchAttendanceReport = createAsyncThunk(
-  'reports/fetchAttendanceReport',
+  'adminReports/fetchAttendanceReport',
   async ({ startDate, endDate, location }, { rejectWithValue }) => {
     try {
       const response = await axios.get('http://localhost:5000/api/admin/reports/attendance', {
@@ -10,13 +10,14 @@ export const fetchAttendanceReport = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
+      console.error('Fetch attendance report error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch attendance report');
     }
   }
 );
 
 export const fetchLeaveReport = createAsyncThunk(
-  'reports/fetchLeaveReport',
+  'adminReports/fetchLeaveReport',
   async ({ location }, { rejectWithValue }) => {
     try {
       const response = await axios.get('http://localhost:5000/api/admin/reports/leaves', {
@@ -24,22 +25,40 @@ export const fetchLeaveReport = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
+      console.error('Fetch leave report error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch leave report');
     }
   }
 );
 
+export const fetchSalaryReport = createAsyncThunk(
+  'adminReports/fetchSalaryReport',
+  async ({ startDate, endDate, location }, { rejectWithValue }) => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/admin/reports/salary', {
+        params: { startDate, endDate, location },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Fetch salary report error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch salary report');
+    }
+  }
+);
+
 const reportsSlice = createSlice({
-  name: 'reports',
+  name: 'adminReports',
   initialState: {
     attendanceReport: null,
     leaveReport: null,
+    salaryReport: null,
     loading: false,
     error: null,
   },
   reducers: {
     reset: (state) => {
       state.error = null;
+      state.loading = false;
     },
   },
   extraReducers: (builder) => {
@@ -65,6 +84,18 @@ const reportsSlice = createSlice({
         state.leaveReport = action.payload;
       })
       .addCase(fetchLeaveReport.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchSalaryReport.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchSalaryReport.fulfilled, (state, action) => {
+        state.loading = false;
+        state.salaryReport = action.payload;
+      })
+      .addCase(fetchSalaryReport.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

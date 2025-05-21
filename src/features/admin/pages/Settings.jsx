@@ -1,28 +1,44 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchSettings, updateSettings } from '../redux/settingsSlice';
+import { fetchSettings, updateSettings, updateEmployeeLeaves } from '../redux/settingsSlice';
 import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { LogOut } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
-import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+import { Loader2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+const formSchema = z.object({
+  paidLeavesPerMonth: z
+    .number()
+    .int()
+    .min(1, 'Paid leaves must be at least 1')
+    .max(30, 'Paid leaves cannot exceed 30'),
+  halfDayDeduction: z
+    .number()
+    .min(0, 'Half-day deduction must be at least 0')
+    .max(1, 'Half-day deduction cannot exceed 1'),
+});
 
 const Settings = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
   const { settings, loading, error } = useSelector((state) => state.adminSettings);
 
-  const [form, setForm] = useState({
-    paidLeavesPerMonth: '2',
-    halfDayDeduction: '0.5',
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      paidLeavesPerMonth: 2,
+      halfDayDeduction: 0.5,
+    },
   });
 
   useEffect(() => {
@@ -31,12 +47,12 @@ const Settings = () => {
 
   useEffect(() => {
     if (settings) {
-      setForm({
-        paidLeavesPerMonth: settings.paidLeavesPerMonth.toString(),
-        halfDayDeduction: settings.halfDayDeduction.toString(),
+      form.reset({
+        paidLeavesPerMonth: settings.paidLeavesPerMonth,
+        halfDayDeduction: settings.halfDayDeduction,
       });
     }
-  }, [settings]);
+  }, [settings, form]);
 
   useEffect(() => {
     if (error) {
@@ -45,33 +61,8 @@ const Settings = () => {
     }
   }, [error, dispatch]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    const paidLeaves = parseInt(form.paidLeavesPerMonth);
-    const halfDay = parseFloat(form.halfDayDeduction);
-
-    if (isNaN(paidLeaves) || paidLeaves < 1 || paidLeaves > 30) {
-      toast.error('Paid leaves must be between 1 and 30');
-      return;
-    }
-
-    if (isNaN(halfDay) || halfDay < 0 || halfDay > 1) {
-      toast.error('Half-day deduction must be between 0 and 1');
-      return;
-    }
-
-    dispatch(
-      updateSettings({
-        paidLeavesPerMonth: paidLeaves,
-        halfDayDeduction: halfDay,
-      })
-    )
+  const onSubmit = (data) => {
+    dispatch(updateSettings(data))
       .unwrap()
       .then(() => {
         toast.success('Settings updated successfully');
@@ -79,8 +70,16 @@ const Settings = () => {
       .catch((err) => toast.error(err));
   };
 
+  const handleUpdateLeaves = () => {
+    dispatch(updateEmployeeLeaves())
+      .unwrap()
+      .then(() => {
+        toast.success('Employee leaves updated successfully');
+      })
+      .catch((err) => toast.error(err));
+  };
+
   const handleLogout = () => {
-    dispatch(logout());
     navigate('/login');
   };
 
@@ -91,13 +90,11 @@ const Settings = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Settings</h1>
           <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
+            <span>Guest</span>
             <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
-              </Button>
-            )}
+            <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
+              <LogOut className="h-5 w-5 text-accent" />
+            </Button>
           </div>
         </header>
         <main className="flex-1 p-6">
@@ -118,44 +115,65 @@ const Settings = () => {
                   <Skeleton className="h-12 w-full" />
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-6">
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="paidLeavesPerMonth"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Paid Leaves Per Month</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                className="bg-complementary text-body border-accent"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="halfDayDeduction"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Half-Day Deduction Rate</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="bg-complementary text-body border-accent"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        className="bg-accent text-body hover:bg-accent-hover"
+                        disabled={loading}
+                      >
+                        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save Settings'}
+                      </Button>
+                    </form>
+                  </Form>
                   <div>
-                    <Label htmlFor="paidLeavesPerMonth">Paid Leaves Per Month</Label>
-                    <Input
-                      id="paidLeavesPerMonth"
-                      name="paidLeavesPerMonth"
-                      type="number"
-                      value={form.paidLeavesPerMonth}
-                      onChange={handleInputChange}
-                      className="bg-complementary text-body border-accent"
-                      min="1"
-                      max="30"
-                      required
-                    />
+                    <Button
+                      onClick={handleUpdateLeaves}
+                      className="bg-accent text-body hover:bg-accent-hover"
+                      disabled={loading}
+                    >
+                      {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Update Employee Leaves'}
+                    </Button>
                   </div>
-                  <div>
-                    <Label htmlFor="halfDayDeduction">Half-Day Deduction Rate</Label>
-                    <Input
-                      id="halfDayDeduction"
-                      name="halfDayDeduction"
-                      type="number"
-                      step="0.01"
-                      value={form.halfDayDeduction}
-                      onChange={handleInputChange}
-                      className="bg-complementary text-body border-accent"
-                      min="0"
-                      max="1"
-                      required
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover"
-                    disabled={loading}
-                  >
-                    Save Settings
-                  </Button>
-                </form>
+                </div>
               )}
             </CardContent>
           </Card>

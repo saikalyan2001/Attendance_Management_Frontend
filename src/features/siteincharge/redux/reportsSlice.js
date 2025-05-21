@@ -1,16 +1,30 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
-export const fetchReports = createAsyncThunk(
-  'siteInchargeReports/fetchReports',
-  async ({ month, location }, { rejectWithValue }) => {
+export const fetchAttendanceReports = createAsyncThunk(
+  'siteInchargeReports/fetchAttendanceReports',
+  async ({ startDate, endDate, location, department }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/siteincharge/reports', {
-        params: { month, location },
+      const response = await axios.get('http://localhost:5000/api/siteincharge/reports/attendance', {
+        params: { startDate, endDate, location, department },
       });
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch reports');
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch attendance reports');
+    }
+  }
+);
+
+export const fetchLeaveReports = createAsyncThunk(
+  'siteInchargeReports/fetchLeaveReports',
+  async ({ startDate, endDate, location, department }, { rejectWithValue }) => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/siteincharge/reports/leaves', {
+        params: { startDate, endDate, location, department },
+      });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch leave reports');
     }
   }
 );
@@ -18,8 +32,10 @@ export const fetchReports = createAsyncThunk(
 const reportsSlice = createSlice({
   name: 'siteInchargeReports',
   initialState: {
-    reports: [],
+    attendanceReports: [],
+    leaveReports: [],
     locations: [],
+    departments: [],
     loading: false,
     error: null,
   },
@@ -30,16 +46,31 @@ const reportsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchReports.pending, (state) => {
+      .addCase(fetchAttendanceReports.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchReports.fulfilled, (state, action) => {
+      .addCase(fetchAttendanceReports.fulfilled, (state, action) => {
         state.loading = false;
-        state.reports = action.payload.reports;
+        state.attendanceReports = action.payload.reports;
         state.locations = action.payload.locations;
+        state.departments = action.payload.departments;
       })
-      .addCase(fetchReports.rejected, (state, action) => {
+      .addCase(fetchAttendanceReports.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchLeaveReports.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchLeaveReports.fulfilled, (state, action) => {
+        state.loading = false;
+        state.leaveReports = action.payload.reports;
+        state.locations = action.payload.locations;
+        state.departments = action.payload.departments;
+      })
+      .addCase(fetchLeaveReports.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

@@ -25,6 +25,18 @@ export const updateSettings = createAsyncThunk(
   }
 );
 
+export const updateEmployeeLeaves = createAsyncThunk(
+  'adminSettings/updateEmployeeLeaves',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await axios.post('http://localhost:5000/api/admin/settings/update-leaves');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to update employee leaves');
+    }
+  }
+);
+
 const settingsSlice = createSlice({
   name: 'adminSettings',
   initialState: {
@@ -60,6 +72,17 @@ const settingsSlice = createSlice({
         state.settings = action.payload;
       })
       .addCase(updateSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(updateEmployeeLeaves.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateEmployeeLeaves.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(updateEmployeeLeaves.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

@@ -15,6 +15,7 @@ import AdminAttendance from './features/admin/pages/Attendance';
 import AdminEmployees from './features/admin/pages/Employees';
 import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
 import AdminProfile from './features/admin/pages/Profile';
+import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
 
 
 const App = () => {
@@ -36,6 +37,7 @@ const App = () => {
       <Route path="/admin/employees" element={<AdminEmployees />} />
       <Route path="/admin/register-employee" element={<AdminEmployeeRegister />} />
       <Route path="/admin/profile" element={<AdminProfile />} />
+       <Route path="/siteincharge/employees/:id" element={<EmployeeProfile />} />
     </Routes>
   );
 };

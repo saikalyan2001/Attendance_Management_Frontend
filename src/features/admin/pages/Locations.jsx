@@ -2,22 +2,28 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations, addLocation, editLocation, deleteLocation } from '../redux/locationsSlice';
 import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, LogOut } from 'lucide-react';
+import { Loader2, LogOut, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 
-// Debug import
-console.log('Imported thunks:', { fetchLocations, addLocation, editLocation, deleteLocation });
+const locationSchema = z.object({
+  name: z.string().min(3, 'Name must be at least 3 characters').max(50, 'Name must be 50 characters or less'),
+  address: z.string().min(5, 'Address must be at least 5 characters').max(200, 'Address must be 200 characters or less'),
+});
 
 const Locations = () => {
   const dispatch = useDispatch();
@@ -29,7 +35,17 @@ const Locations = () => {
   const [editLocationState, setEditLocationState] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLocationId, setDeleteLocationId] = useState(null);
-  const [form, setForm] = useState({ name: '', address: '' });
+  const [actionLoading, setActionLoading] = useState({ add: false, edit: false, delete: false });
+
+  const addForm = useForm({
+    resolver: zodResolver(locationSchema),
+    defaultValues: { name: '', address: '' },
+  });
+
+  const editForm = useForm({
+    resolver: zodResolver(locationSchema),
+    defaultValues: { name: '', address: '' },
+  });
 
   useEffect(() => {
     dispatch(fetchLocations());
@@ -43,69 +59,52 @@ const Locations = () => {
     }
   }, [error, dispatch]);
 
-  const handleAddSubmit = () => {
-    if (!form.name || !form.address) {
-      toast.error('Name and address are required');
-      return;
-    }
-    dispatch(addLocation(form))
+  const handleAddSubmit = (data) => {
+    setActionLoading((prev) => ({ ...prev, add: true }));
+    dispatch(addLocation(data))
       .unwrap()
       .then(() => {
         toast.success('Location added successfully');
         setAddOpen(false);
-        setForm({ name: '', address: '' });
+        addForm.reset();
       })
       .catch((err) => {
         console.error('Add location failed:', err);
         toast.error(err || 'Failed to add location');
+      })
+      .finally(() => {
+        setActionLoading((prev) => ({ ...prev, add: false }));
       });
   };
 
   const handleEditOpen = (loc) => {
     console.log('Opening edit for location:', loc);
     setEditLocationState(loc);
-    setForm({ name: loc.name, address: loc.address });
+    editForm.reset({ name: loc.name, address: loc.address });
     setEditOpen(true);
   };
 
-  const handleEditSubmit = () => {
-    if (!form.name || !form.address) {
-      toast.error('Name and address are required');
-      return;
-    }
-    if (!editLocation || typeof editLocation !== 'function') {
-      console.error('editLocation is not a function:', editLocation);
-      toast.error('Edit functionality is unavailable');
-      return;
-    }
-    console.log('Submitting edit for location:', { id: editLocationState._id, data: form });
-    dispatch(editLocation({ id: editLocationState._id, data: form }))
+  const handleEditSubmit = (data) => {
+    setActionLoading((prev) => ({ ...prev, edit: true }));
+    dispatch(editLocation({ id: editLocationState._id, data }))
       .unwrap()
       .then(() => {
         toast.success('Location updated successfully');
         setEditOpen(false);
         setEditLocationState(null);
-        setForm({ name: '', address: '' });
+        editForm.reset();
       })
       .catch((err) => {
         console.error('Edit location failed:', err);
         toast.error(err || 'Failed to edit location');
+      })
+      .finally(() => {
+        setActionLoading((prev) => ({ ...prev, edit: false }));
       });
   };
 
-  const handleDeleteOpen = (id) => {
-    console.log('Opening delete for location ID:', id);
-    setDeleteLocationId(id);
-    setDeleteOpen(true);
-  };
-
   const handleDeleteConfirm = () => {
-    if (!deleteLocation || typeof deleteLocation !== 'function') {
-      console.error('deleteLocation is not a function:', deleteLocation);
-      toast.error('Delete functionality is unavailable');
-      return;
-    }
-    console.log('Confirming delete for location ID:', deleteLocationId);
+    setActionLoading((prev) => ({ ...prev, delete: true }));
     dispatch(deleteLocation(deleteLocationId))
       .unwrap()
       .then(() => {
@@ -116,7 +115,14 @@ const Locations = () => {
       .catch((err) => {
         console.error('Delete location failed:', err);
         toast.error(err || 'Failed to delete location');
+      })
+      .finally(() => {
+        setActionLoading((prev) => ({ ...prev, delete: false }));
       });
+  };
+
+  const handleViewEmployees = (locationId) => {
+    navigate(`/admin/employees?location=${locationId}`);
   };
 
   return (
@@ -151,35 +157,51 @@ const Locations = () => {
                     <DialogHeader>
                       <DialogTitle>Add Location</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="name">Name</Label>
-                        <Input
-                          id="name"
-                          value={form.name}
-                          onChange={(e) => setForm({ ...form, name: e.target.value })}
-                          className="bg-complementary text-body border-accent"
-                          disabled={loading}
+                    <Form {...addForm}>
+                      <form onSubmit={addForm.handleSubmit(handleAddSubmit)} className="space-y-4">
+                        <FormField
+                          control={addForm.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Name *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="bg-complementary text-body border-accent"
+                                  disabled={actionLoading.add}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </div>
-                      <div>
-                        <Label htmlFor="address">Address</Label>
-                        <Input
-                          id="address"
-                          value={form.address}
-                          onChange={(e) => setForm({ ...form, address: e.target.value })}
-                          className="bg-complementary text-body border-accent"
-                          disabled={loading}
+                        <FormField
+                          control={addForm.control}
+                          name="address"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Address *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="bg-complementary text-body border-accent"
+                                  disabled={actionLoading.add}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </div>
-                      <Button
-                        onClick={handleAddSubmit}
-                        className="bg-accent text-body hover:bg-accent-hover"
-                        disabled={loading}
-                      >
-                        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Add'}
-                      </Button>
-                    </div>
+                        <Button
+                          type="submit"
+                          className="bg-accent text-body hover:bg-accent-hover"
+                          disabled={actionLoading.add}
+                        >
+                          {actionLoading.add ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Add'}
+                        </Button>
+                      </form>
+                    </Form>
                   </DialogContent>
                 </Dialog>
               </CardTitle>
@@ -199,6 +221,7 @@ const Locations = () => {
                     <TableRow>
                       <TableHead className="text-body">Name</TableHead>
                       <TableHead className="text-body">Address</TableHead>
+                      <TableHead className="text-body">Employees</TableHead>
                       <TableHead className="text-body">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -207,8 +230,19 @@ const Locations = () => {
                       <TableRow key={loc._id}>
                         <TableCell className="text-body">{loc.name}</TableCell>
                         <TableCell className="text-body">{loc.address}</TableCell>
+                        <TableCell className="text-body">{loc.employeeCount}</TableCell>
                         <TableCell className="text-body">
                           <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewEmployees(loc._id)}
+                              className="border-accent text-accent hover:bg-accent-hover hover:text-body"
+                              disabled={actionLoading.edit || actionLoading.delete}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View Employees
+                            </Button>
                             <Dialog open={editOpen && editLocationState?._id === loc._id} onOpenChange={(open) => setEditOpen(open)}>
                               <DialogTrigger asChild>
                                 <Button
@@ -216,7 +250,7 @@ const Locations = () => {
                                   size="sm"
                                   onClick={() => handleEditOpen(loc)}
                                   className="border-accent text-accent hover:bg-accent-hover hover:text-body"
-                                  disabled={loading}
+                                  disabled={actionLoading.edit || actionLoading.delete}
                                 >
                                   Edit
                                 </Button>
@@ -225,35 +259,51 @@ const Locations = () => {
                                 <DialogHeader>
                                   <DialogTitle>Edit Location</DialogTitle>
                                 </DialogHeader>
-                                <div className="space-y-4">
-                                  <div>
-                                    <Label htmlFor="name">Name</Label>
-                                    <Input
-                                      id="name"
-                                      value={form.name}
-                                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                      className="bg-complementary text-body border-accent"
-                                      disabled={loading}
+                                <Form {...editForm}>
+                                  <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
+                                    <FormField
+                                      control={editForm.control}
+                                      name="name"
+                                      render={({ field }) => (
+                                        <FormItem>
+                                          <FormLabel>Name *</FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="bg-complementary text-body border-accent"
+                                              disabled={actionLoading.edit}
+                                            />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
                                     />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor="address">Address</Label>
-                                    <Input
-                                      id="address"
-                                      value={form.address}
-                                      onChange={(e) => setForm({ ...form, address: e.target.value })}
-                                      className="bg-complementary text-body border-accent"
-                                      disabled={loading}
+                                    <FormField
+                                      control={editForm.control}
+                                      name="address"
+                                      render={({ field }) => (
+                                        <FormItem>
+                                          <FormLabel>Address *</FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="bg-complementary text-body border-accent"
+                                              disabled={actionLoading.edit}
+                                            />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
                                     />
-                                  </div>
-                                  <Button
-                                    onClick={handleEditSubmit}
-                                    className="bg-accent text-body hover:bg-accent-hover"
-                                    disabled={loading}
-                                  >
-                                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save'}
-                                  </Button>
-                                </div>
+                                    <Button
+                                      type="submit"
+                                      className="bg-accent text-body hover:bg-accent-hover"
+                                      disabled={actionLoading.edit}
+                                    >
+                                      {actionLoading.edit ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save'}
+                                    </Button>
+                                  </form>
+                                </Form>
                               </DialogContent>
                             </Dialog>
                             <AlertDialog open={deleteOpen && deleteLocationId === loc._id} onOpenChange={(open) => setDeleteOpen(open)}>
@@ -261,9 +311,9 @@ const Locations = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => handleDeleteOpen(loc._id)}
+                                  onClick={() => setDeleteLocationId(loc._id)}
                                   className="border-error text-error hover:bg-error hover:text-body"
-                                  disabled={loading}
+                                  disabled={actionLoading.edit || actionLoading.delete}
                                 >
                                   Delete
                                 </Button>
@@ -282,9 +332,9 @@ const Locations = () => {
                                   <AlertDialogAction
                                     onClick={handleDeleteConfirm}
                                     className="bg-error text-body hover:bg-error"
-                                    disabled={loading}
+                                    disabled={actionLoading.delete}
                                   >
-                                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Delete'}
+                                    {actionLoading.delete ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Delete'}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
