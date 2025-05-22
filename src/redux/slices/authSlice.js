@@ -1,18 +1,68 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../utils/api'; 
 
 export const login = createAsyncThunk(
   'auth/login',
   async ({ email, password, role }, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password,
-        role,
-      });
-      return response.data;
+      const response = await api.post('/auth/login', { email, password, role });
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      return user;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Login failed');
+    }
+  }
+);
+
+export const signup = createAsyncThunk(
+  'auth/signup',
+  async ({ email, password, name, phone, role, locations }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/signup', { email, password, name, phone, role, locations });
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      return user;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Signup failed');
+    }
+  }
+);
+
+export const logout = createAsyncThunk(
+  'auth/logout',
+  async (_, { rejectWithValue }) => {
+    try {
+      await api.post('/auth/logout');
+      localStorage.removeItem('token');
+      return null;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Logout failed');
+    }
+  }
+);
+
+export const fetchLocations = createAsyncThunk(
+  'auth/fetchLocations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/auth/locations');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
+    }
+  }
+);
+
+export const fetchMe = createAsyncThunk(
+  'auth/fetchMe',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/auth/me');
+      return response.data;
+    } catch (error) {
+      localStorage.removeItem('token');
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch user');
     }
   }
 );
@@ -23,10 +73,10 @@ const authSlice = createSlice({
     user: null,
     loading: false,
     error: null,
+    locations: [],
   },
   reducers: {
-    logout: (state) => {
-      state.user = null;
+    resetError: (state) => {
       state.error = null;
     },
   },
@@ -43,9 +93,58 @@ const authSlice = createSlice({
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+      .addCase(signup.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(signup.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+      })
+      .addCase(signup.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(logout.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(logout.fulfilled, (state) => {
+        state.loading = false;
+        state.user = null;
+      })
+      .addCase(logout.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchLocations.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchLocations.fulfilled, (state, action) => {
+        state.loading = false;
+        state.locations = action.payload;
+      })
+      .addCase(fetchLocations.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchMe.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchMe.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+      })
+      .addCase(fetchMe.rejected, (state, action) => {
+        state.loading = false;
+        state.user = null;
+        state.error = action.payload;
       });
   },
 });
 
-export const { logout } = authSlice.actions;
+export const { resetError } = authSlice.actions;
 export default authSlice.reducer;

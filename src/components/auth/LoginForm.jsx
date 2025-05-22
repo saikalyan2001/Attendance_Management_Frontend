@@ -1,58 +1,81 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2 } from 'lucide-react';
 
-const LoginForm = ({ onSubmit, loading, error, role }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
 
-  const isSubmitDisabled = !email || !password;
+const LoginForm = ({ onSubmit, loading, error }) => {
+  const form = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const credentials = { email, password };
-    onSubmit(credentials);
+  const handleSubmit = (data) => {
+    onSubmit(data);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="email" className="text-body">Email</Label>
-        <Input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="bg-complementary text-body"
-          required
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        {error && (
+          <Alert variant="destructive" className="border-error text-error">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email *</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="email"
+                  className="bg-complementary text-body border-accent"
+                  disabled={loading}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
-      <div>
-        <Label htmlFor="password" className="text-body">Password</Label>
-        <Input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="bg-complementary text-body"
-          required
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Password *</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="password"
+                  className="bg-complementary text-body border-accent"
+                  disabled={loading}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <Button
-        type="submit"
-        className="w-full bg-accent text-white hover:bg-accent-hover"
-        disabled={loading || isSubmitDisabled}
-      >
-        {loading ? 'Logging in...' : 'Login'}
-      </Button>
-    </form>
+        <Button
+          type="submit"
+          className="w-full bg-accent text-body hover:bg-accent-hover"
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Login'}
+        </Button>
+      </form>
+    </Form>
   );
 };
 

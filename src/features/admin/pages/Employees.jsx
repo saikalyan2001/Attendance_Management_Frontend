@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchEmployees, registerEmployee, updateEmployee, deleteEmployee, reset as resetEmployees, uploadDocument, deleteDocument } from '../redux/employeeSlice';
 import { fetchLocations, reset as resetLocations } from '../redux/locationsSlice';
+import { logout } from '../../../redux/slices/authSlice';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ const updateEmployeeSchema = z.object({
 const Employees = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
   const { employees, loading: employeesLoading, error: employeesError } = useSelector((state) => state.adminEmployees);
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
 
@@ -103,9 +105,12 @@ const Employees = () => {
   });
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     dispatch(fetchEmployees({ location: filterLocation === 'all' ? '' : filterLocation }));
     dispatch(fetchLocations());
-  }, [dispatch, filterLocation]);
+  }, [dispatch, filterLocation, user, navigate]);
 
   useEffect(() => {
     if (employeesError || locationsError) {
@@ -125,6 +130,7 @@ const Employees = () => {
       },
       salary: Number(data.salary),
       dob: data.dob ? new Date(data.dob) : undefined,
+      createdBy: user._id,
     };
     dispatch(registerEmployee({ employeeData, documents: newDocument ? [newDocument] : [] })).then((result) => {
       if (result.meta.requestStatus === 'fulfilled') {
@@ -243,6 +249,13 @@ const Employees = () => {
     });
   };
 
+  const handleLogout = () => {
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
       <Sidebar />
@@ -250,9 +263,9 @@ const Employees = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Employees</h1>
           <div className="flex items-center space-x-4">
-            <span>Guest</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
-            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Log out">
+            <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
               <LogOut className="h-5 w-5 text-accent" />
             </Button>
           </div>

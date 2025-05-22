@@ -1,5 +1,7 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import Login from './components/auth/Login';
+import Signup from './components/auth/Signup';
 import Dashboard from './features/siteincharge/pages/Dashboard';
 import Attendance from './features/siteincharge/pages/Attendance';
 import RegisterEmployee from './features/siteincharge/pages/RegisterEmployee';
@@ -17,27 +19,147 @@ import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
 import AdminProfile from './features/admin/pages/Profile';
 import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
 
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { user } = useSelector((state) => state.auth);
+  if (!user) return <Navigate to="/login" replace />;
+  if (!allowedRoles.includes(user.role)) return <Navigate to="/login" replace />;
+  return children;
+};
 
 const App = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/siteincharge/dashboard" element={<Dashboard />} />
-      <Route path="/siteincharge/attendance" element={<Attendance />} />
-      <Route path="/siteincharge/register-employee" element={<RegisterEmployee />} />
-      <Route path="/siteincharge/employees" element={<Employees />} />
-      <Route path="/siteincharge/reports" element={<Reports />} />
-      <Route path="/siteincharge/mark-attendance" element={<MarkAttendance />} />
-      <Route path="/siteincharge/profile" element={<Profile />} />
-      <Route path="/admin/locations" element={<Locations />} />
-      <Route path="/admin/settings" element={<Settings />} />
-      <Route path="/admin/dashboard" element={<AdminDashboard />} />
-      <Route path="/admin/reports" element={<AdminReports />} />
-      <Route path="/admin/attendance" element={<AdminAttendance />} />
-      <Route path="/admin/employees" element={<AdminEmployees />} />
-      <Route path="/admin/register-employee" element={<AdminEmployeeRegister />} />
-      <Route path="/admin/profile" element={<AdminProfile />} />
-       <Route path="/siteincharge/employees/:id" element={<EmployeeProfile />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route
+        path="/siteincharge/dashboard"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/attendance"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <Attendance />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/register-employee"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <RegisterEmployee />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/employees"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <Employees />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/reports"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <Reports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/mark-attendance"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <MarkAttendance />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/profile"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/siteincharge/employees/:id"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <EmployeeProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/locations"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Locations />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/dashboard"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/reports"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminReports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/attendance"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminAttendance />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/employees"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminEmployees />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/register-employee"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminEmployeeRegister />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/profile"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 };

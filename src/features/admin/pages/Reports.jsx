@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchAttendanceReport, fetchLeaveReport, fetchSalaryReport, reset as resetReports } from '../redux/reportsSlice';
 import { fetchLocations, reset as resetLocations } from '../redux/locationsSlice';
+import { logout } from '../../../redux/slices/authSlice';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -24,19 +25,23 @@ const Reports = () => {
   const navigate = useNavigate();
   const { attendanceReport, leaveReport, salaryReport, loading: reportsLoading, error: reportsError } = useSelector((state) => state.adminReports);
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
+  const { user } = useSelector((state) => state.auth);
 
   const [month, setMonth] = useState('5'); // May 2025
   const [year, setYear] = useState('2025');
   const [location, setLocation] = useState('all');
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     const startDate = format(startOfMonth(new Date(parseInt(year), parseInt(month) - 1)), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(new Date(parseInt(year), parseInt(month) - 1)), 'yyyy-MM-dd');
     dispatch(fetchAttendanceReport({ startDate, endDate, location: location === 'all' ? '' : location }));
     dispatch(fetchLeaveReport({ location: location === 'all' ? '' : location }));
     dispatch(fetchSalaryReport({ startDate, endDate, location: location === 'all' ? '' : location }));
     dispatch(fetchLocations());
-  }, [dispatch, month, year, location]);
+  }, [dispatch, month, year, location, user, navigate]);
 
   useEffect(() => {
     if (reportsError || locationsError) {
@@ -177,6 +182,13 @@ const Reports = () => {
     doc.save(`${type}-report-${month}-${year}.pdf`);
   };
 
+  const handleLogout = () => {
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
+  };
+
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: (i + 1).toString(),
     label: format(new Date(2025, i), 'MMMM'),
@@ -190,9 +202,9 @@ const Reports = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Reports</h1>
           <div className="flex items-center space-x-4">
-            <span>Guest</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
-            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Log out">
+            <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
               <LogOut className="h-5 w-5 text-accent" />
             </Button>
           </div>

@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api'; // Use authenticated Axios instance
 
 export const fetchAttendance = createAsyncThunk(
   'attendance/fetchAttendance',
   async ({ month, year, location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/attendance', {
+      const response = await api.get('/admin/attendance', {
         params: { month, year, location },
       });
       return response.data;
@@ -20,7 +20,7 @@ export const markAttendance = createAsyncThunk(
   'attendance/markAttendance',
   async ({ date, location, absentEmployees }, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/attendance', {
+      const response = await api.post('/admin/attendance', {
         date,
         location,
         absentEmployees,
@@ -37,7 +37,7 @@ export const editAttendance = createAsyncThunk(
   'attendance/editAttendance',
   async ({ id, status }, { rejectWithValue }) => {
     try {
-      const response = await axios.put(`http://localhost:5000/api/admin/attendance/${id}`, { status });
+      const response = await api.put(`/admin/attendance/${id}`, { status });
       return response.data;
     } catch (error) {
       console.error('Edit attendance error:', error.response?.data || error.message);
@@ -50,7 +50,7 @@ export const fetchAttendanceRequests = createAsyncThunk(
   'attendance/fetchAttendanceRequests',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/attendance/requests');
+      const response = await api.get('/admin/attendance/requests');
       return response.data;
     } catch (error) {
       console.error('Fetch attendance requests error:', error.response?.data || error.message);
@@ -63,7 +63,7 @@ export const handleAttendanceRequest = createAsyncThunk(
   'attendance/handleAttendanceRequest',
   async ({ id, status }, { rejectWithValue }) => {
     try {
-      const response = await axios.put(`http://localhost:5000/api/admin/attendance/requests/${id}`, { status });
+      const response = await api.put(`/admin/attendance/requests/${id}`, { status });
       return response.data;
     } catch (error) {
       console.error('Handle attendance request error:', error.response?.data || error.message);
@@ -76,7 +76,7 @@ export const requestAttendanceEdit = createAsyncThunk(
   'attendance/requestAttendanceEdit',
   async ({ attendanceId, requestedStatus, reason }, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/attendance/requests', {
+      const response = await api.post('/admin/attendance/requests', {
         attendanceId,
         requestedStatus,
         reason,

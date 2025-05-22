@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchSettings, updateSettings, updateEmployeeLeaves } from '../redux/settingsSlice';
+import { logout } from '../../../redux/slices/authSlice'; // Pending confirmation
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ const Settings = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { settings, loading, error } = useSelector((state) => state.adminSettings);
+  const { user } = useSelector((state) => state.auth); // Pending authSlice.js
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -42,8 +44,11 @@ const Settings = () => {
   });
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     dispatch(fetchSettings());
-  }, [dispatch]);
+  }, [dispatch, user, navigate]);
 
   useEffect(() => {
     if (settings) {
@@ -80,7 +85,10 @@ const Settings = () => {
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
   };
 
   return (
@@ -90,7 +98,7 @@ const Settings = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Settings</h1>
           <div className="flex items-center space-x-4">
-            <span>Guest</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
             <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
               <LogOut className="h-5 w-5 text-accent" />

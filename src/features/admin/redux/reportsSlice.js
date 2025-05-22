@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api'; // Use authenticated Axios instance
 
 export const fetchAttendanceReport = createAsyncThunk(
   'adminReports/fetchAttendanceReport',
   async ({ startDate, endDate, location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/reports/attendance', {
+      const response = await api.get('/admin/reports/attendance', {
         params: { startDate, endDate, location },
       });
       return response.data;
@@ -20,7 +20,7 @@ export const fetchLeaveReport = createAsyncThunk(
   'adminReports/fetchLeaveReport',
   async ({ location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/reports/leaves', {
+      const response = await api.get('/admin/reports/leaves', {
         params: { location },
       });
       return response.data;
@@ -35,7 +35,7 @@ export const fetchSalaryReport = createAsyncThunk(
   'adminReports/fetchSalaryReport',
   async ({ startDate, endDate, location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/reports/salary', {
+      const response = await api.get('/admin/reports/salary', {
         params: { startDate, endDate, location },
       });
       return response.data;

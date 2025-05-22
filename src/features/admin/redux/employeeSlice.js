@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api';
 
 export const fetchEmployees = createAsyncThunk(
   'employees/fetchEmployees',
   async ({ location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/employees', {
+      const response = await api.get('/admin/employees', {
         params: { location: location === 'all' ? '' : location },
       });
       return response.data;
@@ -20,22 +20,22 @@ export const registerEmployee = createAsyncThunk(
   'employees/registerEmployee',
   async ({ employeeData, documents }, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/employees', employeeData);
-      const employeeId = response.data._id;
+      const formData = new FormData();
+      Object.entries(employeeData).forEach(([key, value]) => {
+        if (key === 'paidLeaves') {
+          formData.append(key, JSON.stringify(value));
+        } else {
+          formData.append(key, value);
+        }
+      });
+      documents.forEach((file, index) => {
+        formData.append('documents', file);
+      });
 
-      if (documents && documents.length > 0) {
-        const uploadPromises = documents.map(async (file) => {
-          const formData = new FormData();
-          formData.append('document', file);
-          await axios.post(`http://localhost:5000/api/admin/employees/${employeeId}/documents`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
-        });
-        await Promise.all(uploadPromises);
-      }
-
-      const updatedEmployee = await axios.get(`http://localhost:5000/api/admin/employees/${employeeId}`);
-      return updatedEmployee.data;
+      const response = await api.post('/admin/employees', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
     } catch (error) {
       console.error('Register employee error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to register employee');
@@ -47,7 +47,7 @@ export const updateEmployee = createAsyncThunk(
   'employees/updateEmployee',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      const response = await axios.put(`http://localhost:5000/api/admin/employees/${id}`, data);
+      const response = await api.put(`/admin/employees/${id}`, data);
       return response.data;
     } catch (error) {
       console.error('Update employee error:', error.response?.data || error.message);
@@ -60,7 +60,7 @@ export const deleteEmployee = createAsyncThunk(
   'employees/deleteEmployee',
   async (id, { rejectWithValue }) => {
     try {
-      await axios.delete(`http://localhost:5000/api/admin/employees/${id}`);
+      await api.delete(`/admin/employees/${id}`);
       return id;
     } catch (error) {
       console.error('Delete employee error:', error.response?.data || error.message);
@@ -75,7 +75,7 @@ export const uploadDocument = createAsyncThunk(
     try {
       const formData = new FormData();
       formData.append('document', file);
-      const response = await axios.post(`http://localhost:5000/api/admin/employees/${id}/documents`, formData, {
+      const response = await api.post(`/admin/employees/${id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return response.data;
@@ -90,7 +90,7 @@ export const deleteDocument = createAsyncThunk(
   'employees/deleteDocument',
   async ({ id, documentId }, { rejectWithValue }) => {
     try {
-      const response = await axios.delete(`http://localhost:5000/api/admin/employees/${id}/documents/${documentId}`);
+      const response = await api.delete(`/admin/employees/${id}/documents/${documentId}`);
       return response.data;
     } catch (error) {
       console.error('Delete document error:', error.response?.data || error.message);

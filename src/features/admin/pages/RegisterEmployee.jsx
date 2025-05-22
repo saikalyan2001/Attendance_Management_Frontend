@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { registerEmployee, reset as resetEmployees } from '../redux/employeeSlice';
 import { fetchLocations, reset as resetLocations } from '../redux/locationsSlice';
+import { logout } from '../../../redux/slices/authSlice';
 import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, LogOut, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
@@ -36,8 +37,11 @@ const RegisterEmployee = () => {
   const [documentErrors, setDocumentErrors] = useState([]);
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     dispatch(fetchLocations());
-  }, [dispatch]);
+  }, [dispatch, user, navigate]);
 
   useEffect(() => {
     if (employeesError || locationsError) {
@@ -131,12 +135,19 @@ const RegisterEmployee = () => {
           location,
           phone,
           dob: dob ? new Date(dob).toISOString() : undefined,
-          paidLeaves: { available: 3, used: 0, carriedForward: 0 },
-          documents: [],
+          paidLeaves: { available: 2, used: 0, carriedForward: 0 }, // Aligned with Settings
+          createdBy: user._id,
         },
         documents,
       })
     );
+  };
+
+  const handleLogout = () => {
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
   };
 
   return (
@@ -146,10 +157,10 @@ const RegisterEmployee = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Register Employee</h1>
           <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
             {user && (
-              <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Log out">
+              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
                 <LogOut className="h-5 w-5 text-accent" />
               </Button>
             )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations, addLocation, editLocation, deleteLocation } from '../redux/locationsSlice';
+import { logout } from '../../../redux/slices/authSlice';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Loader2, LogOut, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -28,6 +28,7 @@ const locationSchema = z.object({
 const Locations = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
   const { locations, loading, error } = useSelector((state) => state.adminLocations);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -48,8 +49,11 @@ const Locations = () => {
   });
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     dispatch(fetchLocations());
-  }, [dispatch]);
+  }, [dispatch, user, navigate]);
 
   useEffect(() => {
     if (error) {
@@ -125,6 +129,13 @@ const Locations = () => {
     navigate(`/admin/employees?location=${locationId}`);
   };
 
+  const handleLogout = () => {
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
       <Sidebar />
@@ -132,9 +143,9 @@ const Locations = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Locations</h1>
           <div className="flex items-center space-x-4">
-            <span>Guest</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
-            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Navigate to login">
+            <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
               <LogOut className="h-5 w-5 text-accent" />
             </Button>
           </div>

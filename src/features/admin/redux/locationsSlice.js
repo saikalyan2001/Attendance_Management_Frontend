@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api'; // Use authenticated Axios instance
 
 export const fetchLocations = createAsyncThunk(
   'adminLocations/fetchLocations',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/locations');
+      const response = await api.get('/admin/locations');
       return response.data;
     } catch (error) {
       console.error('Fetch locations error:', error.response?.data || error.message);
@@ -18,7 +18,7 @@ export const addLocation = createAsyncThunk(
   'adminLocations/addLocation',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/locations', data);
+      const response = await api.post('/admin/locations', data);
       return response.data;
     } catch (error) {
       console.error('Add location error:', error.response?.data || error.message);
@@ -31,8 +31,8 @@ export const editLocation = createAsyncThunk(
   'adminLocations/editLocation',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      console.log('Sending PUT request to:', `http://localhost:5000/api/admin/locations/${id}`, data);
-      const response = await axios.put(`http://localhost:5000/api/admin/locations/${id}`, data);
+      console.log('Sending PUT request to:', `/admin/locations/${id}`, data);
+      const response = await api.put(`/admin/locations/${id}`, data);
       return response.data;
     } catch (error) {
       console.error('Edit location error:', error.response?.data || error.message);
@@ -45,8 +45,8 @@ export const deleteLocation = createAsyncThunk(
   'adminLocations/deleteLocation',
   async (id, { rejectWithValue }) => {
     try {
-      console.log('Sending DELETE request to:', `http://localhost:5000/api/admin/locations/${id}`);
-      await axios.delete(`http://localhost:5000/api/admin/locations/${id}`);
+      console.log('Sending DELETE request to:', `/admin/locations/${id}`);
+      await api.delete(`/admin/locations/${id}`);
       return id;
     } catch (error) {
       console.error('Delete location error:', error.response?.data || error.message);

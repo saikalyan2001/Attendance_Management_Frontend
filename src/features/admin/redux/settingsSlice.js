@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api'; // Use authenticated Axios instance
 
 export const fetchSettings = createAsyncThunk(
   'adminSettings/fetchSettings',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/settings');
+      const response = await api.get('/admin/settings');
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch settings');
@@ -17,7 +17,7 @@ export const updateSettings = createAsyncThunk(
   'adminSettings/updateSettings',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await axios.put('http://localhost:5000/api/admin/settings', data);
+      const response = await api.put('/admin/settings', data);
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update settings');
@@ -29,7 +29,7 @@ export const updateEmployeeLeaves = createAsyncThunk(
   'adminSettings/updateEmployeeLeaves',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/settings/update-leaves');
+      const response = await api.post('/admin/settings/update-leaves');
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update employee leaves');

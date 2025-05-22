@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchDashboard } from '../redux/dashboardSlice';
+import { fetchDashboard, reset } from '../redux/dashboardSlice';
+import { logout } from '../../../redux/slices/authSlice'; 
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '../../../components/common/ThemeToggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
@@ -17,21 +19,28 @@ const Dashboard = () => {
   const { dashboardData, loading, error } = useSelector((state) => state.adminDashboard);
 
   useEffect(() => {
-    dispatch(fetchDashboard())
-      .unwrap()
-      .catch((err) => toast.error(err));
-  }, [dispatch]);
+    if (user) {
+      dispatch(fetchDashboard())
+        .unwrap()
+        .catch((err) => toast.error(err));
+    }
+  }, [dispatch, user]);
 
   useEffect(() => {
     if (error) {
       toast.error(error);
-      dispatch({ type: 'admin/reset' });
+      dispatch(reset());
     }
   }, [error, dispatch]);
 
   const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
+    dispatch(logout())
+      .unwrap()
+      .then(() => {
+        toast.success('Logged out successfully');
+        navigate('/login');
+      })
+      .catch((err) => toast.error(err));
   };
 
   if (loading) {

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchAttendance, markAttendance, editAttendance, fetchAttendanceRequests, handleAttendanceRequest } from '../redux/attendanceSlice';
 import { fetchLocations } from '../redux/locationsSlice';
-import { fetchEmployees, reset as resetEmployees } from '../redux/employeeSlice';
+import { fetchEmployees, reset as resetEmployees } from '../redux/employeeSlice'; // Updated import
+import { logout } from '../../../redux/slices/authSlice'; // Pending confirmation
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ const Attendance = () => {
   const { attendance, attendanceRequests, loading: attendanceLoading, error: attendanceError } = useSelector((state) => state.adminAttendance);
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
   const { employees, loading: employeesLoading, error: employeesError } = useSelector((state) => state.adminEmployees);
+  const { user } = useSelector((state) => state.auth); // Pending authSlice.js
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -33,14 +35,16 @@ const Attendance = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [absentEmployees, setAbsentEmployees] = useState([]);
   const [editDialog, setEditDialog] = useState(null);
-  const [requestDialog, setRequestDialog] = useState(null);
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      navigate('/login');
+    }
     dispatch(fetchLocations());
     dispatch(fetchEmployees({ location: location === 'all' ? undefined : location }));
     dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
     dispatch(fetchAttendanceRequests());
-  }, [dispatch, month, year, location]);
+  }, [dispatch, month, year, location, user, navigate]);
 
   useEffect(() => {
     if (attendanceError || locationsError || employeesError) {
@@ -96,7 +100,7 @@ const Attendance = () => {
       .unwrap()
       .then(() => {
         toast.success(`Request ${status} successfully`);
-        setRequestDialog(null);
+        setEditDialog(null);
         dispatch(fetchAttendanceRequests());
         dispatch(fetchAttendance({ month, year, location: location === 'all' ? undefined : location }));
       })
@@ -115,6 +119,13 @@ const Attendance = () => {
   });
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  const handleLogout = () => {
+    dispatch(logout()).then(() => {
+      toast.success('Logged out successfully');
+      navigate('/login');
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
       <Sidebar />
@@ -122,9 +133,9 @@ const Attendance = () => {
         <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
           <h1 className="text-xl font-bold">Attendance Management</h1>
           <div className="flex items-center space-x-4">
-            <span>Guest</span>
+            <span>{user?.name || 'Guest'}</span>
             <ThemeToggle />
-            <Button variant="outline" size="icon" onClick={() => navigate('/login')} aria-label="Navigate to login">
+            <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
               <LogOut className="h-5 w-5 text-accent" />
             </Button>
           </div>
@@ -412,6 +423,7 @@ const Attendance = () => {
                         <SelectItem value="leave" disabled={editDialog.availableLeaves < 1}>
                           Leave {editDialog.availableLeaves < 1 && '(No leaves available)'}
                         </SelectItem>
+                        <SelectItem value="half-day">Half-Day</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
