@@ -3,9 +3,11 @@ import api from '../../../utils/api';
 
 export const fetchDashboard = createAsyncThunk(
   'dashboard/fetchDashboard',
-  async (_, { rejectWithValue }) => {
+  async ({ date } = {}, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/dashboard'); // Use relative path
+      const response = await api.get('/admin/dashboard', {
+        params: date ? { date: date.toISOString().split('T')[0] } : undefined,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch dashboard data');

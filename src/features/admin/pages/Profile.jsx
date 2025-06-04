@@ -1,24 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchProfile, updateProfile, updatePassword, uploadProfilePicture, reset as resetProfile } from '../redux/profileSlice';
+import { fetchProfile, updateProfile, updatePassword, uploadProfilePicture, deleteProfilePicture, reset as resetProfile } from '../redux/profileSlice';
 import { fetchLocations, reset as resetLocations } from '../redux/locationsSlice';
 import { logout } from '../../../redux/slices/authSlice';
-import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '@/components/common/ThemeToggle';
+import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, LogOut, Trash2 } from 'lucide-react';
+import { Loader2, Trash2, RefreshCw, User as UserIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const Profile = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const { profile, loading: profileLoading, error: profileError, success } = useSelector((state) => state.adminProfile);
+  const { profile, loading, loadingProfile, loadingPassword, loadingPicture, error: profileError, successProfile, successPassword, successPicture } = useSelector((state) => state.adminProfile);
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
 
   const [formData, setFormData] = useState({
@@ -30,6 +30,7 @@ const Profile = () => {
   });
   const [profilePicture, setProfilePicture] = useState(null);
   const [pictureError, setPictureError] = useState(null);
+  const [picturePreview, setPicturePreview] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'admin') {
@@ -51,17 +52,34 @@ const Profile = () => {
 
   useEffect(() => {
     if (profileError || locationsError) {
-      toast.error(profileError || locationsError);
-      dispatch(resetProfile());
-      dispatch(resetLocations());
+      toast.error(profileError || locationsError, {
+        action: {
+          label: 'Retry',
+          onClick: () => {
+            if (profileError) dispatch(fetchProfile());
+            if (locationsError) dispatch(fetchLocations());
+            dispatch(resetProfile());
+            dispatch(resetLocations());
+          },
+        },
+      });
     }
-    if (success) {
+    if (successProfile) {
       toast.success('Profile updated successfully');
       dispatch(resetProfile());
-      setFormData((prev) => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      setProfilePicture(null);
     }
-  }, [profileError, locationsError, success, dispatch]);
+    if (successPassword) {
+      toast.success('Password updated successfully');
+      dispatch(resetProfile());
+      setFormData((prev) => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
+    }
+    if (successPicture) {
+      toast.success('Profile picture updated successfully');
+      dispatch(resetProfile());
+      setProfilePicture(null);
+      setPicturePreview(null);
+    }
+  }, [profileError, locationsError, successProfile, successPassword, successPicture, dispatch]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -83,18 +101,28 @@ const Profile = () => {
     } else {
       setPictureError(null);
       setProfilePicture(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPicturePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
     e.target.value = '';
   };
 
   const handleRemovePicture = () => {
     setProfilePicture(null);
+    setPicturePreview(null);
     setPictureError(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleDeletePicture = () => {
+    dispatch(deleteProfilePicture());
+  };
+
+  const handleProfileSubmit = (e) => {
     e.preventDefault();
-    const { name, phone, currentPassword, newPassword, confirmPassword } = formData;
+    const { name, phone } = formData;
 
     if (!name) {
       toast.error('Name is required');
@@ -106,208 +134,304 @@ const Profile = () => {
       return;
     }
 
-    if (currentPassword || newPassword || confirmPassword) {
-      if (!currentPassword || !newPassword || !confirmPassword) {
-        toast.error('All password fields are required');
-        return;
-      }
-      if (newPassword !== confirmPassword) {
-        toast.error('New passwords do not match');
-        return;
-      }
-      if (newPassword.length < 8) {
-        toast.error('New password must be at least 8 characters');
-        return;
-      }
-      dispatch(updatePassword({ currentPassword, newPassword }));
-    }
-
     dispatch(updateProfile({ name, phone }));
+  };
 
-    if (profilePicture) {
-      dispatch(uploadProfilePicture(profilePicture));
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    const { currentPassword, newPassword, confirmPassword } = formData;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('All password fields are required');
+      return;
     }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+
+    dispatch(updatePassword({ currentPassword, newPassword }));
   };
 
-  const handleLogout = () => {
-    dispatch(logout()).then(() => {
-      toast.success('Logged out successfully');
-      navigate('/login');
-    });
+  const handlePictureSubmit = (e) => {
+    e.preventDefault();
+    if (!profilePicture) {
+      toast.error('Please select a profile picture');
+      return;
+    }
+    dispatch(uploadProfilePicture(profilePicture));
   };
+
+  if (loading || locationsLoading) {
+    return (
+      <Layout title="Profile">
+        <div className="flex justify-center items-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Admin Profile</h1>
-          <div className="flex items-center space-x-4">
-            <span>{user?.name || 'Guest'}</span>
-            <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
+    <Layout title="Admin Profile">
+      {(profileError || locationsError) && (
+        <Alert variant="destructive" className="mb-6 border-error text-error animate-fade-in">
+          <AlertDescription className="flex justify-between items-center">
+            <span>{profileError || locationsError}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (profileError) dispatch(fetchProfile());
+                if (locationsError) dispatch(fetchLocations());
+                dispatch(resetProfile());
+                dispatch(resetLocations());
+              }}
+              className="border-accent text-accent hover:bg-accent-hover"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      <div className="space-y-6 max-w-2xl mx-auto">
+        {/* Personal Information */}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl">Personal Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleProfileSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="email">Email (Read-only)</Label>
+                <Input
+                  id="email"
+                  value={profile?.email || ''}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 text-body border-accent opacity-50"
+                />
+              </div>
+              <div>
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Admin User"
+                  className="bg-complementary text-body border-accent"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 1234567890"
+                  className="bg-complementary text-body border-accent"
+                />
+              </div>
+              <div>
+                <Label>Role (Read-only)</Label>
+                <Input
+                  value={profile?.role || 'Admin'}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 text-body border-accent opacity-50"
+                />
+              </div>
+              <Button
+                type="submit"
+                className="bg-accent text-body hover:bg-accent-hover w-full sm:w-auto"
+                disabled={loadingProfile}
+              >
+                {loadingProfile ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  'Update Profile'
+                )}
               </Button>
-            )}
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          {(profileError || locationsError) && (
-            <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{profileError || locationsError}</AlertDescription>
-            </Alert>
-          )}
-          <Card className="bg-complementary text-body max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {profileLoading || locationsLoading ? (
-                <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-              ) : profile ? (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email (Read-only)</Label>
-                    <Input
-                      id="email"
-                      value={profile.email || ''}
-                      disabled
-                      className="bg-complementary text-body border-accent opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="name">Name *</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Admin User"
-                      className="bg-complementary text-body border-accent"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 1234567890"
-                      className="bg-complementary text-body border-accent"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="currentPassword">Current Password</Label>
-                    <Input
-                      id="currentPassword"
-                      name="currentPassword"
-                      type="password"
-                      value={formData.currentPassword}
-                      onChange={handleInputChange}
-                      placeholder="Enter current password"
-                      className="bg-complementary text-body border-accent"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                      id="newPassword"
-                      name="newPassword"
-                      type="password"
-                      value={formData.newPassword}
-                      onChange={handleInputChange}
-                      placeholder="Enter new password"
-                      className="bg-complementary text-body border-accent"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      placeholder="Confirm new password"
-                      className="bg-complementary text-body border-accent"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="profilePicture">Profile Picture (JPG, JPEG, PNG; Max 5MB)</Label>
-                    <Input
-                      id="profilePicture"
-                      type="file"
-                      accept=".jpg,.jpeg,.png"
-                      onChange={handlePictureChange}
-                      className="bg-complementary text-body border-accent"
-                    />
-                    {profilePicture && (
-                      <div className="mt-2 flex items-center justify-between text-sm text-body">
-                        <span>{profilePicture.name} ({(profilePicture.size / 1024 / 1024).toFixed(2)} MB)</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleRemovePicture}
-                          className="text-error hover:text-error-hover"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                    {profile.profilePicture && !profilePicture && (
-                      <div className="mt-2 text-sm text-body">
-                        Current: {profile.profilePicture.name}
-                      </div>
-                    )}
-                    {pictureError && (
-                      <div className="mt-2 text-sm text-error">{pictureError}</div>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Role (Read-only)</Label>
-                    <Input
-                      value={profile.role || 'Admin'}
-                      disabled
-                      className="bg-complementary text-body border-accent opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <Label>Assigned Locations (Read-only)</Label>
-                    <div className="bg-complementary border border-accent rounded-md p-2">
-                      {profile.locations?.length > 0 ? (
-                        profile.locations.map((loc) => (
-                          <div key={loc._id} className="text-body">
-                            {loc.name}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-body">No locations assigned</p>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover"
-                    disabled={profileLoading}
-                  >
-                    {profileLoading ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      'Update Profile'
-                    )}
-                  </Button>
-                </form>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Change Password */}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl">Change Password</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="currentPassword">Current Password *</Label>
+                <Input
+                  id="currentPassword"
+                  name="currentPassword"
+                  type="password"
+                  value={formData.currentPassword}
+                  onChange={handleInputChange}
+                  placeholder="Enter current password"
+                  className="bg-complementary text-body border-accent"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="newPassword">New Password *</Label>
+                <Input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  value={formData.newPassword}
+                  onChange={handleInputChange}
+                  placeholder="Enter new password"
+                  className="bg-complementary text-body border-accent"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirmPassword">Confirm New Password *</Label>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  placeholder="Confirm new password"
+                  className="bg-complementary text-body border-accent"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                className="bg-accent text-body hover:bg-accent-hover w-full sm:w-auto"
+                disabled={loadingPassword}
+              >
+                {loadingPassword ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  'Update Password'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Profile Picture */}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl">Profile Picture</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center space-x-4 mb-4">
+              {picturePreview ? (
+                <img
+                  src={picturePreview}
+                  alt="Profile Preview"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-accent"
+                />
+              ) : profile?.profilePicture?.path ? (
+                <img
+                  src={`http://localhost:5000${profile.profilePicture.path}`}
+                  alt="Profile"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-accent"
+                />
               ) : (
-                <p className="text-body">No profile data available</p>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center border-2 border-accent">
+                  <UserIcon className="h-8 w-8 sm:h-10 sm:w-10 text-gray-500 dark:text-gray-400" />
+                </div>
               )}
-            </CardContent>
-          </Card>
-        </main>
+              {profile?.profilePicture?.path && !picturePreview && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeletePicture}
+                  className="text-error hover:bg-error-hover"
+                  disabled={loadingPicture}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete
+                </Button>
+              )}
+            </div>
+            <form onSubmit={handlePictureSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="profilePicture">Upload New Picture (JPG, JPEG, PNG; Max 5MB)</Label>
+                <Input
+                  id="profilePicture"
+                  type="file"
+                  accept=".jpg,.jpeg,.png"
+                  onChange={handlePictureChange}
+                  className="bg-complementary text-body border-accent"
+                />
+                {profilePicture && (
+                  <div className="mt-2 flex items-center justify-between text-sm text-body">
+                    <span>{profilePicture.name} ({(profilePicture.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemovePicture}
+                      className="text-error hover:text-error-hover"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+                {pictureError && (
+                  <div className="mt-2 text-sm text-error">{pictureError}</div>
+                )}
+              </div>
+              <Button
+                type="submit"
+                className="bg-accent text-body hover:bg-accent-hover w-full sm:w-auto"
+                disabled={loadingPicture || !profilePicture}
+              >
+                {loadingPicture ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  'Upload Picture'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Assigned Locations */}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl">Assigned Locations (Read-only)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profile?.locations?.length > 0 ? (
+              <div className="space-y-2">
+                {profile.locations.map((loc) => (
+                  <TooltipProvider key={loc._id}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-md text-body hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer">
+                          {loc.name}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="bg-complementary text-body border-accent">
+                        <p><strong>Address:</strong> {loc.address}</p>
+                        <p><strong>City:</strong> {loc.city}</p>
+                        <p><strong>State:</strong> {loc.state}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
+              </div>
+            ) : (
+              <p className="text-body">No locations assigned</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </Layout>
   );
 };
 

@@ -1,16 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchDashboard, reset } from '../redux/dashboardSlice';
 import { logout } from '../../../redux/slices/authSlice'; 
-import Sidebar from '../components/Sidebar';
+import Layout from '../../../components/layout/Layout';
 import { ThemeToggle } from '../../../components/common/ThemeToggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, LogOut } from 'lucide-react';
+import { Loader2, LogOut, MapPin, Users, CheckCircle, XCircle, Sun, Clock, Download, CalendarIcon, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { exportToCSV } from '../../../utils/csvUtils';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
@@ -18,20 +23,32 @@ const Dashboard = () => {
   const { user } = useSelector((state) => state.auth);
   const { dashboardData, loading, error } = useSelector((state) => state.adminDashboard);
 
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
   useEffect(() => {
     if (user) {
-      dispatch(fetchDashboard())
+      dispatch(fetchDashboard({ date: selectedDate }))
         .unwrap()
         .catch((err) => toast.error(err));
     }
-  }, [dispatch, user]);
+  }, [dispatch, user, selectedDate]);
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
-      dispatch(reset());
+      toast.error(error, {
+        action: {
+          label: 'Retry',
+          onClick: () => {
+            dispatch(fetchDashboard({ date: selectedDate }))
+              .unwrap()
+              .catch((err) => toast.error(err));
+            dispatch(reset());
+          },
+        },
+      });
     }
-  }, [error, dispatch]);
+  }, [error, dispatch, selectedDate]);
 
   const handleLogout = () => {
     dispatch(logout())
@@ -43,112 +60,231 @@ const Dashboard = () => {
       .catch((err) => toast.error(err));
   };
 
-  if (loading) {
+  const handleExportCSV = () => {
+    if (!dashboardData?.recentAttendance?.length) {
+      toast.error('No recent attendance data to export');
+      return;
+    }
+    const csvData = dashboardData.recentAttendance.map((record) => ({
+      Employee: `${record.employee?.name} (${record.employee?.employeeId})`,
+      Location: record.location?.name || 'N/A',
+      Date: format(new Date(record.date), 'PPP'),
+      Status: record.status.charAt(0).toUpperCase() + record.status.slice(1),
+    }));
+    exportToCSV(csvData, `recent_attendance_${format(selectedDate, 'yyyy-MM-dd')}.csv`);
+  };
+
+  if (loading && !dashboardData) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
+      <Layout title="Dashboard">
+        <div className="flex justify-center items-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        </div>
+      </Layout>
     );
   }
 
-  const { totalLocations, totalEmployees, present, absent, recentAttendance } = dashboardData || {};
+  const { totalLocations, totalEmployees, present, absent, leave, halfDay, recentAttendance } = dashboardData || {};
 
   return (
-    <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Admin Dashboard</h1>
-          <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
-            <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
+    <Layout title={`Welcome, ${user?.name || 'Admin'}`}>
+      {error && (
+        <Alert variant="destructive" className="mb-6 border-error text-error animate-fade-in">
+          <AlertDescription className="flex justify-between items-center">
+            <span>{error}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                dispatch(fetchDashboard({ date: selectedDate }))
+                  .unwrap()
+                  .catch((err) => toast.error(err));
+                dispatch(reset());
+              }}
+              className="border-accent text-accent hover:bg-accent-hover"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      <div className="space-y-6">
+        {/* Date Picker for Attendance Summary */}
+        <div className="flex justify-end">
+          <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto justify-start text-left font-normal bg-complementary text-body border-accent animate-fade-in"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(selectedDate, 'PPP')}
               </Button>
-            )}
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          {error && (
-            <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-complementary text-body">
-                <CardHeader>
-                  <CardTitle>Total Locations</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold">{totalLocations || 0}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-complementary text-body">
-                <CardHeader>
-                  <CardTitle>Total Employees</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold">{totalEmployees || 0}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-complementary text-body">
-                <CardHeader>
-                  <CardTitle>Present Today</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold">{present || 0}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-complementary text-body">
-                <CardHeader>
-                  <CardTitle>Absent Today</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold">{absent || 0}</p>
-                </CardContent>
-              </Card>
-            </div>
-            <Card className="bg-complementary text-body">
-              <CardHeader>
-                <CardTitle>Recent Attendance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-body">Employee</TableHead>
-                      <TableHead className="text-body">Location</TableHead>
-                      <TableHead className="text-body">Date</TableHead>
-                      <TableHead className="text-body">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentAttendance?.length > 0 ? (
-                      recentAttendance.map((record) => (
-                        <TableRow key={record._id}>
-                          <TableCell className="text-body">{record.employee?.name} ({record.employee?.employeeId})</TableCell>
-                          <TableCell className="text-body">{record.location?.name}</TableCell>
-                          <TableCell className="text-body">{new Date(record.date).toLocaleDateString()}</TableCell>
-                          <TableCell className={record.status === 'present' ? 'text-green-500' : 'text-red-500'}>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-complementary text-body border-accent">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedDate(date);
+                    setIsCalendarOpen(false);
+                  }
+                }}
+                disabled={{ after: new Date() }}
+                className="rounded-md p-4"
+                calendarClassName="text-lg"
+                dayClassName="h-10 w-10 rounded-full hover:bg-accent/20"
+                styles={{
+                  head_row: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 0',
+                    backgroundColor: 'var(--complementary)',
+                    borderBottom: '1px solid var(--accent)',
+                  },
+                  head_cell: {
+                    flex: '1',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: 'var(--body)',
+                  },
+                  cell: {
+                    flex: 1,
+                    textAlign: 'center',
+                  },
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 animate-fade-in">
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <MapPin className="h-5 w-5 text-accent" />
+              <CardTitle className="text-sm sm:text-base">Total Locations</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{totalLocations || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-accent" />
+              <CardTitle className="text-sm sm:text-base">Total Employees</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{totalEmployees || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <CardTitle className="text-sm sm:text-base">Present Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{present || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              <CardTitle className="text-sm sm:text-base">Absent Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{absent || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Sun className="h-5 w-5 text-yellow-500" />
+              <CardTitle className="text-sm sm:text-base">On Leave Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{leave || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Clock className="h-5 w-5 text-blue-500" />
+              <CardTitle className="text-sm sm:text-base">Half-Day Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{halfDay || 0}</p>
+            </CardContent>
+          </Card>
+        </div>
+        {/* Recent Attendance Table */}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader className="flex justify-between items-center">
+            <CardTitle className="text-base sm:text-lg md:text-xl">Recent Attendance</CardTitle>
+            <Button
+              onClick={handleExportCSV}
+              className="bg-accent text-body hover:bg-accent-hover"
+              disabled={!recentAttendance?.length}
+            >
+              <Download className="h-4 w-4 mr-2" /> Export CSV
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[600px]">
+                <TableHeader>
+                  <TableRow className="bg-gray-100 dark:bg-gray-800">
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Employee</TableHead>
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Location</TableHead>
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Date</TableHead>
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentAttendance?.length > 0 ? (
+                    recentAttendance.map((record, index) => (
+                      <TableRow
+                        key={record._id}
+                        className={index % 2 === 0 ? 'bg-complementary' : 'bg-gray-50 dark:bg-gray-900'}
+                      >
+                        <TableCell className="text-body text-sm sm:text-base">
+                          {record.employee?.name} ({record.employee?.employeeId})
+                        </TableCell>
+                        <TableCell className="text-body text-sm sm:text-base">{record.location?.name || 'N/A'}</TableCell>
+                        <TableCell className="text-body text-sm sm:text-base">
+                          {format(new Date(record.date), 'PPP')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              record.status === 'present'
+                                ? 'success'
+                                : record.status === 'absent'
+                                ? 'destructive'
+                                : record.status === 'leave'
+                                ? 'warning'
+                                : 'secondary'
+                            }
+                            className="text-xs sm:text-sm px-2 py-1"
+                          >
                             {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-body">No recent attendance</TableCell>
+                          </Badge>
+                        </TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-body text-sm sm:text-base">
+                        No recent attendance records
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </Layout>
   );
 };
 

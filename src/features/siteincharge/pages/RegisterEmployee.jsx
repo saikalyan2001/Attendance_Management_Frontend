@@ -1,532 +1,882 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { registerEmployee, fetchLocations, bulkRegisterEmployees } from '../redux/employeeSlice';
-import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
-import { Button } from '@/components/ui/button';
+import { registerEmployee, reset } from '../redux/employeeSlice';
+import { fetchMe } from '../../../redux/slices/authSlice';
+import Layout from '../../../components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Trash2, Plus, AlertCircle, X, CheckCircle, FileText, Image, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { useDropzone } from 'react-dropzone';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import Papa from 'papaparse';
+import { z } from 'zod';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { cn } from '@/lib/utils';
+
+// Renamed File to FileIcon to avoid conflict with DOM File class
+import { File as FileIcon } from 'lucide-react';
+
+const employeeSchema = z.object({
+  employeeId: z.string().min(1, 'This field is required'),
+  name: z.string().min(1, 'This field is required'),
+  email: z.string().email('Invalid email address'),
+  designation: z.string().min(1, 'This field is required'),
+  department: z.string().min(1, 'This field is required'),
+  salary: z.string().min(1, 'This field is required').refine(val => !isNaN(Number(val)) && Number(val) > 0, {
+    message: 'Salary must be a positive number',
+  }),
+  phone: z.string().min(10, 'Phone number must be at least 10 digits').max(15, 'Phone number cannot exceed 15 digits').refine(val => /^\d+$/.test(val), {
+    message: 'Phone number must contain only digits',
+  }),
+  joinDate: z.string().min(1, 'This field is required').refine(val => !isNaN(Date.parse(val)), {
+    message: 'Invalid date format',
+  }),
+  bankDetails: z.object({
+    accountNo: z.string().min(1, 'This field is required'),
+    ifscCode: z.string().min(1, 'This field is required'),
+    bankName: z.string().min(1, 'This field is required'),
+    accountHolder: z.string().min(1, 'This field is required'),
+  }),
+  documents: z.array(
+    z.object({
+      file: z.any()
+        .refine((file) => file instanceof File, 'Please upload a file')
+        .refine((file) => {
+          if (!(file instanceof File)) return false;
+          const filetypes = /pdf|doc|docx|jpg|jpeg|png/;
+          const extname = filetypes.test(file.name.toLowerCase().split('.').pop());
+          const mimetype = filetypes.test(file.type.toLowerCase().split('/')[1] || '');
+          return extname && mimetype;
+        }, 'File must be PDF, DOC, DOCX, JPG, JPEG, or PNG')
+        .refine((file) => {
+          if (!(file instanceof File)) return false;
+          return file.size <= 5 * 1024 * 1024;
+        }, 'File size must be less than 5MB'),
+    })
+  ).min(1, 'At least one valid document is required'),
+});
+
+const parseServerError = (error) => {
+  if (!error) return { message: 'An unknown error occurred', fields: {} };
+  if (typeof error === 'string') return { message: error, fields: {} };
+  const message = error.message || 'Failed to register employee';
+  const fields = error.errors?.reduce((acc, err) => {
+    acc[err.field] = err.message;
+    return acc;
+  }, {}) || {};
+  return { message, fields };
+};
+
+const getFileIcon = (file) => {
+  if (!file) return <FileIcon className="h-5 w-5 text-body" />;
+  const extension = file.name.toLowerCase().split('.').pop();
+  if (['jpg', 'jpeg', 'png'].includes(extension)) {
+    return <Image className="h-5 w-5 text-body" />;
+  }
+  if (['pdf'].includes(extension)) {
+    return <FileText className="h-5 w-5 text-body" />;
+  }
+  if (['doc', 'docx'].includes(extension)) {
+    return <FileText className="h-5 w-5 text-body" />;
+  }
+  return <FileIcon className="h-5 w-5 text-body" />;
+};
+
+const isImageFile = (file) => {
+  if (!file) return false;
+  const extension = file.name.toLowerCase().split('.').pop();
+  return ['jpg', 'jpeg', 'png'].includes(extension);
+};
 
 const RegisterEmployee = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { locations, loading, error } = useSelector((state) => state.siteInchargeEmployee);
+  const { user, loading: authLoading } = useSelector((state) => state.auth);
+  const { loading, error, success } = useSelector((state) => state.siteInchargeEmployee);
+  const [formErrors, setFormErrors] = useState([]);
+  const [serverError, setServerError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [removingIndices, setRemovingIndices] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
+  const [dragStates, setDragStates] = useState({});
+  const [previewUrls, setPreviewUrls] = useState({});
+  const maxRetries = 3;
+  const autoDismissDuration = 5000;
 
-  const [form, setForm] = useState({
-    employeeId: '',
-    name: '',
-    email: '',
-    designation: '',
-    department: '',
-    salary: '',
-    location: '1234567890abcdef1234567a', // Hardcoded Location A
-    phone: '',
-    dob: '',
+  const locationId = user?.locations?.[0]?._id;
+
+  const form = useForm({
+    resolver: zodResolver(employeeSchema),
+    defaultValues: {
+      employeeId: '',
+      name: '',
+      email: '',
+      designation: '',
+      department: '',
+      salary: '',
+      phone: '',
+      joinDate: '',
+      bankDetails: {
+        accountNo: '',
+        ifscCode: '',
+        bankName: '',
+        accountHolder: '',
+      },
+      documents: [],
+    },
   });
-  const [documents, setDocuments] = useState([]);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [formError, setFormError] = useState(null);
-  const [csvFile, setCsvFile] = useState(null);
-  const [csvErrors, setCsvErrors] = useState([]);
-  const [csvData, setCsvData] = useState([]);
+
+  const { fields: documentFields, append: appendDocument, remove: removeDocument } = useFieldArray({
+    control: form.control,
+    name: 'documents',
+  });
+
+  // Clean up preview URLs when component unmounts or documents are removed
+  useEffect(() => {
+    return () => {
+      Object.values(previewUrls).forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, [previewUrls]);
 
   useEffect(() => {
-    dispatch(fetchLocations());
-  }, [dispatch]);
+    dispatch(fetchMe()).unwrap().catch((err) => {
+      console.error('fetchMe error:', err);
+      toast.error('Failed to fetch user data');
+      navigate('/login');
+    });
+  }, [dispatch, navigate]);
+
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== 'siteincharge')) {
+      navigate('/login');
+      return;
+    }
+    if (!authLoading && !user?.locations?.length) {
+      toast.error('No location assigned. Please contact an admin.');
+      navigate('/siteincharge/dashboard');
+    }
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
-      dispatch({ type: 'siteInchargeEmployee/reset' });
+      const parsedError = parseServerError(error);
+      setServerError(parsedError);
+      setShowErrorAlert(true);
+
+      const errorTimer = setTimeout(() => {
+        setShowErrorAlert(false);
+        setServerError(null);
+        dispatch(reset());
+      }, autoDismissDuration);
+
+      return () => clearTimeout(errorTimer);
     }
-  }, [error, dispatch]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-  };
+    if (formErrors.length > 0) {
+      setShowErrorAlert(true);
 
-  const handleLocationChange = (value) => {
-    setForm({ ...form, location: value });
-  };
+      const errorTimer = setTimeout(() => {
+        setShowErrorAlert(false);
+        setFormErrors([]);
+      }, autoDismissDuration);
 
-  const onDrop = useCallback((acceptedFiles) => {
-    const validFiles = acceptedFiles.filter((file) =>
-      ['image/jpeg', 'image/png'].includes(file.type)
-    );
-    if (validFiles.length !== acceptedFiles.length) {
-      toast.error('Only JPEG and PNG files are allowed for preview');
+      return () => clearTimeout(errorTimer);
     }
-    setDocuments((prev) => [...prev, ...validFiles]);
-  }, []);
+  }, [error, formErrors, dispatch]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/jpeg': [], 'image/png': [] },
-    multiple: true,
-  });
+  useEffect(() => {
+    if (success) {
+      toast.success('Employee registered successfully', { duration: autoDismissDuration });
+      setShowSuccessAlert(true);
 
-  const removeDocument = (index) => {
-    setDocuments((prev) => prev.filter((_, i) => i !== index));
-  };
+      const successTimer = setTimeout(() => {
+        setShowSuccessAlert(false);
+        dispatch(reset());
+        form.reset();
+        setFormErrors([]);
+        setServerError(null);
+        setRetryCount(0);
+        setRemovingIndices([]);
+        setDragStates({});
+        setPreviewUrls({});
+      }, autoDismissDuration);
 
-  const handleCsvUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file || !file.name.endsWith('.csv')) {
-      toast.error('Please upload a valid CSV file');
+      return () => clearTimeout(successTimer);
+    }
+  }, [success, dispatch, form]);
+
+  useEffect(() => {
+    if (!loading) {
+      setIsSubmitting(false);
+    }
+  }, [loading]);
+
+  const handleSubmit = async (data) => {
+  try {
+    setIsSubmitting(true);
+    await form.trigger();
+    const errors = Object.entries(form.formState.errors).flatMap(([field, error]) => {
+      if (field === 'documents' && error.message) {
+        return [{ field: 'documents', message: error.message }];
+      }
+      if (field === 'documents' && Array.isArray(error)) {
+        return error.map((docError, index) => ({
+          field: `documents[${index}].file`,
+          message: docError.file?.message || 'Invalid document',
+        }));
+      }
+      return [{ field, message: error.message || 'Invalid input' }];
+    });
+
+    if (data.documents.length === 0 || !data.documents.every(doc => doc.file instanceof File)) {
+      errors.push({ field: 'documents', message: 'At least one valid document is required' });
+    }
+
+    setFormErrors(errors);
+
+    if (errors.length > 0) {
+      toast.error('Please fix the form errors before submitting', { duration: autoDismissDuration });
+      const firstErrorField = errors[0].field.includes('documents')
+        ? document.querySelector(`[name="${errors[0].field.replace(']', '').replace('[', '.')}"`) ||
+          document.querySelector(`[name="${errors[0].field.split('.')[0]}"]`)
+        : document.querySelector(`[name="${errors[0].field}"]`);
+      if (firstErrorField) {
+        firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstErrorField.focus();
+      }
       return;
     }
-    setCsvFile(file);
-    Papa.parse(file, {
-      complete: (result) => {
-        const data = result.data;
-        if (!data[0].includes('employeeId')) {
-          toast.error('CSV must include headers: employeeId, name, email, designation, department, salary, phone, dob');
-          return;
-        }
-        const parsedData = data.slice(1).map((row, index) => ({
-          row: index + 2,
-          employeeId: row[0],
-          name: row[1],
-          email: row[2],
-          designation: row[3],
-          department: row[4],
-          salary: row[5],
-          phone: row[6] || '',
-          dob: row[7] || '',
-          location: form.location,
-        })).filter(row => row.employeeId); // Remove empty rows
-        setCsvData(parsedData);
-        validateCsvData(parsedData);
+
+    const employeeData = {
+      employeeId: data.employeeId,
+      name: data.name,
+      email: data.email,
+      designation: data.designation,
+      department: data.department,
+      salary: Number(data.salary),
+      location: locationId,
+      phone: data.phone,
+      joinDate: new Date(data.joinDate).toISOString(),
+      bankDetails: data.bankDetails,
+      paidLeaves: { available: 2, used: 0, carriedForward: 0 },
+      createdBy: user._id,
+    };
+
+    // Extract the File objects from data.documents
+    const documentFiles = data.documents.map(doc => doc.file);
+
+    await dispatch(registerEmployee({ employeeData, documents: documentFiles })).unwrap();
+  } catch (error) {
+    console.error('Submission error:', error);
+    const parsedError = parseServerError(error);
+    setServerError(parsedError);
+    setRetryCount((prev) => prev + 1);
+    toast.error(parsedError.message, {
+      action: retryCount < maxRetries && {
+        label: 'Retry',
+        onClick: () => form.handleSubmit(handleSubmit)(),
       },
-      header: true,
-      skipEmptyLines: true,
+      duration: 10000,
     });
+  }
+};
+
+  const addDocumentField = () => {
+    appendDocument({ file: null });
   };
 
-  const validateCsvData = (data) => {
-    const errors = [];
-    const seenIds = new Set();
-    const seenEmails = new Set();
-
-    data.forEach((row, index) => {
-      if (!row.employeeId) errors.push({ row: row.row, message: 'Employee ID is required' });
-      if (!row.name) errors.push({ row: row.row, message: 'Name is required' });
-      if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-        errors.push({ row: row.row, message: 'Valid email is required' });
-      }
-      if (!row.designation) errors.push({ row: row.row, message: 'Designation is required' });
-      if (!row.department) errors.push({ row: row.row, message: 'Department is required' });
-      if (!row.salary || isNaN(row.salary) || parseFloat(row.salary) <= 0) {
-        errors.push({ row: row.row, message: 'Salary must be a positive number' });
-      }
-      if (row.phone && !/^\d{10}$/.test(row.phone)) {
-        errors.push({ row: row.row, message: 'Phone number must be 10 digits' });
-      }
-      if (row.dob && isNaN(new Date(row.dob))) {
-        errors.push({ row: row.row, message: 'Invalid date of birth' });
-      }
-      if (seenIds.has(row.employeeId)) {
-        errors.push({ row: row.row, message: 'Duplicate employeeId in CSV' });
-      } else {
-        seenIds.add(row.employeeId);
-      }
-      if (seenEmails.has(row.email)) {
-        errors.push({ row: row.row, message: 'Duplicate email in CSV' });
-      } else {
-        seenEmails.add(row.email);
-      }
-    });
-
-    setCsvErrors(errors);
+  const handleRemoveDocument = (index) => {
+    setRemovingIndices((prev) => [...prev, index]);
+    setTimeout(() => {
+      // Revoke the preview URL for the removed document
+      setPreviewUrls((prev) => {
+        const newUrls = { ...prev };
+        if (newUrls[index]) {
+          URL.revokeObjectURL(newUrls[index]);
+          delete newUrls[index];
+        }
+        return newUrls;
+      });
+      removeDocument(index);
+      setRemovingIndices((prev) => prev.filter((i) => i !== index));
+      setDragStates((prev) => {
+        const newState = { ...prev };
+        delete newState[index];
+        return newState;
+      });
+    }, 300);
   };
 
-  const handleSubmit = (e) => {
+  const handleDragOver = (e, index) => {
     e.preventDefault();
-    setFormError(null);
-
-    if (!form.employeeId || !form.name || !form.email || !form.designation || !form.department || !form.salary || !form.location) {
-      setFormError('All fields except phone, DOB, and documents are required');
-      toast.error('All fields except phone, DOB, and documents are required');
-      return;
-    }
-
-    if (isNaN(form.salary) || parseFloat(form.salary) <= 0) {
-      setFormError('Salary must be a positive number');
-      toast.error('Salary must be a positive number');
-      return;
-    }
-
-    if (form.phone && !/^\d{10}$/.test(form.phone)) {
-      setFormError('Phone number must be 10 digits');
-      toast.error('Phone number must be 10 digits');
-      return;
-    }
-
-    if (form.dob && isNaN(new Date(form.dob))) {
-      setFormError('Invalid date of birth');
-      toast.error('Invalid date of birth');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('employeeId', form.employeeId);
-    formData.append('name', form.name);
-    formData.append('email', form.email);
-    formData.append('designation', form.designation);
-    formData.append('department', form.department);
-    formData.append('salary', parseFloat(form.salary));
-    formData.append('location', form.location);
-    if (form.phone) formData.append('phone', form.phone);
-    if (form.dob) formData.append('dob', form.dob);
-    documents.forEach((file) => {
-      formData.append('documents', file);
-    });
-
-    dispatch(registerEmployee(formData))
-      .unwrap()
-      .then(() => {
-        toast.success('Employee registered successfully');
-        navigate('/siteincharge/employees');
-      })
-      .catch((err) => {
-        setFormError(err);
-        toast.error(err);
-      });
+    setDragStates((prev) => ({ ...prev, [index]: true }));
   };
 
-  const handleCsvSubmit = () => {
-    if (csvErrors.length > 0) {
-      toast.error('Please fix CSV errors before submitting');
-      return;
-    }
-    if (!csvData.length) {
-      toast.error('No valid CSV data to submit');
-      return;
-    }
+  const handleDragLeave = (index) => {
+    setDragStates((prev) => ({ ...prev, [index]: false }));
+  };
 
-    dispatch(bulkRegisterEmployees(csvData))
-      .unwrap()
-      .then(() => {
-        toast.success('Employees registered successfully via CSV');
-        setCsvFile(null);
-        setCsvData([]);
-        setCsvErrors([]);
-        navigate('/siteincharge/employees');
-      })
-      .catch((err) => {
-        toast.error(err);
-        setCsvErrors([{ row: 0, message: err }]);
-      });
+  const handleDrop = (e, index, onChange) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const previewUrl = URL.createObjectURL(file);
+      setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
+      onChange(file);
+    }
+    setDragStates((prev) => ({ ...prev, [index]: false }));
+  };
+
+  const handleFileChange = (index, file, onChange) => {
+    if (file) {
+      const previewUrl = URL.createObjectURL(file);
+      setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
+      onChange(file);
+    }
+  };
+
+  const handleDismissErrors = () => {
+    setShowErrorAlert(false);
+    dispatch(reset());
+    setServerError(null);
+    setFormErrors([]);
+    setRemovingIndices([]);
+    setDragStates({});
+    toast.dismiss();
+  };
+
+  const handleDismissSuccess = () => {
+    setShowSuccessAlert(false);
+    dispatch(reset());
+    form.reset();
+    setFormErrors([]);
+    setServerError(null);
+    setRetryCount(0);
+    setRemovingIndices([]);
+    setDragStates({});
+    // Clean up all preview URLs on success
+    Object.values(previewUrls).forEach((url) => {
+      if (url) URL.revokeObjectURL(url);
+    });
+    setPreviewUrls({});
   };
 
   return (
-    <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Register Employee</h1>
-          <div className="flex items-center space-x-4">
-            <span>Guest</span>
-            <ThemeToggle />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => navigate('/login')}
-              aria-label="Navigate to login"
-            >
-              <Loader2 className="h-5 w-5 text-accent" />
-            </Button>
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          {formError && (
-            <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{formError}</AlertDescription>
-            </Alert>
+    <Layout title="Register Employee" role="siteincharge">
+      {(serverError || formErrors.length > 0) && showErrorAlert && (
+        <Alert
+          variant="destructive"
+          className={cn(
+            'fixed top-4 right-4 w-80 sm:w-96 z-50 border-error text-error rounded-md shadow-lg bg-error-light',
+            showErrorAlert ? 'animate-fade-in' : 'animate-fade-out'
           )}
-          <Card className="bg-complementary text-body max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle>Register New Employee</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="employeeId">Employee ID</Label>
-                  <Input
-                    id="employeeId"
-                    name="employeeId"
-                    value={form.employeeId}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={form.name}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={form.email}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="designation">Designation</Label>
-                  <Input
-                    id="designation"
-                    name="designation"
-                    value={form.designation}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="department">Department</Label>
-                  <Input
-                    id="department"
-                    name="department"
-                    value={form.department}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="salary">Salary</Label>
-                  <Input
-                    id="salary"
-                    name="salary"
-                    type="number"
-                    value={form.salary}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    value={form.phone}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                    placeholder="1234567890"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="dob">Date of Birth</Label>
-                  <Input
-                    id="dob"
-                    name="dob"
-                    type="date"
-                    value={form.dob}
-                    onChange={handleInputChange}
-                    className="bg-complementary text-body border-accent"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="paidLeavesAvailable">Paid Leaves Available</Label>
-                  <Input
-                    id="paidLeavesAvailable"
-                    value="2"
-                    className="bg-complementary text-body border-accent"
-                    disabled
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="location">Location</Label>
-                  <Select value={form.location} onValueChange={handleLocationChange}>
-                    <SelectTrigger id="location" className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder="Select location" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {locations.map((loc) => (
-                        <SelectItem key={loc._id} value={loc._id}>
-                          {loc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Documents (JPEG, PNG)</Label>
-                  <div
-                    {...getRootProps()}
-                    className={`border-2 border-dashed p-4 rounded-md text-center cursor-pointer ${
-                      isDragActive ? 'border-accent bg-accent/10' : 'border-accent/50'
-                    }`}
-                  >
-                    <input {...getInputProps()} />
-                    <p className="text-body">
-                      {isDragActive
-                        ? 'Drop the files here ...'
-                        : 'Drag & drop JPEG/PNG files here, or click to select'}
-                    </p>
-                  </div>
-                  {documents.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm font-medium">Uploaded Files:</p>
-                      <ul className="mt-1 space-y-1">
-                        {documents.map((file, index) => (
-                          <li key={index} className="flex items-center justify-between text-sm">
-                            <span>{file.name}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeDocument(index)}
-                              aria-label={`Remove ${file.name}`}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                      <Button
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => setPreviewOpen(true)}
-                      >
-                        Preview Documents
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  className="bg-accent text-body hover:bg-accent-hover"
-                  disabled={loading}
-                >
-                  Register
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-          <Card className="bg-complementary text-body max-w-2xl mx-auto mt-6">
-            <CardHeader>
-              <CardTitle>Bulk Register via CSV</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="csvUpload">Upload CSV</Label>
-                  <Input
-                    id="csvUpload"
-                    type="file"
-                    accept=".csv"
-                    onChange={handleCsvUpload}
-                    className="bg-complementary text-body border-accent"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    CSV must include headers: employeeId, name, email, designation, department, salary, phone, dob
-                  </p>
-                </div>
-                {csvFile && (
-                  <div>
-                    <p className="text-sm font-medium">Uploaded File: {csvFile.name}</p>
-                    {csvErrors.length > 0 && (
-                      <div className="mt-2">
-                        <Alert variant="destructive">
-                          <AlertDescription>
-                            Found {csvErrors.length} errors in CSV:
-                          </AlertDescription>
-                        </Alert>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Row</TableHead>
-                              <TableHead>Error</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {csvErrors.map((err, index) => (
-                              <TableRow key={index}>
-                                <TableCell>{err.row}</TableCell>
-                                <TableCell>{err.message}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                    {csvData.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm font-medium">
-                          {csvData.length} valid rows detected
-                        </p>
-                      </div>
-                    )}
-                    <Button
-                      onClick={handleCsvSubmit}
-                      className="mt-2 bg-accent text-body hover:bg-accent-hover"
-                      disabled={loading || csvErrors.length > 0 || !csvData.length}
-                    >
-                      Register Employees from CSV
-                    </Button>
-                  </div>
-                )}
+        >
+          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
+          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
+            {serverError && <p>{serverError.message}</p>}
+            {formErrors.length > 0 && (
+              <div className="mt-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
+                <ul className="list-disc pl-5 space-y-1">
+                  {formErrors.map((error, index) => (
+                    <li key={index}>
+                      {error.message} (Field: {error.field})
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </CardContent>
-          </Card>
-          <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>Document Previews</DialogTitle>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                {documents.map((file, index) => (
-                  <div key={index} className="relative">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={file.name}
-                      className="w-full h-48 object-contain rounded-md"
+            )}
+          </AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDismissErrors}
+            className="absolute top-2 right-2 text-error hover:text-error-hover"
+            aria-label="Dismiss errors"
+            type="button"
+          >
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        </Alert>
+      )}
+      {showSuccessAlert && (
+        <Alert
+          className={cn(
+            'fixed top-4 right-4 w-80 sm:w-96 z-50 border-accent text-accent rounded-md shadow-lg bg-accent-light',
+            showSuccessAlert ? 'animate-fade-in' : 'animate-fade-out'
+          )}
+        >
+          <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Success</AlertTitle>
+          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
+            Registration Success
+          </AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDismissSuccess}
+            className="absolute top-2 right-2 text-accent hover:text-accent-hover"
+            aria-label="Dismiss success"
+            type="button"
+          >
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        </Alert>
+      )}
+      <Card className="bg-complementary text-body max-w-full sm:max-w-3xl xl:max-w-4xl mx-auto shadow-lg rounded-md border border-accent/10 animate-fade-in">
+        <CardHeader>
+          <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Add New Employee</CardTitle>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-4 md:p-6">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 sm:space-y-8">
+              <div>
+                <h3 className="text-sm sm:text-base xl:text-lg font-semibold mb-3 sm:mb-4 text-body">Personal Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <FormField
+                    control={form.control}
+                    name="employeeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Employee ID *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., EMP003"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.employeeId || form.formState.errors.employeeId?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Alice Johnson"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.name || form.formState.errors.name?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="designation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Designation *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Analyst"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.designation || form.formState.errors.designation?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="department"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Department *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Finance"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.department || form.formState.errors.department?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <div>
+                    <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Location *</FormLabel>
+                    <Input
+                      value={user?.locations?.[0]?.name || 'No location'}
+                      className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                      disabled
                     />
-                    <p className="text-sm mt-1 truncate">{file.name}</p>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2"
-                      onClick={() => {
-                        removeDocument(index);
-                        if (documents.length === 1) setPreviewOpen(false);
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {(!user?.locations || user?.locations.length === 0) && (
+                      <p className="text-error text-[9px] sm:text-xs xl:text-base mt-1">
+                        No location assigned. Please contact an admin.
+                      </p>
+                    )}
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="salary"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Salary (₹/year) *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            {...field}
+                            placeholder="e.g., 55000"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.salary || form.formState.errors.salary?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="joinDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Join Date *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.joinDate || form.formState.errors.joinDate?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Phone *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., 1234567890"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.phone || form.formState.errors.phone?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Email *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            {...field}
+                            placeholder="e.g., alice@example.com"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.email || form.formState.errors.email?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base xl:text-lg font-semibold mb-3 sm:mb-4 text-body">Bank Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.accountNo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Account Number *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., 123456789012"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.['bankDetails.accountNo'] || form.formState.errors.bankDetails?.accountNo?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.ifscCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">IFSC Code *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., SBIN0001234"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.['bankDetails.ifscCode'] || form.formState.errors.bankDetails?.ifscCode?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.bankName"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Bank Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., State Bank of India"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.['bankDetails.bankName'] || form.formState.errors.bankDetails?.bankName?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.accountHolder"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">Account Holder Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Alice Johnson"
+                            className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                            disabled={loading || !locationId}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                          {serverError?.fields?.['bankDetails.accountHolder'] || form.formState.errors.bankDetails?.accountHolder?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base xl:text-lg font-semibold mb-3 sm:mb-4 text-body">Employee Documents</h3>
+                {documentFields.map((field, index) => (
+                  <div
+                    key={field.id}
+                    className={cn(
+                      'mb-3 sm:mb-4 rounded-md border border-complementary/30 bg-body shadow-sm hover:shadow-md transition-shadow duration-300',
+                      removingIndices.includes(index) ? 'animate-fade-out' : 'animate-slide-in-row'
+                    )}
+                  >
+                    <FormField
+                      control={form.control}
+                      name={`documents.${index}.file`}
+                      render={({ field }) => (
+                        <FormItem className="p-3 sm:p-4">
+                          <div
+                            className={cn(
+                              'relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300',
+                              dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
+                              field.value ? 'bg-body' : 'bg-complementary/10',
+                              (loading || !locationId) && 'opacity-50 cursor-not-allowed'
+                            )}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragLeave={() => handleDragLeave(index)}
+                            onDrop={(e) => handleDrop(e, index, field.onChange)}
+                            role="region"
+                            aria-label={`Upload document ${index + 1}`}
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                document.getElementById(`file-input-${index}`).click();
+                              }
+                            }}
+                          >
+                            <Input
+                              id={`file-input-${index}`}
+                              type="file"
+                              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                              onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
+                              className="hidden"
+                              disabled={loading || !locationId}
+                            />
+                            {!field.value ? (
+                              <div className="flex flex-col items-center space-y-2">
+                                <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-body/60" />
+                                <p className="text-[10px] sm:text-sm xl:text-base text-body/60">
+                                  Drag & drop a file here or click to upload
+                                </p>
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    onClick={() => document.getElementById(`file-input-${index}`).click()}
+                                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
+                                    disabled={loading || !locationId}
+                                  >
+                                    Choose File
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => handleRemoveDocument(index)}
+                                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
+                                    disabled={loading || !locationId}
+                                    aria-label="Cancel document upload"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                                <p className="text-[9px] sm:text-xs xl:text-sm text-body/50">
+                                  (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB)
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col space-y-2">
+                                <div className="flex items-center justify-between space-x-2">
+                                  <div className="flex items-center space-x-2 truncate">
+                                    {getFileIcon(field.value)}
+                                    <div className="truncate">
+                                      <span className="text-[10px] sm:text-sm xl:text-base text-body truncate">
+                                        {field.value.name}
+                                      </span>
+                                      <span className="text-[9px] sm:text-xs xl:text-sm text-body/60 block">
+                                        ({(field.value.size / 1024 / 1024).toFixed(2)} MB)
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <a
+                                      href={previewUrls[index]}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={cn(
+                                        "p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full",
+                                        (loading || !locationId || !previewUrls[index]) && "opacity-50 cursor-not-allowed"
+                                      )}
+                                      aria-label={`Preview document ${field.value.name}`}
+                                      onClick={(e) => {
+                                        if (loading || !locationId || !previewUrls[index]) {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                    >
+                                      <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
+                                    </a>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRemoveDocument(index)}
+                                      className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
+                                      disabled={loading || !locationId}
+                                      aria-label={`Remove document ${field.value.name}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                {isImageFile(field.value) && previewUrls[index] && (
+                                  <div className="mt-2 flex justify-center">
+                                    <img
+                                      src={previewUrls[index]}
+                                      alt={`Preview of ${field.value.name}`}
+                                      className="h-24 w-24 object-cover rounded-md border border-complementary"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base mt-2">
+                            {serverError?.fields?.[`documents[${index}].file`] || form.formState.errors.documents?.[index]?.file?.message}
+                          </FormMessage>
+                        </FormItem>
+                      )}
+                    />
                   </div>
                 ))}
+                <Button
+                  type="button"
+                  onClick={addDocumentField}
+                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
+                  disabled={loading || !locationId}
+                >
+                  <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  Add Document
+                </Button>
               </div>
-            </DialogContent>
-          </Dialog>
-        </main>
-      </div>
-    </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/siteincharge/employees')}
+                  className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md"
+                  disabled={loading || !locationId}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className={cn(
+                    'bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md',
+                    isSubmitting && 'animate-scale-in',
+                    success && !loading && 'animate-pulse'
+                  )}
+                  disabled={loading || !locationId}
+                >
+                  {loading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : 'Register Employee'}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+    </Layout>
   );
 };
 

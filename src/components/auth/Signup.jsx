@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { signup, fetchLocations } from '../../redux/slices/authSlice';
+import { signup } from '../../redux/slices/authSlice';
+import { fetchLocations } from '../../features/admin/redux/locationsSlice'; // Updated import
 import SignupForm from './SignupForm';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

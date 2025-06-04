@@ -18,6 +18,9 @@ import AdminEmployees from './features/admin/pages/Employees';
 import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
 import AdminProfile from './features/admin/pages/Profile';
 import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
+import AdminEmployeeProfile from './features/admin/pages/EmployeeProfile';
+import EmployeeHistory from './features/admin/pages/EmployeeHistory';
+import SiteInchargeEmployeeHistory from './features/siteincharge/pages/SiteInchargeEmployeeHistory';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user } = useSelector((state) => state.auth);
@@ -31,6 +34,8 @@ const App = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+
+      {/* Site Incharge Routes */}
       <Route
         path="/siteincharge/dashboard"
         element={
@@ -96,6 +101,16 @@ const App = () => {
         }
       />
       <Route
+        path="/siteincharge/employees/:employeeId/history"
+        element={
+          <ProtectedRoute allowedRoles={['siteincharge']}>
+            <SiteInchargeEmployeeHistory />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin Routes */}
+      <Route
         path="/admin/locations"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
@@ -152,6 +167,14 @@ const App = () => {
         }
       />
       <Route
+        path="/admin/employees/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminEmployeeProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin/profile"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
@@ -159,6 +182,16 @@ const App = () => {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/admin/employees/:employeeId/history"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <EmployeeHistory />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Default Route */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

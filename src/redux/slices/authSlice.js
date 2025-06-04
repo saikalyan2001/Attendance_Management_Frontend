@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../utils/api'; 
+import api from '../../utils/api';
 
 export const login = createAsyncThunk(
   'auth/login',
@@ -42,18 +42,6 @@ export const logout = createAsyncThunk(
   }
 );
 
-export const fetchLocations = createAsyncThunk(
-  'auth/fetchLocations',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await api.get('/auth/locations');
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
-    }
-  }
-);
-
 export const fetchMe = createAsyncThunk(
   'auth/fetchMe',
   async (_, { rejectWithValue }) => {
@@ -73,7 +61,7 @@ const authSlice = createSlice({
     user: null,
     loading: false,
     error: null,
-    locations: [],
+    locations: [], // Kept for potential other uses
   },
   reducers: {
     resetError: (state) => {
@@ -115,18 +103,6 @@ const authSlice = createSlice({
         state.user = null;
       })
       .addCase(logout.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-      .addCase(fetchLocations.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchLocations.fulfilled, (state, action) => {
-        state.loading = false;
-        state.locations = action.payload;
-      })
-      .addCase(fetchLocations.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

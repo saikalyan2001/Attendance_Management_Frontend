@@ -1,13 +1,17 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api';
 
 export const fetchProfile = createAsyncThunk(
   'siteInchargeProfile/fetchProfile',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/siteincharge/profile');
+      const response = await api.get('/siteincharge/profile');
       return response.data;
     } catch (error) {
+      console.error('Fetch profile error:', error.response?.data || error.message);
+      if (error.response?.status === 401) {
+        return rejectWithValue('Unauthorized: Please log in again');
+      }
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch profile');
     }
   }
@@ -34,8 +38,8 @@ const profileSlice = createSlice({
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
         state.loading = false;
-        state.profile = action.payload.user;
-        state.recentAttendance = action.payload.recentAttendance;
+        state.profile = action.payload.user || null;
+        state.recentAttendance = action.payload.recentAttendance || [];
       })
       .addCase(fetchProfile.rejected, (state, action) => {
         state.loading = false;

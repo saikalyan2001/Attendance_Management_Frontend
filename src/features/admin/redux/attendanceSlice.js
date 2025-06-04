@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api'; // Use authenticated Axios instance
+import api from '../../../utils/api';
 
 export const fetchAttendance = createAsyncThunk(
   'attendance/fetchAttendance',
@@ -18,13 +18,12 @@ export const fetchAttendance = createAsyncThunk(
 
 export const markAttendance = createAsyncThunk(
   'attendance/markAttendance',
-  async ({ date, location, absentEmployees }, { rejectWithValue }) => {
+  async ({ date, dates, location, attendance }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/admin/attendance', {
-        date,
-        location,
-        absentEmployees,
-      });
+      const payload = { location, attendance };
+      if (date) payload.date = date;
+      if (dates) payload.dates = dates;
+      const response = await api.post('/admin/attendance', payload);
       return response.data;
     } catch (error) {
       console.error('Mark attendance error:', error.response?.data || error.message);
@@ -85,6 +84,29 @@ export const requestAttendanceEdit = createAsyncThunk(
     } catch (error) {
       console.error('Request attendance edit error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to request attendance edit');
+    }
+  }
+);
+
+export const exportAttendance = createAsyncThunk(
+  'attendance/exportAttendance',
+  async ({ month, year, location }, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/admin/attendance/export', {
+        params: { month, year, location },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `attendance_${month}_${year}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return true;
+    } catch (error) {
+      console.error('Export attendance error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to export attendance');
     }
   }
 );
@@ -170,6 +192,17 @@ const attendanceSlice = createSlice({
         state.attendanceRequests.push(action.payload);
       })
       .addCase(requestAttendanceEdit.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(exportAttendance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(exportAttendance.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(exportAttendance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

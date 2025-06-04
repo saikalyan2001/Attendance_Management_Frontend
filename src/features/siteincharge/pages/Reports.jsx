@@ -1,37 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchAttendanceReports, fetchLeaveReports } from '../redux/reportsSlice';
-import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { fetchAttendanceReports, fetchLeaveReports, reset } from '../redux/reportsSlice';
+import { fetchMe, logout } from '../../../redux/slices/authSlice';
+import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
-import { useNavigate } from 'react-router-dom';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, AlertCircle, X, ArrowUpDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+const parseServerError = (error) => {
+  if (!error) return 'An unknown error occurred';
+  if (typeof error === 'string') return error;
+  return error.message || 'Operation failed';
+};
 
 const Reports = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
+  const { user, loading: authLoading } = useSelector((state) => state.auth);
   const { attendanceReports, leaveReports, locations, departments, loading, error } = useSelector(
     (state) => state.siteInchargeReports
   );
 
+  console.log("attendanceReports", attendanceReports);
+  
+
   const [month, setMonth] = useState('5'); // May 2025
-  const [location, setLocation] = useState('1234567890abcdef1234567a'); // Location A
   const [department, setDepartment] = useState('all');
   const [activeTab, setActiveTab] = useState('attendance');
+  const [serverError, setServerError] = useState(null);
+  const [sortOrder, setSortOrder] = useState('asc');
+
+  const locationId = user?.locations?.[0]?._id;
 
   const months = [
     { value: '1', label: 'January' },
@@ -49,38 +60,69 @@ const Reports = () => {
   ];
 
   useEffect(() => {
-    const year = 2025;
-    const startDate = startOfMonth(new Date(year, parseInt(month) - 1));
-    const endDate = endOfMonth(startDate);
-    dispatch(
-      fetchAttendanceReports({
-        startDate,
-        endDate,
-        location,
-        department: department === 'all' ? undefined : department,
-      })
-    );
-    dispatch(
-      fetchLeaveReports({
-        startDate,
-        endDate,
-        location,
-        department: department === 'all' ? undefined : department,
-      })
-    );
-  }, [dispatch, month, location, department]);
+    dispatch(fetchMe())
+      .unwrap()
+      .catch((err) => {
+        console.error('fetchMe error:', err);
+        toast.error('Failed to fetch user data', { duration: 5000 });
+        navigate('/login');
+      });
+  }, [dispatch, navigate]);
+
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== 'siteincharge')) {
+      navigate('/login');
+      return;
+    }
+    if (!authLoading && !user?.locations?.length) {
+      setServerError('No location assigned. Please contact an admin.');
+      toast.error('No location assigned. Please contact an admin.', { duration: 10000 });
+    } else if (!authLoading && locationId) {
+      console.log('User locations:', user.locations);
+      console.log('Fetching reports for locationId:', locationId);
+    }
+  }, [user, authLoading, locationId, navigate]);
+
+  useEffect(() => {
+    if (locationId) {
+      const year = 2025;
+      const startDate = startOfMonth(new Date(year, parseInt(month) - 1));
+      const endDate = endOfMonth(startDate);
+      dispatch(
+        fetchAttendanceReports({
+          startDate,
+          endDate,
+          location: locationId,
+          department: department === 'all' ? undefined : department,
+        })
+      );
+      dispatch(
+        fetchLeaveReports({
+          startDate,
+          endDate,
+          location: locationId,
+          department: department === 'all' ? undefined : department,
+        })
+      );
+    }
+  }, [dispatch, month, department, locationId]);
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
-      dispatch({ type: 'siteInchargeReports/reset' });
+      const parsedError = parseServerError(error);
+      setServerError(parsedError);
+      toast.error(parsedError, {
+        action: {
+          label: 'Dismiss',
+          onClick: () => {
+            dispatch(reset());
+            setServerError(null);
+          },
+        },
+        duration: 10000,
+      });
     }
   }, [error, dispatch]);
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
-  };
 
   const handleDownloadCSV = (type) => {
     const data = type === 'attendance' ? attendanceReports : leaveReports;
@@ -108,10 +150,7 @@ const Reports = () => {
 
     doc.text(title, 14, 20);
     doc.text(`Month: ${months.find((m) => m.value === month)?.label} 2025`, 14, 30);
-    doc.text(
-      `Location: ${location === 'all' ? 'All Locations' : locations.find((loc) => loc._id === location)?.name || 'Unknown'}`,
-      14, 40
-    );
+    doc.text(`Location: ${locations.find((loc) => loc._id === locationId)?.name || 'Unknown'}`, 14, 40);
     doc.text(`Department: ${department === 'all' ? 'All Departments' : department}`, 14, 50);
 
     autoTable(doc, {
@@ -131,13 +170,7 @@ const Reports = () => {
               item.leaveDays,
               `₹${item.salary.toFixed(2)}`,
             ]
-          : [
-              item.employeeId,
-              item.name,
-              item.availableLeaves,
-              item.usedLeaves,
-              item.carriedForward,
-            ]
+          : [item.employeeId, item.name, item.availableLeaves, item.usedLeaves, item.carriedForward]
       ),
       theme: 'striped',
       styles: { fontSize: 10, cellPadding: 2 },
@@ -147,201 +180,285 @@ const Reports = () => {
     doc.save(`${type}_report_${month}_2025.pdf`);
   };
 
+  const handleSort = () => {
+    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+  };
+
+  const sortedAttendanceReports = useMemo(() => {
+    return [...attendanceReports].sort((a, b) => {
+      const aValue = a.name.toLowerCase();
+      const bValue = b.name.toLowerCase();
+      return sortOrder === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    });
+  }, [attendanceReports, sortOrder]);
+
+  const sortedLeaveReports = useMemo(() => {
+    return [...leaveReports].sort((a, b) => {
+      const aValue = a.name.toLowerCase();
+      const bValue = b.name.toLowerCase();
+      return sortOrder === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    });
+  }, [leaveReports, sortOrder]);
+
+  const handleDismissErrors = () => {
+    dispatch(reset());
+    setServerError(null);
+    toast.dismiss();
+  };
+
   return (
-    <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Reports</h1>
-          <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
-            <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
-              </Button>
-            )}
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          {error && (
-            <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <Card className="bg-complementary text-body">
-            <CardHeader>
-              <CardTitle>Reports</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <div className="flex-1">
-                  <Label htmlFor="month">Month</Label>
-                  <Select value={month} onValueChange={setMonth}>
-                    <SelectTrigger id="month" className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder="Select month" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {months.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="location">Location</Label>
-                  <Select value={location} onValueChange={setLocation}>
-                    <SelectTrigger id="location" className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder="Select location" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      <SelectItem value="all">All Locations</SelectItem>
-                      {locations.map((loc) => (
-                        <SelectItem key={loc._id} value={loc._id}>
-                          {loc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="department">Department</Label>
-                  <Select value={department} onValueChange={setDepartment}>
-                    <SelectTrigger id="department" className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      <SelectItem value="all">All Departments</SelectItem>
-                      {departments.map((dep) => (
-                        <SelectItem key={dep} value={dep}>
-                          {dep}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+    <Layout title="Reports" role="siteincharge">
+      {serverError && (
+        <Alert variant="destructive" className="mb-4 sm:mb-5 md:mb-6 border-error text-error max-w-2xl mx-auto rounded-md relative animate-fade-in">
+          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
+          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
+            <p>{serverError}</p>
+          </AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDismissErrors}
+            className="absolute top-2 right-2 text-error hover:text-error-hover"
+            aria-label="Dismiss errors"
+          >
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        </Alert>
+      )}
+      <div className="space-y-6">
+        <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Reports</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+              <div className="flex-1">
+                <Label htmlFor="month" className="block text-[10px] sm:text-sm xl:text-lg font-medium">
+                  Month
+                </Label>
+                <Select value={month} onValueChange={setMonth} disabled={!locationId}>
+                  <SelectTrigger
+                    id="month"
+                    className="w-full bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-8 sm:h-9 xl:h-10 text-[10px] sm:text-sm xl:text-base"
+                  >
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-complementary text-body">
+                    {months.map((m) => (
+                      <SelectItem key={m.value} value={m.value} className="text-[10px] sm:text-sm xl:text-base">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="attendance">Attendance Summary</TabsTrigger>
-                  <TabsTrigger value="leaves">Leave Summary</TabsTrigger>
-                </TabsList>
-                <TabsContent value="attendance">
-                  <div className="flex justify-end gap-4 mb-4">
-                    <Button
-                      onClick={() => handleDownloadCSV('attendance')}
-                      className="bg-accent text-body hover:bg-accent-hover"
-                      disabled={loading || !attendanceReports.length}
-                    >
-                      Download CSV
-                    </Button>
-                    <Button
-                      onClick={() => handleDownloadPDF('attendance')}
-                      className="bg-accent text-body hover:bg-accent-hover"
-                      disabled={loading || !attendanceReports.length}
-                    >
-                      Download PDF
-                    </Button>
+              <div className="flex-1">
+                <Label htmlFor="department" className="block text-[10px] sm:text-sm xl:text-lg font-medium">
+                  Department
+                </Label>
+                <Select value={department} onValueChange={setDepartment} disabled={!locationId}>
+                  <SelectTrigger
+                    id="department"
+                    className="w-full bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-8 sm:h-9 xl:h-10 text-[10px] sm:text-sm xl:text-base"
+                  >
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-complementary text-body">
+                    <SelectItem value="all" className="text-[10px] sm:text-sm xl:text-base">
+                      All Departments
+                    </SelectItem>
+                    {departments.map((dep) => (
+                      <SelectItem key={dep} value={dep} className="text-[10px] sm:text-sm xl:text-base">
+                        {dep}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4 sm:mb-5 md:mb-6">
+              <TabsList className="grid w-full grid-cols-2 bg-body border-complementary rounded-md">
+                <TabsTrigger
+                  value="attendance"
+                  className="text-[10px] sm:text-sm xl:text-base data-[state=active]:bg-accent data-[state=active]:text-body rounded-md"
+                >
+                  Attendance Summary
+                </TabsTrigger>
+                <TabsTrigger
+                  value="leaves"
+                  className="text-[10px] sm:text-sm xl:text-base data-[state=active]:bg-accent data-[state=active]:text-body rounded-md"
+                >
+                  Leave Summary
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="attendance">
+                <div className="flex justify-end gap-2 sm:gap-3 mb-4">
+                  <Button
+                    onClick={() => handleDownloadCSV('attendance')}
+                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
+                    disabled={loading || authLoading || !sortedAttendanceReports.length}
+                  >
+                    {loading || authLoading ? (
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                    ) : (
+                      'Download CSV'
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleDownloadPDF('attendance')}
+                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
+                    disabled={loading || authLoading || !sortedAttendanceReports.length}
+                  >
+                    {loading || authLoading ? (
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                    ) : (
+                      'Download PDF'
+                    )}
+                  </Button>
+                </div>
+                {loading || authLoading ? (
+                  <div className="space-y-4">
+                    {Array(3).fill().map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
                   </div>
-                  {loading ? (
-                    <div className="space-y-4">
-                      {Array(3)
-                        .fill()
-                        .map((_, i) => (
-                          <Skeleton key={i} className="h-12 w-full" />
-                        ))}
-                    </div>
-                  ) : attendanceReports.length > 0 ? (
+                ) : sortedAttendanceReports.length > 0 ? (
+                  <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-body">Employee ID</TableHead>
-                          <TableHead className="text-body">Name</TableHead>
-                          <TableHead className="text-body">Present</TableHead>
-                          <TableHead className="text-body">Absent</TableHead>
-                          <TableHead className="text-body">Half Days</TableHead>
-                          <TableHead className="text-body">Leaves</TableHead>
-                          <TableHead className="text-body">Salary</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Employee ID</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
+                            <Button variant="ghost" onClick={handleSort} className="flex items-center space-x-1">
+                              Name
+                              <ArrowUpDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </Button>
+                          </TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Present</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Absent</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Half Days</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Leaves</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Salary</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {attendanceReports.map((report) => (
+                        {sortedAttendanceReports.map((report) => (
                           <TableRow key={report.employeeId}>
-                            <TableCell className="text-body">{report.employeeId}</TableCell>
-                            <TableCell className="text-body">{report.name}</TableCell>
-                            <TableCell className="text-body">{report.presentDays}</TableCell>
-                            <TableCell className="text-body">{report.absentDays}</TableCell>
-                            <TableCell className="text-body">{report.halfDays}</TableCell>
-                            <TableCell className="text-body">{report.leaveDays}</TableCell>
-                            <TableCell className="text-body">₹{report.salary.toFixed(2)}</TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.employeeId}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">{report.name}</TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.presentDays}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.absentDays}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.halfDays}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.leaveDays}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              ₹{report.salary.toFixed(2)}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  ) : (
-                    <p className="text-complementary">No attendance reports available for the selected filters.</p>
-                  )}
-                </TabsContent>
-                <TabsContent value="leaves">
-                  <div className="flex justify-end gap-4 mb-4">
-                    <Button
-                      onClick={() => handleDownloadCSV('leaves')}
-                      className="bg-accent text-body hover:bg-accent-hover"
-                      disabled={loading || !leaveReports.length}
-                    >
-                      Download CSV
-                    </Button>
-                    <Button
-                      onClick={() => handleDownloadPDF('leaves')}
-                      className="bg-accent text-body hover:bg-accent-hover"
-                      disabled={loading || !leaveReports.length}
-                    >
-                      Download PDF
-                    </Button>
                   </div>
-                  {loading ? (
-                    <div className="space-y-4">
-                      {Array(3)
-                        .fill()
-                        .map((_, i) => (
-                          <Skeleton key={i} className="h-12 w-full" />
-                        ))}
-                    </div>
-                  ) : leaveReports.length > 0 ? (
+                ) : (
+                  <p className="text-body text-[10px] sm:text-sm xl:text-base">
+                    No attendance reports available for the selected filters.
+                  </p>
+                )}
+              </TabsContent>
+              <TabsContent value="leaves">
+                <div className="flex justify-end gap-2 sm:gap-3 mb-4">
+                  <Button
+                    onClick={() => handleDownloadCSV('leaves')}
+                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
+                    disabled={loading || authLoading || !sortedLeaveReports.length}
+                  >
+                    {loading || authLoading ? (
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                    ) : (
+                      'Download CSV'
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleDownloadPDF('leaves')}
+                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
+                    disabled={loading || authLoading || !sortedLeaveReports.length}
+                  >
+                    {loading || authLoading ? (
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                    ) : (
+                      'Download PDF'
+                    )}
+                  </Button>
+                </div>
+                {loading || authLoading ? (
+                  <div className="space-y-4">
+                    {Array(3).fill().map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : sortedLeaveReports.length > 0 ? (
+                  <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-body">Employee ID</TableHead>
-                          <TableHead className="text-body">Name</TableHead>
-                          <TableHead className="text-body">Available Leaves</TableHead>
-                          <TableHead className="text-body">Used Leaves</TableHead>
-                          <TableHead className="text-body">Carried Forward</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Employee ID</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
+                            <Button variant="ghost" onClick={handleSort} className="flex items-center space-x-1">
+                              Name
+                              <ArrowUpDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </Button>
+                          </TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
+                            Available Leaves
+                          </TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Used Leaves</TableHead>
+                          <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
+                            Carried Forward
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {leaveReports.map((report) => (
+                        {sortedLeaveReports.map((report) => (
                           <TableRow key={report.employeeId}>
-                            <TableCell className="text-body">{report.employeeId}</TableCell>
-                            <TableCell className="text-body">{report.name}</TableCell>
-                            <TableCell className="text-body">{report.availableLeaves}</TableCell>
-                            <TableCell className="text-body">{report.usedLeaves}</TableCell>
-                            <TableCell className="text-body">{report.carriedForward}</TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.employeeId}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">{report.name}</TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.availableLeaves}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.usedLeaves}
+                            </TableCell>
+                            <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                              {report.carriedForward}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  ) : (
-                    <p className="text-complementary">No leave reports available for the selected filters.</p>
-                  )}
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </main>
+                  </div>
+                ) : (
+                  <p className="text-body text-[10px] sm:text-sm xl:text-base">
+                    No leave reports available for the selected filters.
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </Layout>
   );
 };
 

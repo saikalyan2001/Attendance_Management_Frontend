@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api'; // Use authenticated Axios instance
+import api from '../../../utils/api';
 
 export const fetchSettings = createAsyncThunk(
   'adminSettings/fetchSettings',
@@ -41,50 +41,62 @@ const settingsSlice = createSlice({
   name: 'adminSettings',
   initialState: {
     settings: null,
-    loading: false,
+    loadingFetch: false,
+    loadingUpdate: false,
+    loadingLeaves: false,
     error: null,
+    successUpdate: false,
+    successLeaves: false,
   },
   reducers: {
     reset: (state) => {
       state.error = null;
+      state.successUpdate = false;
+      state.successLeaves = false;
     },
   },
   extraReducers: (builder) => {
     builder
       .addCase(fetchSettings.pending, (state) => {
-        state.loading = true;
+        state.loadingFetch = true;
         state.error = null;
       })
       .addCase(fetchSettings.fulfilled, (state, action) => {
-        state.loading = false;
+        state.loadingFetch = false;
         state.settings = action.payload;
       })
       .addCase(fetchSettings.rejected, (state, action) => {
-        state.loading = false;
+        state.loadingFetch = false;
         state.error = action.payload;
       })
       .addCase(updateSettings.pending, (state) => {
-        state.loading = true;
+        state.loadingUpdate = true;
         state.error = null;
+        state.successUpdate = false;
       })
       .addCase(updateSettings.fulfilled, (state, action) => {
-        state.loading = false;
+        state.loadingUpdate = false;
         state.settings = action.payload;
+        state.successUpdate = true;
       })
       .addCase(updateSettings.rejected, (state, action) => {
-        state.loading = false;
+        state.loadingUpdate = false;
         state.error = action.payload;
+        state.successUpdate = false;
       })
       .addCase(updateEmployeeLeaves.pending, (state) => {
-        state.loading = true;
+        state.loadingLeaves = true;
         state.error = null;
+        state.successLeaves = false;
       })
-      .addCase(updateEmployeeLeaves.fulfilled, (state) => {
-        state.loading = false;
+      .addCase(updateEmployeeLeaves.fulfilled, (state, action) => {
+        state.loadingLeaves = false;
+        state.successLeaves = true;
       })
       .addCase(updateEmployeeLeaves.rejected, (state, action) => {
-        state.loading = false;
+        state.loadingLeaves = false;
         state.error = action.payload;
+        state.successLeaves = false;
       });
   },
 });

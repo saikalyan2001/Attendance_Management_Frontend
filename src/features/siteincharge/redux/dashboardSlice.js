@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../../utils/api'; // Use authenticated Axios instance
 
 export const fetchDashboardData = createAsyncThunk(
   'siteInchargeDashboard/fetchDashboardData',
   async ({ location }, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/siteincharge/dashboard', {
+      const response = await api.get('/siteincharge/dashboard', {
         params: { location },
       });
       return response.data;

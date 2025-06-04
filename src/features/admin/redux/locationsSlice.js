@@ -1,11 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api'; // Use authenticated Axios instance
+import api from '../../../utils/api';
 
 export const fetchLocations = createAsyncThunk(
   'adminLocations/fetchLocations',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      const response = await api.get('/admin/locations');
+      const { auth } = getState();
+      const isAdmin = auth.user?.role === 'admin';
+      const endpoint = isAdmin ? '/admin/locations' : '/auth/locations';
+      const response = await api.get(endpoint);
       return response.data;
     } catch (error) {
       console.error('Fetch locations error:', error.response?.data || error.message);
@@ -16,9 +19,9 @@ export const fetchLocations = createAsyncThunk(
 
 export const addLocation = createAsyncThunk(
   'adminLocations/addLocation',
-  async (data, { rejectWithValue }) => {
+  async ({ name, address, city, state }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/admin/locations', data);
+      const response = await api.post('/admin/locations', { name, address, city, state });
       return response.data;
     } catch (error) {
       console.error('Add location error:', error.response?.data || error.message);

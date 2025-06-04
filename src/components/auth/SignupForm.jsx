@@ -22,6 +22,8 @@ const signupSchema = z.object({
 const SignupForm = ({ onSubmit, loading, error, role }) => {
   const { locations } = useSelector((state) => state.adminLocations);
 
+  console.log("locations", locations);
+
   const form = useForm({
     resolver: zodResolver(signupSchema),
     defaultValues: {
@@ -35,7 +37,7 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
 
   useEffect(() => {
     if (role === 'siteincharge' && locations.length > 0) {
-      form.setValue('locations', locations.map((loc) => loc._id));
+      form.setValue('locations', [locations[0]._id]); // Default to first location
     } else {
       form.setValue('locations', []);
     }
@@ -137,11 +139,11 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                 <Select
                   onValueChange={(value) => field.onChange([value])}
                   value={field.value[0] || ''}
-                  disabled={loading}
+                  disabled={loading || locations.length === 0}
                 >
                   <FormControl>
                     <SelectTrigger className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder="Select locations" />
+                      <SelectValue placeholder={locations.length === 0 ? "No locations available" : "Select location"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent className="bg-complementary text-body">
@@ -152,6 +154,9 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                     ))}
                   </SelectContent>
                 </Select>
+                {locations.length === 0 && (
+                  <p className="text-sm text-error">No locations available. Please contact an admin to add locations.</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -160,7 +165,7 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
         <Button
           type="submit"
           className="w-full bg-accent text-body hover:bg-accent-hover"
-          disabled={loading}
+          disabled={loading || (role === 'siteincharge' && locations.length === 0)}
         >
           {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Sign Up'}
         </Button>

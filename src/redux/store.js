@@ -5,7 +5,6 @@ import siteInchargeDashboardReducer from '../features/siteincharge/redux/dashboa
 import siteInchargeAttendanceReducer from '../features/siteincharge/redux/attendanceSlice';
 import siteInchargeEmployeeReducer from '../features/siteincharge/redux/employeeSlice';
 import siteInchargeReportsReducer from '../features/siteincharge/redux/reportsSlice';
-import siteInchargeMarkAttendanceReducer from '../features/siteincharge/redux/markAttendanceSlice';
 import siteInchargeProfileReducer from '../features/siteincharge/redux/profileSlice';
 import adminDashboardReducer from '../features/admin/redux/dashboardSlice';
 import adminAttendanceReducer from '../features/admin/redux/attendanceSlice';
@@ -23,7 +22,6 @@ const store = configureStore({
     siteInchargeAttendance: siteInchargeAttendanceReducer,
     siteInchargeEmployee: siteInchargeEmployeeReducer,
     siteInchargeReports: siteInchargeReportsReducer,
-    siteInchargeMarkAttendance: siteInchargeMarkAttendanceReducer,
     siteInchargeProfile: siteInchargeProfileReducer,
     adminDashboard: adminDashboardReducer,
     adminAttendance: adminAttendanceReducer,

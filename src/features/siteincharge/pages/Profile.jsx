@@ -1,136 +1,200 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchProfile } from '../redux/profileSlice';
-import Sidebar from '../components/Sidebar';
-import { ThemeToggle } from '../../../components/common/ThemeToggle';
+import { fetchProfile, reset } from '../redux/profileSlice';
+import { fetchMe } from '../../../redux/slices/authSlice';
+import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LogOut } from 'lucide-react';
-import { logout } from '../../../redux/slices/authSlice';
-import { useNavigate } from 'react-router-dom';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AlertCircle, X, ArrowUpDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+const parseServerError = (error) => {
+  if (!error) return 'An unknown error occurred';
+  if (typeof error === 'string') return error;
+  return error.message || 'Operation failed';
+};
 
 const Profile = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
+  const { user, loading: authLoading } = useSelector((state) => state.auth);
   const { profile, recentAttendance, loading, error } = useSelector((state) => state.siteInchargeProfile);
 
+  const [serverError, setServerError] = useState(null);
+  const [sortOrder, setSortOrder] = useState('asc');
+
   useEffect(() => {
-    if (user) {
-      dispatch(fetchProfile());
+    dispatch(fetchMe())
+      .unwrap()
+      .catch((err) => {
+        console.error('fetchMe error:', err);
+        toast.error('Failed to fetch user data', { duration: 5000 });
+        navigate('/login');
+      });
+  }, [dispatch, navigate]);
+
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== 'siteincharge')) {
+      navigate('/login');
+      return;
     }
-  }, [dispatch, user]);
+    if (!authLoading && user) {
+      dispatch(fetchProfile());
+      console.log('Fetching profile for user:', user.email);
+    }
+  }, [dispatch, user, authLoading, navigate]);
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
-      dispatch({ type: 'siteInchargeProfile/reset' });
+      const parsedError = parseServerError(error);
+      setServerError(parsedError);
+      toast.error(parsedError, {
+        action: {
+          label: 'Dismiss',
+          onClick: () => {
+            dispatch(reset());
+            setServerError(null);
+          },
+        },
+        duration: 10000,
+      });
     }
   }, [error, dispatch]);
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
+  const handleSort = () => {
+    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+  };
+
+  const sortedRecentAttendance = useMemo(() => {
+    if (!recentAttendance) return [];
+    return [...recentAttendance].sort((a, b) => {
+      const aValue = a.employee?.name?.toLowerCase() || '';
+      const bValue = b.employee?.name?.toLowerCase() || '';
+      return sortOrder === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    });
+  }, [recentAttendance, sortOrder]);
+
+  const handleDismissErrors = () => {
+    dispatch(reset());
+    setServerError(null);
+    toast.dismiss();
   };
 
   return (
-    <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-complementary text-body shadow-md">
-          <h1 className="text-xl font-bold">Profile</h1>
-          <div className="flex items-center space-x-4">
-            <span>{user?.email || 'Guest'}</span>
-            <ThemeToggle />
-            {user && (
-              <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Log out">
-                <LogOut className="h-5 w-5 text-accent" />
-              </Button>
+    <Layout title="Profile" role="siteincharge">
+      {serverError && (
+        <Alert variant="destructive" className="mb-4 sm:mb-5 md:mb-6 border-error text-error max-w-2xl mx-auto rounded-md relative animate-fade-in">
+          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
+          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
+            <p>{serverError}</p>
+          </AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDismissErrors}
+            className="absolute top-2 right-2 text-error hover:text-error-hover"
+            aria-label="Dismiss errors"
+          >
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        </Alert>
+      )}
+      <div className="grid gap-4 sm:gap-5 md:gap-6 md:grid-cols-2">
+        <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Profile Information</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            {loading || authLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-6 w-1/2" />
+                <Skeleton className="h-6 w-1/3" />
+                <Skeleton className="h-6 w-2/3" />
+              </div>
+            ) : profile ? (
+              <dl className="space-y-2">
+                <div className="flex">
+                  <dt className="font-semibold w-1/3 text-[10px] sm:text-sm xl:text-base">Email:</dt>
+                  <dd className="w-2/3 text-[10px] sm:text-sm xl:text-base">{profile.email || 'N/A'}</dd>
+                </div>
+                <div className="flex">
+                  <dt className="font-semibold w-1/3 text-[10px] sm:text-sm xl:text-base">Role:</dt>
+                  <dd className="w-2/3 text-[10px] sm:text-sm xl:text-base">{profile.role || 'N/A'}</dd>
+                </div>
+                <div className="flex">
+                  <dt className="font-semibold w-1/3 text-[10px] sm:text-sm xl:text-base">Location:</dt>
+                  <dd className="w-2/3 text-[10px] sm:text-sm xl:text-base">{profile.locations?.[0]?.name || 'Not assigned'}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="text-body text-[10px] sm:text-sm xl:text-base">No profile data available</p>
             )}
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          {error && (
-            <Alert variant="destructive" className="mb-6 border-error text-error">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card className="bg-complementary text-body">
-              <CardHeader>
-                <CardTitle>Profile Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-6 w-1/2" />
-                    <Skeleton className="h-6 w-1/3" />
-                    <Skeleton className="h-6 w-2/3" />
-                  </div>
-                ) : (
-                  <dl className="space-y-2">
-                    <div className="flex">
-                      <dt className="font-semibold w-1/3">Email:</dt>
-                      <dd className="w-2/3">{profile?.email || 'N/A'}</dd>
-                    </div>
-                    <div className="flex">
-                      <dt className="font-semibold w-1/3">Role:</dt>
-                      <dd className="w-2/3">{profile?.role || 'N/A'}</dd>
-                    </div>
-                    <div className="flex">
-                      <dt className="font-semibold w-1/3">Location:</dt>
-                      <dd className="w-2/3">{profile?.location?.name || 'Not assigned'}</dd>
-                    </div>
-                  </dl>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="bg-complementary text-body">
-              <CardHeader>
-                <CardTitle>Account Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-32 w-full" />
-                ) : recentAttendance?.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-body">Date</TableHead>
-                        <TableHead className="text-body">Employee</TableHead>
-                        <TableHead className="text-body">Status</TableHead>
+          </CardContent>
+        </Card>
+        <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Recent Attendance</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            {loading || authLoading ? (
+              <div className="space-y-4">
+                {Array(3).fill().map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : sortedRecentAttendance?.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Date</TableHead>
+                      <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
+                        <Button variant="ghost" onClick={handleSort} className="flex items-center space-x-1">
+                          Employee
+                          <ArrowUpDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedRecentAttendance.map((record) => (
+                      <TableRow key={record._id}>
+                        <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                          {format(new Date(record.date), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
+                          {record.employee?.name || 'Unknown'}
+                        </TableCell>
+                        <TableCell
+                          className={`text-[10px] sm:text-sm xl:text-base ${
+                            record.status === 'present'
+                              ? 'text-green-500'
+                              : record.status === 'absent'
+                              ? 'text-red-500'
+                              : 'text-yellow-500'
+                          }`}
+                        >
+                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recentAttendance.map((record) => (
-                        <TableRow key={record._id}>
-                          <TableCell className="text-body">{format(new Date(record.date), 'PPP')}</TableCell>
-                          <TableCell className="text-body">{record.employee?.name || 'Unknown'}</TableCell>
-                          <TableCell
-                            className={
-                              record.status === 'present' ? 'text-accent' : 'text-error'
-                            }
-                          >
-                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-complementary">No recent attendance records</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="text-body text-[10px] sm:text-sm xl:text-base">No recent attendance records</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </Layout>
   );
 };
 
