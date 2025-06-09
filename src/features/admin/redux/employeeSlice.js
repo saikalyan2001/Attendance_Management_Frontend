@@ -7,7 +7,7 @@ export const fetchEmployees = createAsyncThunk(
     try {
       const params = {};
       if (location && location !== 'all') params.location = location;
-      if (status) params.status = status;
+      if (status && status !== 'all') params.status = status;
       const response = await api.get('/admin/employees', { params });
       return response.data;
     } catch (error) {
@@ -47,11 +47,13 @@ export const registerEmployee = createAsyncThunk(
           formData.append('documents', doc.file, doc.file.name);
         }
       });
-      const response = await api.post('/admin/employees', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const response = await api.post('/admin/employees', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       return response.data;
     } catch (error) {
       console.error('Register employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data || 'Failed to register employee');
+      return rejectWithValue(error.response?.data?.message || 'Failed to register employee');
     }
   }
 );
@@ -60,8 +62,6 @@ export const updateEmployee = createAsyncThunk(
   'employees/updateEmployee',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      // Note: The frontend ensures employeeId is not included in the data object.
-      // The backend also ignores employeeId if sent, preserving the original value.
       const response = await api.put(`/admin/employees/${id}`, data);
       return response.data;
     } catch (error) {
@@ -71,12 +71,25 @@ export const updateEmployee = createAsyncThunk(
   }
 );
 
+export const updateEmployeeAdvance = createAsyncThunk(
+  'employees/updateEmployeeAdvance',
+  async ({ id, advance }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/admin/employees/${id}/advance`, { advance });
+      return response.data;
+    } catch (error) {
+      console.error('Update employee advance error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to update employee advance');
+    }
+  }
+);
+
 export const deactivateEmployee = createAsyncThunk(
   'employees/deactivateEmployee',
   async (id, { rejectWithValue }) => {
     try {
-      await api.put(`/admin/employees/${id}/deactivate`);
-      return id;
+      const response = await api.put(`/admin/employees/${id}/deactivate`);
+      return { id, message: response.data.message };
     } catch (error) {
       console.error('Deactivate employee error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to deactivate employee');
@@ -88,9 +101,9 @@ export const transferEmployee = createAsyncThunk(
   'employees/transferEmployee',
   async ({ id, locationId, transferTimestamp }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/admin/employees/${id}/transfer`, { 
+      const response = await api.put(`/admin/employees/${id}/transfer`, {
         location: locationId,
-        transferTimestamp // Include transferTimestamp in the request
+        transferTimestamp,
       });
       return response.data;
     } catch (error) {
@@ -99,7 +112,6 @@ export const transferEmployee = createAsyncThunk(
     }
   }
 );
-
 
 export const rejoinEmployee = createAsyncThunk(
   'employees/rejoinEmployee',
@@ -167,7 +179,7 @@ export const fetchSettings = createAsyncThunk(
   'employees/fetchSettings',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/settings');
+      const response = await api.get('/admin/employees/settings');
       return response.data;
     } catch (error) {
       console.error('Fetch settings error:', error.response?.data || error.message);
@@ -178,182 +190,228 @@ export const fetchSettings = createAsyncThunk(
 
 const employeesSlice = createSlice({
   name: 'employees',
-  initialState: { 
-    employees: [], 
+  initialState: {
+    employees: [],
     currentEmployee: null,
     history: null,
     attendance: [],
     settings: null,
-    loading: false, 
-    error: null, 
-    success: false 
+    loading: false,
+    error: null,
+    success: false,
+    successMessage: null,
   },
   reducers: {
-    reset: (state) => { 
-      state.error = null; 
-      state.loading = false; 
-      state.success = false; 
+    reset: (state) => {
+      state.error = null;
+      state.loading = false;
+      state.success = false;
+      state.successMessage = null;
       state.currentEmployee = null;
       state.history = null;
       state.attendance = [];
-      // Note: Not resetting settings to keep it cached; add state.settings = null if reset is desired
+      // Note: Not resetting settings to keep it cached
     },
   },
   extraReducers: (builder) => {
+    // Fetch Employees
     builder
-      .addCase(fetchEmployees.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
+      .addCase(fetchEmployees.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(fetchEmployees.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.employees = action.payload || []; 
+      .addCase(fetchEmployees.fulfilled, (state, action) => {
+        state.loading = false;
+        state.employees = action.payload || [];
       })
-      .addCase(fetchEmployees.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.employees = []; 
+      .addCase(fetchEmployees.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.employees = [];
       })
-      .addCase(fetchEmployeeById.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.currentEmployee = null; 
+      // Fetch Employee by ID
+      .addCase(fetchEmployeeById.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.currentEmployee = null;
       })
-      .addCase(fetchEmployeeById.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.currentEmployee = action.payload; 
+      .addCase(fetchEmployeeById.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentEmployee = action.payload;
       })
-      .addCase(fetchEmployeeById.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.currentEmployee = null; 
+      .addCase(fetchEmployeeById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.currentEmployee = null;
       })
-      .addCase(registerEmployee.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Register Employee
+      .addCase(registerEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
-      .addCase(registerEmployee.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.employees.push(action.payload); 
-        state.success = true; 
+      .addCase(registerEmployee.fulfilled, (state, action) => {
+        state.loading = false;
+        state.employees.push(action.payload);
+        state.success = true;
+        state.successMessage = 'Employee registered successfully';
       })
-      .addCase(registerEmployee.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(registerEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(updateEmployee.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Update Employee
+      .addCase(updateEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
       .addCase(updateEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        state.successMessage = 'Employee updated successfully';
         const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
         if (index !== -1) state.employees[index] = action.payload;
         if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
       })
-      .addCase(updateEmployee.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(updateEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(deactivateEmployee.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Update Employee Advance
+      .addCase(updateEmployeeAdvance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
-      .addCase(deactivateEmployee.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.success = true; 
-        state.employees = state.employees.filter((emp) => emp._id !== action.payload); 
-        if (state.currentEmployee?._id === action.payload) state.currentEmployee = null;
+      .addCase(updateEmployeeAdvance.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.successMessage = 'Employee advance updated successfully';
+        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        if (index !== -1) state.employees[index] = action.payload;
+        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
       })
-      .addCase(deactivateEmployee.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(updateEmployeeAdvance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(transferEmployee.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Deactivate Employee
+      .addCase(deactivateEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
+      })
+      .addCase(deactivateEmployee.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.successMessage = action.payload.message || 'Employee deactivated successfully';
+        const index = state.employees.findIndex((emp) => emp._id === action.payload.id);
+        if (index !== -1) state.employees[index].status = 'inactive';
+        if (state.currentEmployee?._id === action.payload.id) state.currentEmployee = null;
+      })
+      .addCase(deactivateEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
+      })
+      // Transfer Employee
+      .addCase(transferEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
       .addCase(transferEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        state.successMessage = 'Employee transferred successfully';
         const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
         if (index !== -1) state.employees[index] = action.payload;
         if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
       })
-      .addCase(transferEmployee.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(transferEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(rejoinEmployee.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Rejoin Employee
+      .addCase(rejoinEmployee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
       .addCase(rejoinEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        state.successMessage = 'Employee rejoined successfully';
         const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
         if (index !== -1) state.employees[index] = action.payload;
         else state.employees.push(action.payload);
         if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
       })
-      .addCase(rejoinEmployee.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(rejoinEmployee.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(getEmployeeHistory.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
+      // Get Employee History
+      .addCase(getEmployeeHistory.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(getEmployeeHistory.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.history = action.payload; 
+      .addCase(getEmployeeHistory.fulfilled, (state, action) => {
+        state.loading = false;
+        state.history = action.payload; // Includes transferHistory, employmentHistory, advanceHistory
       })
-      .addCase(getEmployeeHistory.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.history = null; 
+      .addCase(getEmployeeHistory.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.history = null;
       })
-      .addCase(addEmployeeDocuments.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
-        state.success = false; 
+      // Add Employee Documents
+      .addCase(addEmployeeDocuments.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
       })
       .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        state.successMessage = 'Documents added successfully';
         const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
         if (index !== -1) state.employees[index] = action.payload;
         if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
       })
-      .addCase(addEmployeeDocuments.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.success = false; 
+      .addCase(addEmployeeDocuments.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
       })
-      .addCase(fetchEmployeeAttendance.pending, (state) => { 
-        state.loading = true; 
-        state.error = null; 
+      // Fetch Employee Attendance
+      .addCase(fetchEmployeeAttendance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(fetchEmployeeAttendance.fulfilled, (state, action) => { 
-        state.loading = false; 
-        state.attendance = action.payload; 
+      .addCase(fetchEmployeeAttendance.fulfilled, (state, action) => {
+        state.loading = false;
+        state.attendance = action.payload;
       })
-      .addCase(fetchEmployeeAttendance.rejected, (state, action) => { 
-        state.loading = false; 
-        state.error = action.payload; 
-        state.attendance = []; 
+      .addCase(fetchEmployeeAttendance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.attendance = [];
       })
+      // Fetch Settings
       .addCase(fetchSettings.pending, (state) => {
         state.loading = true;
         state.error = null;

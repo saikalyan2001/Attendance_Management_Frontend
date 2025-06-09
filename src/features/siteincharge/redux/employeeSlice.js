@@ -45,7 +45,6 @@ export const fetchAllLocations = createAsyncThunk(
   }
 );
 
-// New thunk to fetch settings
 export const fetchSettings = createAsyncThunk(
   'siteInchargeEmployee/fetchSettings',
   async (_, { rejectWithValue }) => {
@@ -122,15 +121,14 @@ export const transferEmployee = createAsyncThunk(
   }
 );
 
-
 export const uploadDocument = createAsyncThunk(
   'siteInchargeEmployee/addEmployeeDocuments',
-  async ({ id, formData }, { rejectWithValue }) => { // Change `documents` to `formData`
+  async ({ id, formData }, { rejectWithValue }) => {
     try {
       const response = await api.post(`/siteincharge/employees/${id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      return response.data; 
+      return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to add employee documents');
     }
@@ -189,13 +187,25 @@ export const getEmployeeHistory = createAsyncThunk(
   }
 );
 
-// Update the extraReducers to handle the new thunk
+export const updateEmployeeAdvance = createAsyncThunk(
+  'siteInchargeEmployee/updateEmployeeAdvance',
+  async ({ id, advance }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/siteincharge/employees/${id}/advance`, { advance });
+      return response.data;
+    } catch (error) {
+      console.error('Update employee advance error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to update employee advance');
+    }
+  }
+);
+
 const employeeSlice = createSlice({
   name: 'siteInchargeEmployee',
   initialState: {
     employees: [],
     employee: null,
-    history: null, // Add history to the state
+    history: null,
     attendance: [],
     locations: [],
     allLocations: [],
@@ -209,12 +219,11 @@ const employeeSlice = createSlice({
       state.error = null;
       state.success = false;
       state.employee = null;
-      state.history = null; // Reset history
+      state.history = null;
     },
   },
   extraReducers: (builder) => {
     builder
-      // Existing cases...
       .addCase(fetchEmployees.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(fetchEmployees.fulfilled, (state, action) => { state.loading = false; state.employees = (action.payload || []).filter(emp => emp && typeof emp === 'object' && emp._id); })
       .addCase(fetchEmployees.rejected, (state, action) => { state.loading = false; state.error = action.payload; })
@@ -271,7 +280,7 @@ const employeeSlice = createSlice({
         if (index !== -1) state.employees[index] = action.payload;
         if (state.employee && state.employee._id === action.payload._id) state.employee = action.payload;
       })
-      .addCase(deactivateEmployee.rejected, (state) => { state.loading = false; state.error = action.payload; state.success = false; })
+      .addCase(deactivateEmployee.rejected, (state, action) => { state.loading = false; state.error = action.payload; state.success = false; })
       .addCase(rejoinEmployee.pending, (state) => { state.loading = true; state.error = null; state.success = false; })
       .addCase(rejoinEmployee.fulfilled, (state, action) => {
         state.loading = false;
@@ -282,10 +291,26 @@ const employeeSlice = createSlice({
         if (state.employee && state.employee._id === action.payload._id) state.employee = action.payload;
       })
       .addCase(rejoinEmployee.rejected, (state, action) => { state.loading = false; state.error = action.payload; state.success = false; })
-      // Add cases for getEmployeeHistory
       .addCase(getEmployeeHistory.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(getEmployeeHistory.fulfilled, (state, action) => { state.loading = false; state.history = action.payload; })
-      .addCase(getEmployeeHistory.rejected, (state, action) => { state.loading = false; state.error = action.payload; });
+      .addCase(getEmployeeHistory.rejected, (state, action) => { state.loading = false; state.error = action.payload; })
+      .addCase(updateEmployeeAdvance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+      })
+      .addCase(updateEmployeeAdvance.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        const index = state.employees.findIndex((emp) => emp && emp._id === action.payload._id);
+        if (index !== -1) state.employees[index] = action.payload;
+        if (state.employee && state.employee._id === action.payload._id) state.employee = action.payload;
+      })
+      .addCase(updateEmployeeAdvance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.success = false;
+      });
   },
 });
 

@@ -7,7 +7,6 @@ import Attendance from './features/siteincharge/pages/Attendance';
 import RegisterEmployee from './features/siteincharge/pages/RegisterEmployee';
 import Employees from './features/siteincharge/pages/Employees';
 import Reports from './features/siteincharge/pages/Reports';
-import MarkAttendance from './features/siteincharge/pages/MarkAttendance';
 import Profile from './features/siteincharge/pages/Profile';
 import Locations from './features/admin/pages/Locations';
 import Settings from './features/admin/pages/Settings';
@@ -73,14 +72,6 @@ const App = () => {
         element={
           <ProtectedRoute allowedRoles={['siteincharge']}>
             <Reports />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/siteincharge/mark-attendance"
-        element={
-          <ProtectedRoute allowedRoles={['siteincharge']}>
-            <MarkAttendance />
           </ProtectedRoute>
         }
       />

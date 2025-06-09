@@ -804,38 +804,38 @@ const EmployeeProfile = () => {
           </Card>
 
           {/* Attendance History Card */}
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="flex justify-between items-center text-xl md:text-2xl font-bold">
-                Attendance History
-                <div className="flex gap-2">
-                  <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
-                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()} className="text-sm">
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
-                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {years.map((year) => (
-                        <SelectItem key={year} value={year.toString()} className="text-sm">
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardTitle>
-            </CardHeader>
+<Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
+  <CardHeader>
+    <CardTitle className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-xl md:text-2xl font-bold">
+      <span>Attendance History</span>
+      <div className="flex flex-col gap-3 w-full sm:flex-row sm:gap-2 sm:w-auto">
+        <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
+          <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-40 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-complementary text-body">
+            {months.map((month) => (
+              <SelectItem key={month.value} value={month.value.toString()} className="text-sm">
+                {month.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
+          <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-24 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-complementary text-body">
+            {years.map((year) => (
+              <SelectItem key={year} value={year.toString()} className="text-sm">
+                {year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </CardTitle>
+  </CardHeader>
             <CardContent className="p-4 sm:p-6">
               {loading ? (
                 <div className="space-y-4">

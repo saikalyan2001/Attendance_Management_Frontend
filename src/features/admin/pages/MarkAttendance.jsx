@@ -3,8 +3,10 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   markAttendance,
   bulkMarkAttendance,
+  undoMarkAttendance,
 } from "../redux/attendanceSlice";
 import { fetchEmployees } from "../redux/employeeSlice";
+import { fetchLocations } from "../redux/locationsSlice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -59,15 +61,18 @@ import {
   Eye,
 } from "lucide-react";
 
-const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
+const MarkAttendance = ({ month, year, location, setLocation, selectedDate, setSelectedDate, setMonth, setYear }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const { employees, loading: empLoading } = useSelector(
-    (state) => state.siteInchargeEmployee
+    (state) => state.adminEmployees
   );
-  const { loading } = useSelector((state) => state.siteInchargeAttendance);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { locations, loading: locationsLoading } = useSelector(
+    (state) => state.adminLocations
+  );
+  const { loading } = useSelector((state) => state.adminAttendance);
+
   const [attendanceData, setAttendanceData] = useState({});
   const [bulkSelectedEmployees, setBulkSelectedEmployees] = useState([]);
   const [bulkEmployeeStatuses, setBulkEmployeeStatuses] = useState({});
@@ -84,20 +89,18 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   });
   const [isBulkMode, setIsBulkMode] = useState(true);
   const [employeeFilter, setEmployeeFilter] = useState("");
+  const [lastAttendanceIds, setLastAttendanceIds] = useState([]);
 
   useEffect(() => {
-    if (!user || user.role !== "siteincharge") {
+    if (!user || user.role !== "admin") {
       navigate("/login");
       return;
     }
-    if (!locationId) {
-      toast.error("No location assigned. Please contact admin.", {
-        duration: 10000,
-      });
-      return;
+    dispatch(fetchLocations());
+    if (location && location !== "all") {
+      dispatch(fetchEmployees({ location }));
     }
-    dispatch(fetchEmployees({ location: locationId, month, year }));
-  }, [dispatch, user, navigate, locationId, month, year]);
+  }, [dispatch, user, navigate, location]);
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(
@@ -158,6 +161,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   };
 
   const handleBulkSubmit = (preview = false) => {
+    if (!location || location === "all") {
+      toast.error("Please select a specific location", { duration: 5000 });
+      return;
+    }
     if (!filteredEmployees.length) {
       toast.error("No employees available", { duration: 5000 });
       return;
@@ -166,12 +173,13 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       toast.error("Please select a date", { duration: 5000 });
       return;
     }
+
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const selectedRecords = bulkSelectedEmployees.map((employeeId) => ({
       employeeId,
       date: dateStr,
       status: bulkEmployeeStatuses[employeeId] || "present",
-      location: locationId,
+      location,
     }));
     const remainingEmployees = filteredEmployees.filter(
       (emp) => !bulkSelectedEmployees.includes(emp._id.toString())
@@ -180,7 +188,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       employeeId: emp._id,
       date: dateStr,
       status: "present",
-      location: locationId,
+      location,
     }));
     setBulkConfirmDialog({
       open: true,
@@ -196,14 +204,12 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
 
     dispatch(bulkMarkAttendance(allRecords))
       .unwrap()
-      .then(() => {
-        const statusCounts = selectedRecords.reduce(
-          (acc, record) => ({
-            ...acc,
-            [record.status]: (acc[record.status] || 0) + 1,
-          }),
-          {}
-        );
+      .then((response) => {
+        setLastAttendanceIds(response.attendanceIds || []);
+        const statusCounts = selectedRecords.reduce((acc, record) => ({
+          ...acc,
+          [record.status]: (acc[record.status] || 0) + 1
+        }), {});
         const statusMessage = Object.entries(statusCounts)
           .map(([status, count]) => `${count} as ${status}`)
           .join(", ");
@@ -215,17 +221,18 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
             action: {
               label: "Undo",
               onClick: () => {
-                dispatch(bulkMarkAttendance([]))
+                dispatch(undoMarkAttendance(lastAttendanceIds))
                   .unwrap()
                   .then(() => {
                     toast.success("Attendance marking undone");
+                    setLastAttendanceIds([]);
                   })
                   .catch((err) => {
-                    toast.error("Failed to undo attendance marking");
+                    toast.error(err || "Failed to undo attendance marking");
                   });
-              },
+              }
             },
-            duration: 10000,
+            duration: 6000,
           }
         );
         setBulkSelectedEmployees([]);
@@ -233,7 +240,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
         setEmployeeFilter("");
       })
       .catch((err) => {
-        toast.error(err || "Operation failed", { duration: 10000 });
+        toast.error(err || "Operation failed", { duration: 6000 });
       })
       .finally(() => {
         setBulkConfirmDialog({
@@ -246,6 +253,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   };
 
   const handleSubmit = (preview = false) => {
+    if (!location || location === "all") {
+      toast.error("Please select a specific location", { duration: 5000 });
+      return;
+    }
     if (!filteredEmployees.length) {
       toast.error("No employees available", { duration: 5000 });
       return;
@@ -259,7 +270,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       employeeId: emp._id,
       date: dateStr,
       status: attendanceData[emp._id.toString()] || "present",
-      location: locationId,
+      location,
     }));
     setIndividualConfirmDialog({
       open: true,
@@ -272,28 +283,30 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     const { records: attendanceRecords } = individualConfirmDialog;
     dispatch(markAttendance(attendanceRecords))
       .unwrap()
-      .then(() => {
+      .then((response) => {
+        setLastAttendanceIds(response.attendanceIds || []);
         toast.success("Attendance marked successfully", {
           action: {
             label: "Undo",
             onClick: () => {
-              dispatch(markAttendance([]))
+              dispatch(undoMarkAttendance(lastAttendanceIds))
                 .unwrap()
                 .then(() => {
                   toast.success("Attendance marking undone");
+                  setLastAttendanceIds([]);
                 })
                 .catch((err) => {
-                  toast.error("Failed to undo attendance marking");
+                  toast.error(err || "Failed to undo attendance marking");
                 });
-            },
+            }
           },
-          duration: 10000,
+          duration: 6000,
         });
         setAttendanceData({});
         setEmployeeFilter("");
       })
       .catch((err) => {
-        toast.error(err || "Operation failed", { duration: 10000 });
+        toast.error(err || "Operation failed", { duration: 6000 });
       })
       .finally(() => {
         setIndividualConfirmDialog({
@@ -381,13 +394,13 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               <Label htmlFor="location" className="block text-sm font-semibold text-body">
                 Location
               </Label>
-              <Select value={locationId || "none"} disabled>
-                <SelectTrigger id="location" className="bg-body text-body border-complementary h-12 text-sm">
+              <Select value={location} onValueChange={setLocation}>
+                <SelectTrigger id="location" className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm">
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body text-sm">
-                  <SelectItem value="none">No Location</SelectItem>
-                  {user?.locations?.map((loc) => (
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map((loc) => (
                     <SelectItem key={loc._id} value={loc._id} className="text-sm">
                       {loc.name}
                     </SelectItem>
@@ -404,7 +417,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   <Button
                     variant="outline"
                     className="w-full sm:w-64 justify-start text-left font-semibold bg-transparent text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
-                    disabled={!locationId}
+                    disabled={location === "all" || locationsLoading}
                     aria-label="Select date for marking attendance"
                   >
                     <CalendarIcon className="mr-2 h-5 w-5 text-complementary" />
@@ -495,7 +508,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                     onClick={() => handleBulkSubmit(true)}
                     variant="outline"
                     className="border-accent text-accent hover:bg-accent hover:text-white text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                    disabled={loading || empLoading || !locationId}
+                    disabled={loading || empLoading || locationsLoading || location === "all"}
                     aria-label="Preview bulk attendance changes"
                   >
                     <Eye className="h-4 w-4" />
@@ -504,7 +517,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   <Button
                     onClick={() => handleBulkSubmit(false)}
                     className="bg-accent text-white hover:bg-accent-hover text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                    disabled={loading || empLoading || !locationId}
+                    disabled={loading || empLoading || locationsLoading || location === "all"}
                     aria-label="Mark attendance for selected employees"
                   >
                     {loading ? (
@@ -518,180 +531,180 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   </Button>
                 </div>
               </div>
-              {empLoading ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                </div>
-              ) : filteredEmployees.length > 0 ? (
-                <div className="max-h-[400px] overflow-y-auto overflow-x-auto -webkit-overflow-scrolling-touch touch-action-pan-x border border-complementary rounded-md shadow-sm relative">
-                  <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
-                  <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
-                  <Table className="border border-complementary min-w-[600px]">
-                    <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
-                      <TableRow>
-                        <TableHead className="text-body text-sm">
-                          <Checkbox
-                            checked={bulkSelectedEmployees.length === filteredEmployees.length}
-                            onCheckedChange={handleSelectAll}
-                            disabled={!locationId}
-                            className="h-5 w-5 border-complementary"
-                            aria-label="Select all employees for bulk marking"
-                          />
-                        </TableHead>
-                        <TableHead className="text-body text-sm">Employee</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
-                        <TableHead className="text-body text-sm">Available Leaves</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredEmployees.map((emp, index) => (
-                        <TableRow
-                          key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
-                        >
-                          <TableCell className="whitespace-nowrap">
-                            <Checkbox
-                              checked={bulkSelectedEmployees.includes(emp._id.toString())}
-                              onCheckedChange={() => handleBulkSelect(emp._id.toString())}
-                              disabled={!locationId}
-                              className="h-5 w-5 border-complementary"
-                              aria-label={`Select ${emp.name} for bulk marking`}
-                            />
-                          </TableCell>
-                          <TableCell className="text-body text-sm whitespace-nowrap">
-                            {emp.name} ({emp.employeeId})
-                          </TableCell>
-                          <TableCell className="text-body whitespace-nowrap">
-                            <Select
-                              value={bulkEmployeeStatuses[emp._id.toString()] || "present"}
-                              onValueChange={(value) => handleBulkStatusChange(emp._id.toString(), value)}
-                              disabled={!bulkSelectedEmployees.includes(emp._id.toString()) || !locationId}
-                            >
-                              <SelectTrigger
-                                className="w-full sm:w-32 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
-                                aria-label={`Select status for ${emp.name}`}
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="bg-body text-body text-sm">
-                                <SelectItem value="present" className="text-sm">Present</SelectItem>
-                                <SelectItem value="absent" className="text-sm">Absent</SelectItem>
-                                <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
-                                <SelectItem
-                                  value="leave"
-                                  disabled={emp.paidLeaves.available < 1}
-                                  className="text-sm"
-                                >
-                                  Leave
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell className="text-body text-sm whitespace-nowrap">
-                            {Math.max(0, emp.paidLeaves.available)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-body text-sm">No employees found</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {empLoading ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                </div>
-              ) : filteredEmployees.length > 0 ? (
-                <div className="max-h-[400px] overflow-y-auto overflow-x-auto -webkit-overflow-scrolling-touch touch-action-pan-x border border-complementary rounded-md shadow-sm relative">
-                  <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
-                  <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
-                  <Table className="border border-complementary min-w-[600px]">
-                    <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
-                      <TableRow>
-                        <TableHead className="text-body text-sm">Employee</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
-                        <TableHead className="text-body text-sm">Available Leaves</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredEmployees.map((emp, index) => (
-                        <TableRow
-                          key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
-                        >
-                          <TableCell className="text-body text-sm whitespace-nowrap">
-                            {emp.name} ({emp.employeeId})
-                          </TableCell>
-                          <TableCell className="text-body whitespace-nowrap">
-                            <Select
-                              value={attendanceData[emp._id.toString()] || "present"}
-                              onValueChange={(value) => handleAttendanceChange(emp._id.toString(), value)}
-                              disabled={!locationId}
-                            >
-                              <SelectTrigger
-                                className="w-full sm:w-48 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
-                                aria-label={`Select status for ${emp.name}`}
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="bg-body text-body text-sm">
-                                <SelectItem value="present" className="text-sm">Present</SelectItem>
-                                <SelectItem value="absent" className="text-sm">Absent</SelectItem>
-                                <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
-                                <SelectItem
-                                  value="leave"
-                                  disabled={emp.paidLeaves.available < 1}
-                                  className="text-sm"
-                                >
-                                  Paid Leave
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell className="text-body text-sm whitespace-nowrap">
-                            {Math.max(0, emp.paidLeaves.available)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-body text-sm">No employees found</p>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => handleSubmit(true)}
-                  variant="outline"
-                  className="border-accent text-accent hover:bg-accent hover:text-white text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                  disabled={loading || empLoading || !filteredEmployees.length || !locationId}
-                  aria-label="Preview individual attendance changes"
-                >
-                  <Eye className="h-4 w-4" />
-                  Preview
-                </Button>
-                <Button
-                  onClick={() => handleSubmit(false)}
-                  className="bg-accent text-white hover:bg-accent-hover text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                  disabled={loading || empLoading || !filteredEmployees.length || !locationId}
-                  aria-label="Mark attendance for all employees individually"
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Mark Attendance
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
+              {empLoading || locationsLoading ? (
+      <div className="flex justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin text-accent" />
+      </div>
+    ) : filteredEmployees.length > 0 ? (
+      <div className="max-h-[400px] overflow-y-auto overflow-x-auto -webkit-overflow-scrolling-touch touch-action-pan-x border border-complementary rounded-md shadow-sm relative">
+        <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
+        <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
+        <Table className="border border-complementary min-w-[600px]">
+          <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
+            <TableRow>
+              <TableHead className="text-body text-sm">
+                <Checkbox
+                  checked={bulkSelectedEmployees.length === filteredEmployees.length}
+                  onCheckedChange={handleSelectAll}
+                  disabled={location === "all" || locationsLoading}
+                  className="h-5 w-5 border-complementary"
+                  aria-label="Select all employees for bulk marking"
+                />
+              </TableHead>
+              <TableHead className="text-body text-sm">Employee</TableHead>
+              <TableHead className="text-body text-sm">Status</TableHead>
+              <TableHead className="text-body text-sm">Available Leaves</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredEmployees.map((emp, index) => (
+              <TableRow
+                key={emp._id}
+                className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+              >
+                <TableCell className="whitespace-nowrap">
+                  <Checkbox
+                    checked={bulkSelectedEmployees.includes(emp._id.toString())}
+                    onCheckedChange={() => handleBulkSelect(emp._id.toString())}
+                    disabled={location === "all" || locationsLoading}
+                    className="h-5 w-5 border-complementary"
+                    aria-label={`Select ${emp.name} for bulk marking`}
+                  />
+                </TableCell>
+                <TableCell className="text-body text-sm whitespace-nowrap">
+                  {emp.name} ({emp.employeeId})
+                </TableCell>
+                <TableCell className="text-body whitespace-nowrap">
+                  <Select
+                    value={bulkEmployeeStatuses[emp._id.toString()] || "present"}
+                    onValueChange={(value) => handleBulkStatusChange(emp._id.toString(), value)}
+                    disabled={!bulkSelectedEmployees.includes(emp._id.toString()) || location === "all" || locationsLoading}
+                  >
+                    <SelectTrigger
+                      className="w-full sm:w-32 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
+                      aria-label={`Select status for ${emp.name}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-body text-body text-sm">
+                      <SelectItem value="present" className="text-sm">Present</SelectItem>
+                      <SelectItem value="absent" className="text-sm">Absent</SelectItem>
+                      <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
+                      <SelectItem
+                        value="leave"
+                        disabled={emp.paidLeaves.available < 1}
+                        className="text-sm"
+                      >
+                        Leave
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="text-body text-sm whitespace-nowrap">
+                  {Math.max(0, emp.paidLeaves.available)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    ) : (
+      <p className="text-body text-sm">No employees found</p>
+    )}
+  </div>
+) : (
+  <div className="space-y-4">
+    {empLoading || locationsLoading ? (
+      <div className="flex justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin text-accent" />
+      </div>
+    ) : filteredEmployees.length > 0 ? (
+      <div className="max-h-[400px] overflow-y-auto overflow-x-auto -webkit-overflow-scrolling-touch touch-action-pan-x border border-complementary rounded-md shadow-sm relative">
+        <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
+        <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
+        <Table className="border border-complementary min-w-[600px]">
+          <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
+            <TableRow>
+              <TableHead className="text-body text-sm">Employee</TableHead>
+              <TableHead className="text-body text-sm">Status</TableHead>
+              <TableHead className="text-body text-sm">Available Leaves</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredEmployees.map((emp, index) => (
+              <TableRow
+                key={emp._id}
+                className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+              >
+                <TableCell className="text-body text-sm whitespace-nowrap">
+                  {emp.name} ({emp.employeeId})
+                </TableCell>
+                <TableCell className="text-body whitespace-nowrap">
+                  <Select
+                    value={attendanceData[emp._id.toString()] || "present"}
+                    onValueChange={(value) => handleAttendanceChange(emp._id.toString(), value)}
+                    disabled={location === "all" || locationsLoading}
+                  >
+                    <SelectTrigger
+                      className="w-full sm:w-48 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
+                      aria-label={`Select status for ${emp.name}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-body text-body text-sm">
+                      <SelectItem value="present" className="text-sm">Present</SelectItem>
+                      <SelectItem value="absent" className="text-sm">Absent</SelectItem>
+                      <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
+                      <SelectItem
+                        value="leave"
+                        disabled={emp.paidLeaves.available < 1}
+                        className="text-sm"
+                      >
+                        Paid Leave
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="text-body text-sm whitespace-nowrap">
+                  {Math.max(0, emp.paidLeaves.available)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    ) : (
+      <p className="text-body text-sm">No employees found</p>
+    )}
+    <div className="flex gap-2">
+      <Button
+        onClick={() => handleSubmit(true)}
+        variant="outline"
+        className="border-accent text-accent hover:bg-accent hover:text-white text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
+        disabled={loading || empLoading || locationsLoading || !filteredEmployees.length || location === "all"}
+        aria-label="Preview individual attendance changes"
+      >
+        <Eye className="h-4 w-4" />
+        Preview
+      </Button>
+      <Button
+        onClick={() => handleSubmit(false)}
+        className="bg-accent text-white hover:bg-accent-hover text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
+        disabled={loading || empLoading || locationsLoading || !filteredEmployees.length || location === "all"}
+        aria-label="Mark attendance for all employees individually"
+      >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <>
+            <CheckCircle2 className="h-4 w-4" />
+            Mark Attendance
+          </>
+        )}
+      </Button>
+    </div>
+  </div>
+)}
         </CardContent>
       </Card>
 
@@ -708,7 +721,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
           })
         }
       >
-        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg max-h-[80vh] w-full overflow-hidden flex flex-col rounded-lg animate-scale-in">
+        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg max-h-[80vh] h-full overflow-hidden flex flex-col rounded-lg animate-scale-in">
           <DialogHeader className="shrink-0 px-6 pt-6">
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               {bulkConfirmDialog.preview ? (
@@ -730,8 +743,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   : `Review the attendance: all ${bulkConfirmDialog.remaining.length} employee(s) will be marked as Present.`
                 : bulkConfirmDialog.records.length > 0
                 ? `Are you sure you want to mark attendance for ${bulkConfirmDialog.records.length} employee(s) with the selected statuses and ${bulkConfirmDialog.remaining.length} employee(s) as Present?`
-                : `Are you sure you want to mark all ${bulkConfirmDialog.remaining.length} employee(s) as Present?`
-              }
+                : `Are you sure you want to mark all ${bulkConfirmDialog.remaining.length} employee(s) as Present?`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
@@ -859,7 +871,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
           })
         }
       >
-        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg max-h-[80vh] w-full overflow-auto flex flex-col rounded-lg animate-scale-in">
+        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg max-h-[80vh] h-full overflow-auto flex flex-col rounded-lg animate-scale-in">
           <DialogHeader className="shrink-0 px-6 pt-6">
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               {individualConfirmDialog.preview ? (
@@ -877,8 +889,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
             <DialogDescription className="text-sm mt-2">
               {individualConfirmDialog.preview
                 ? `Review the attendance changes for ${individualConfirmDialog.records.length} employee(s).`
-                : `Are you sure you want to mark attendance for ${individualConfirmDialog.records.length} employee(s) with the selected statuses?`
-              }
+                : `Are you sure you want to mark attendance for ${individualConfirmDialog.records.length} employee(s) with the selected statuses?`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -936,10 +947,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
             </Button>
             {!individualConfirmDialog.preview && (
               <Button
+                type="button"
                 onClick={confirmIndividualSubmit}
                 className="bg-accent text-white hover:bg-accent-hover text-sm py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                 disabled={loading}
-                aria-label="Confirm individual attendance marking"
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Confirm"}
               </Button>
