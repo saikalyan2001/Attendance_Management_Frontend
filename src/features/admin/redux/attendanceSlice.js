@@ -44,10 +44,11 @@ export const fetchMonthlyAttendance = createAsyncThunk(
 
 export const markAttendance = createAsyncThunk(
   "attendance/markAttendance",
-  async (attendanceRecords, { rejectWithValue }) => {
+  async ({ attendance, overwrite = false }, { rejectWithValue }) => {
     try {
       const response = await api.post("/admin/attendance", {
-        attendance: attendanceRecords,
+        attendance,
+        overwrite,
       });
       return response.data;
     } catch (error) {
@@ -56,7 +57,7 @@ export const markAttendance = createAsyncThunk(
         error.response?.data || error.message
       );
       return rejectWithValue(
-        error.response?.data?.message || "Failed to mark attendance"
+        error.response?.data || { message: "Failed to mark attendance" }
       );
     }
   }
@@ -64,10 +65,11 @@ export const markAttendance = createAsyncThunk(
 
 export const bulkMarkAttendance = createAsyncThunk(
   "attendance/bulkMarkAttendance",
-  async (attendanceRecords, { rejectWithValue }) => {
+  async ({ attendance, overwrite = false }, { rejectWithValue }) => {
     try {
       const response = await api.post("/admin/attendance/bulk", {
-        attendance: attendanceRecords,
+        attendance,
+        overwrite,
       });
       return response.data;
     } catch (error) {
@@ -76,11 +78,12 @@ export const bulkMarkAttendance = createAsyncThunk(
         error.response?.data || error.message
       );
       return rejectWithValue(
-        error.response?.data?.message || "Failed to mark attendance in bulk"
+        error.response?.data || { message: "Failed to mark attendance in bulk" }
       );
     }
   }
 );
+
 
 export const editAttendance = createAsyncThunk(
   "attendance/editAttendance",

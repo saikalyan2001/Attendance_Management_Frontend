@@ -316,20 +316,20 @@ const SalaryTable = ({
                         {sortConfig.salary?.key === 'grossSalary' &&
                           (sortConfig.salary.direction === 'asc' ? <ChevronUp className="inline ml-1 h-4 w-4" /> : <ChevronDown className="inline ml-1 h-4 w-4" />)}
                       </TableHead>
+                          <TableHead
+                        className="text-body font-semibold cursor-pointer sticky top-0"
+                        onClick={() => handleSort('advance')}
+                      >
+                        Advance
+                        {sortConfig.salary?.key === 'advance' &&
+                          (sortConfig.salary.direction === 'asc' ? <ChevronUp className="inline ml-1 h-4 w-4" /> : <ChevronDown className="inline ml-1 h-4 w-4" />)}
+                      </TableHead>
                       <TableHead
                         className="text-body font-semibold cursor-pointer sticky top-0"
                         onClick={() => handleSort('netSalary')}
                       >
                         Net Salary
                         {sortConfig.salary?.key === 'netSalary' &&
-                          (sortConfig.salary.direction === 'asc' ? <ChevronUp className="inline ml-1 h-4 w-4" /> : <ChevronDown className="inline ml-1 h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead
-                        className="text-body font-semibold cursor-pointer sticky top-0"
-                        onClick={() => handleSort('advance')}
-                      >
-                        Advance
-                        {sortConfig.salary?.key === 'advance' &&
                           (sortConfig.salary.direction === 'asc' ? <ChevronUp className="inline ml-1 h-4 w-4" /> : <ChevronDown className="inline ml-1 h-4 w-4" />)}
                       </TableHead>
                       <TableHead
@@ -357,8 +357,8 @@ const SalaryTable = ({
                           <TableCell className="text-body">{emp.unrecordedDays}</TableCell>
                           <TableCell className="text-body">{emp.leaveDays}</TableCell>
                           <TableCell className="text-body">₹{rowTotal.grossSalary.toFixed(2)}</TableCell>
-                          <TableCell className="text-body">₹{rowTotal.netSalary.toFixed(2)}</TableCell>
                           <TableCell className="text-body">₹{rowTotal.advance.toFixed(2)}</TableCell>
+                                                    <TableCell className="text-body">₹{rowTotal.netSalary.toFixed(2)}</TableCell>
                           <TableCell className="text-body">₹{rowTotal.totalSalary.toFixed(2)}</TableCell>
                         </TableRow>
                       );
@@ -372,8 +372,9 @@ const SalaryTable = ({
                       <TableCell className="text-body"></TableCell>
                       <TableCell className="text-body"></TableCell>
                       <TableCell className="text-body">₹{totals.grossSalary.toFixed(2)}</TableCell>
-                      <TableCell className="text-body">₹{totals.netSalary.toFixed(2)}</TableCell>
                       <TableCell className="text-body">₹{totals.advance.toFixed(2)}</TableCell>
+                      <TableCell className="text-body">₹{totals.netSalary.toFixed(2)}</TableCell>
+                      
                       <TableCell className="text-body">₹{totals.totalSalary.toFixed(2)}</TableCell>
                     </TableRow>
                   </TableBody>
@@ -396,8 +397,8 @@ const SalaryTable = ({
                         <p className="text-sm">Unrecorded Days: {emp.unrecordedDays}</p>
                         <p className="text-sm">Leave Days: {emp.leaveDays}</p>
                         <p className="text-sm">Gross Salary: ₹{rowTotal.grossSalary.toFixed(2)}</p>
-                        <p className="text-sm">Net Salary: ₹{rowTotal.netSalary.toFixed(2)}</p>
                         <p className="text-sm">Advance: ₹{rowTotal.advance.toFixed(2)}</p>
+                        <p className="text-sm">Net Salary: ₹{rowTotal.netSalary.toFixed(2)}</p>
                         <p className="text-sm font-semibold">Total Salary: ₹{rowTotal.totalSalary.toFixed(2)}</p>
                       </CardContent>
                     </Card>
@@ -407,8 +408,8 @@ const SalaryTable = ({
                   <CardContent className="p-4">
                     <p className="font-semibold">Totals</p>
                     <p className="text-sm">Total Gross Salary: ₹{totals.grossSalary.toFixed(2)}</p>
-                    <p className="text-sm">Total Net Salary: ₹{totals.netSalary.toFixed(2)}</p>
                     <p className="text-sm">Total Advance: ₹{totals.advance.toFixed(2)}</p>
+                    <p className="text-sm">Total Net Salary: ₹{totals.netSalary.toFixed(2)}</p>                
                     <p className="text-sm font-semibold">Total Salary: ₹{totals.totalSalary.toFixed(2)}</p>
                   </CardContent>
                 </Card>

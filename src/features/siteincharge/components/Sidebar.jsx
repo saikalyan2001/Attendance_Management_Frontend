@@ -46,7 +46,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobile, setMobileMenuOpen, isO
           { to: '/siteincharge/attendance', icon: Calendar, label: 'Attendance' },
           { to: '/siteincharge/register-employee', icon: Users, label: 'Register Employee' },
           { to: '/siteincharge/employees', icon: Users, label: 'Employees' },
-          { to: '/siteincharge/reports', icon: BarChart2, label: 'Reports' },
+          // { to: '/siteincharge/reports', icon: BarChart2, label: 'Reports' },
           { to: '/siteincharge/profile', icon: User, label: 'Profile' },
         ].map((item) => (
           <NavLink

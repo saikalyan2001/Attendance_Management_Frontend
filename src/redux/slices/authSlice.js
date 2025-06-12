@@ -60,12 +60,16 @@ const authSlice = createSlice({
   initialState: {
     user: null,
     loading: false,
+    isLoading: true, // Add isLoading for initial fetch
     error: null,
-    locations: [], // Kept for potential other uses
+    locations: [],
   },
   reducers: {
     resetError: (state) => {
       state.error = null;
+    },
+    setLoading: (state) => {
+      state.isLoading = true;
     },
   },
   extraReducers: (builder) => {
@@ -76,10 +80,12 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.user = action.payload;
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.error = action.payload;
       })
       .addCase(signup.pending, (state) => {
@@ -88,10 +94,12 @@ const authSlice = createSlice({
       })
       .addCase(signup.fulfilled, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.user = action.payload;
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.error = action.payload;
       })
       .addCase(logout.pending, (state) => {
@@ -100,10 +108,12 @@ const authSlice = createSlice({
       })
       .addCase(logout.fulfilled, (state) => {
         state.loading = false;
+        state.isLoading = false;
         state.user = null;
       })
       .addCase(logout.rejected, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.error = action.payload;
       })
       .addCase(fetchMe.pending, (state) => {
@@ -112,15 +122,17 @@ const authSlice = createSlice({
       })
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.user = action.payload;
       })
       .addCase(fetchMe.rejected, (state, action) => {
         state.loading = false;
+        state.isLoading = false;
         state.user = null;
         state.error = action.payload;
       });
   },
 });
 
-export const { resetError } = authSlice.actions;
+export const { resetError, setLoading } = authSlice.actions;
 export default authSlice.reducer;

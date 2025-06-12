@@ -15,7 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { exportToCSV } from '../../../utils/csvUtils';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
@@ -60,18 +61,28 @@ const Dashboard = () => {
       .catch((err) => toast.error(err));
   };
 
-  const handleExportCSV = () => {
+  const handleExportPDF = () => {
     if (!dashboardData?.recentAttendance?.length) {
       toast.error('No recent attendance data to export');
       return;
     }
-    const csvData = dashboardData.recentAttendance.map((record) => ({
-      Employee: `${record.employee?.name} (${record.employee?.employeeId})`,
-      Location: record.location?.name || 'N/A',
-      Date: format(new Date(record.date), 'PPP'),
-      Status: record.status.charAt(0).toUpperCase() + record.status.slice(1),
-    }));
-    exportToCSV(csvData, `recent_attendance_${format(selectedDate, 'yyyy-MM-dd')}.csv`);
+    const doc = new jsPDF();
+    doc.text('Recent Attendance', 14, 20);
+    doc.text(`Date: ${format(selectedDate, 'MMMM dd, yyyy')}`, 14, 30);
+    autoTable(doc, {
+      startY: 40,
+      head: [['Employee', 'Location', 'Date', 'Status']],
+      body: dashboardData.recentAttendance.map((record) => [
+        `${record.employee?.name || 'Unknown'} (${record.employee?.employeeId || 'N/A'})`,
+        record.location?.name || 'N/A',
+        format(new Date(record.date), 'MM/dd/yyyy'),
+        record.status.charAt(0).toUpperCase() + record.status.slice(1),
+      ]),
+      theme: 'striped',
+      styles: { fontSize: 10, cellPadding: 2 },
+      headStyles: { fillColor: [59, 130, 246] },
+    });
+    doc.save(`recent-attendance-${format(selectedDate, 'yyyy-MM-dd')}.pdf`);
   };
 
   if (loading && !dashboardData) {
@@ -89,7 +100,7 @@ const Dashboard = () => {
   return (
     <Layout title={`Welcome, ${user?.name || 'Admin'}`}>
       {error && (
-        <Alert variant="destructive" className="mb-6 border-error text-error animate-fade-in">
+        <Alert className="mb-6 border-error bg-error text-error animate-fade-in">
           <AlertDescription className="flex justify-between items-center">
             <span>{error}</span>
             <Button
@@ -134,21 +145,21 @@ const Dashboard = () => {
                 disabled={{ after: new Date() }}
                 className="rounded-md p-4"
                 calendarClassName="text-lg"
-                dayClassName="h-10 w-10 rounded-full hover:bg-accent/20"
+                dayClassName="h-10 w-10 rounded-full hover:bg-accent-light"
                 styles={{
                   head_row: {
                     display: 'flex',
                     justifyContent: 'space-between',
                     padding: '8px 0',
-                    backgroundColor: 'var(--complementary)',
-                    borderBottom: '1px solid var(--accent)',
+                    backgroundColor: 'var(--color-complementary)',
+                    borderBottom: '1px solid var(--color-accent)',
                   },
                   head_cell: {
                     flex: '1',
                     textAlign: 'center',
                     fontSize: '14px',
                     fontWeight: '500',
-                    color: 'var(--body)',
+                    color: 'var(--color-body)',
                   },
                   cell: {
                     flex: 1,
@@ -181,7 +192,7 @@ const Dashboard = () => {
           </Card>
           <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex items-center space-x-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
+              <CheckCircle className="h-5 w-5 text-green" />
               <CardTitle className="text-sm sm:text-base">Present Today</CardTitle>
             </CardHeader>
             <CardContent>
@@ -190,7 +201,7 @@ const Dashboard = () => {
           </Card>
           <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex items-center space-x-2">
-              <XCircle className="h-5 w-5 text-red-500" />
+              <XCircle className="h-5 w-5 text-error" />
               <CardTitle className="text-sm sm:text-base">Absent Today</CardTitle>
             </CardHeader>
             <CardContent>
@@ -199,7 +210,7 @@ const Dashboard = () => {
           </Card>
           <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex items-center space-x-2">
-              <Sun className="h-5 w-5 text-yellow-500" />
+              <Sun className="h-5 w-5 text-yellow" />
               <CardTitle className="text-sm sm:text-base">On Leave Today</CardTitle>
             </CardHeader>
             <CardContent>
@@ -208,7 +219,7 @@ const Dashboard = () => {
           </Card>
           <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex items-center space-x-2">
-              <Clock className="h-5 w-5 text-blue-500" />
+              <Clock className="h-5 w-5 text-accent" />
               <CardTitle className="text-sm sm:text-base">Half-Day Today</CardTitle>
             </CardHeader>
             <CardContent>
@@ -221,18 +232,18 @@ const Dashboard = () => {
           <CardHeader className="flex justify-between items-center">
             <CardTitle className="text-base sm:text-lg md:text-xl">Recent Attendance</CardTitle>
             <Button
-              onClick={handleExportCSV}
+              onClick={handleExportPDF}
               className="bg-accent text-body hover:bg-accent-hover"
               disabled={!recentAttendance?.length}
             >
-              <Download className="h-4 w-4 mr-2" /> Export CSV
+              <Download className="h-4 w-4 mr-2" /> Export PDF
             </Button>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <Table className="min-w-[600px]">
                 <TableHeader>
-                  <TableRow className="bg-gray-100 dark:bg-gray-800">
+                  <TableRow className="bg-complementary-light">
                     <TableHead className="text-body font-semibold text-sm sm:text-base">Employee</TableHead>
                     <TableHead className="text-body font-semibold text-sm sm:text-base">Location</TableHead>
                     <TableHead className="text-body font-semibold text-sm sm:text-base">Date</TableHead>
@@ -244,7 +255,7 @@ const Dashboard = () => {
                     recentAttendance.map((record, index) => (
                       <TableRow
                         key={record._id}
-                        className={index % 2 === 0 ? 'bg-complementary' : 'bg-gray-50 dark:bg-gray-900'}
+                        className={index % 2 === 0 ? 'bg-complementary' : 'bg-complementary-light'}
                       >
                         <TableCell className="text-body text-sm sm:text-base">
                           {record.employee?.name} ({record.employee?.employeeId})
@@ -255,16 +266,15 @@ const Dashboard = () => {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={
+                            className={
                               record.status === 'present'
-                                ? 'success'
+                                ? 'bg-green text-body'
                                 : record.status === 'absent'
-                                ? 'destructive'
+                                ? 'bg-error text-body'
                                 : record.status === 'leave'
-                                ? 'warning'
-                                : 'secondary'
+                                ? 'bg-yellow text-body'
+                                : 'bg-accent text-body'
                             }
-                            className="text-xs sm:text-sm px-2 py-1"
                           >
                             {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
                           </Badge>

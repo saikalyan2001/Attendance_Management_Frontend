@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { login } from '../../redux/slices/authSlice';
 import LoginForm from './LoginForm';
 import { ThemeToggle } from '../common/ThemeToggle';
@@ -62,6 +62,12 @@ const Login = () => {
             error={error}
             role={role}
           />
+              <p className="mt-4 text-center text-body">
+            Don't have an account?{' '}
+            <Link to="/signup" className="text-accent hover:underline">
+              Sing up
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>
@@ -69,3 +75,6 @@ const Login = () => {
 };
 
 export default Login;
+
+
+

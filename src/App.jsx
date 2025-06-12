@@ -1,5 +1,8 @@
+
+
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { useState, useEffect } from 'react'; // Add useState, useEffect
 import Login from './components/auth/Login';
 import Signup from './components/auth/Signup';
 import Dashboard from './features/siteincharge/pages/Dashboard';
@@ -20,11 +23,27 @@ import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
 import AdminEmployeeProfile from './features/admin/pages/EmployeeProfile';
 import EmployeeHistory from './features/admin/pages/EmployeeHistory';
 import SiteInchargeEmployeeHistory from './features/siteincharge/pages/SiteInchargeEmployeeHistory';
+import LoadingSpinner from './components/common/LoadingSpinner';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user } = useSelector((state) => state.auth);
-  if (!user) return <Navigate to="/login" replace />;
-  if (!allowedRoles.includes(user.role)) return <Navigate to="/login" replace />;
+  const { user, isLoading } = useSelector((state) => state.auth);
+  const [isDelayLoading, setIsDelayLoading] = useState(true); // Add delay state
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsDelayLoading(false);
+    }, 1000); // 2-second delay
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading || isDelayLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user || !allowedRoles.includes(user.role)) {
+    return <Navigate to="/login" state={{ from: window.location.pathname }} replace />;
+  }
+
   return children;
 };
 
@@ -33,8 +52,6 @@ const App = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-
-      {/* Site Incharge Routes */}
       <Route
         path="/siteincharge/dashboard"
         element={
@@ -99,8 +116,6 @@ const App = () => {
           </ProtectedRoute>
         }
       />
-
-      {/* Admin Routes */}
       <Route
         path="/admin/locations"
         element={
@@ -181,11 +196,13 @@ const App = () => {
           </ProtectedRoute>
         }
       />
-
-      {/* Default Route */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 };
 
 export default App;
+
+
+
+

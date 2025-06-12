@@ -1,48 +1,50 @@
-import { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { fetchLocations } from "../redux/locationsSlice";
-import { fetchEmployees, reset as resetEmployees } from "../redux/employeeSlice";
-import Layout from "../../../components/layout/Layout";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
-import MarkAttendance from "./MarkAttendance";
-import MonthlyAttendance from "./MonthlyAttendance";
-import ViewAttendance from "./ViewAttendance";
-import AttendanceRequests from "./AttendanceRequests";
+import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchLocations } from '../redux/locationsSlice';
+import { fetchEmployees, reset as resetEmployees } from '../redux/employeeSlice';
+import Layout from '../../../components/layout/Layout';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
+import MarkAttendance from './MarkAttendance';
+import MonthlyAttendance from './MonthlyAttendance';
+import ViewAttendance from './ViewAttendance';
+import AttendanceRequests from './AttendanceRequests';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
 
 const Attendance = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { locations, loading: locationsLoading, error: locationsError } =
-    useSelector((state) => state.adminLocations);
-  const { employees, loading: employeesLoading, error: employeesError } =
-    useSelector((state) => state.adminEmployees);
-  const { user } = useSelector((state) => state.auth);
+  const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
+  const { employees, loading: employeesLoading, error: employeesError } = useSelector((state) => state.adminEmployees);
+  const { user, isLoading } = useSelector((state) => state.auth);
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [location, setLocation] = useState("all");
+  const [location, setLocation] = useState('all');
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [activeTab, setActiveTab] = useState("mark");
+  const [activeTab, setActiveTab] = useState('mark');
+  const [isDelayLoading, setIsDelayLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || user.role !== "admin") navigate("/login");
+    const timer = setTimeout(() => {
+      setIsDelayLoading(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     dispatch(fetchLocations());
-  }, [dispatch, user, navigate]);
+    dispatch(fetchEmployees());
+  }, [dispatch]);
 
   useEffect(() => {
     if (locationsError || employeesError) {
-      toast.error(locationsError || employeesError || "Failed to load data", {
-        action: {
-          label: "Retry",
-          onClick: () => {
-            dispatch(fetchLocations());
-          },
-        },
+      toast.error(locationsError || employeesError || 'Failed to load data', {
+        duration: 5000,
       });
-      dispatch({ type: "adminLocations/reset" });
+      dispatch({ type: 'adminLocations/reset' });
       dispatch(resetEmployees());
     }
   }, [locationsError, employeesError, dispatch]);
@@ -51,15 +53,18 @@ const Attendance = () => {
     setActiveTab(e.target.value);
   };
 
+  // if (isLoading || isDelayLoading) {
+  //   return <LoadingSpinner />;
+  // }
+
   return (
     <Layout title="Attendance">
       {(locationsError || employeesError) && (
-        <Alert variant="destructive" className="mb-6 border-error text-error w-full max-w-full">
+        <Alert className="mb-6 border-error bg-error text-error w-full max-w-full">
           <AlertDescription>{locationsError || employeesError}</AlertDescription>
         </Alert>
       )}
       <div className="w-full max-w-full overflow-x-hidden">
-        {/* Mobile Dropdown (hidden on sm and above) */}
         <div className="sm:hidden mb-4">
           <select
             value={activeTab}
@@ -72,7 +77,6 @@ const Attendance = () => {
             <option value="requests">Attendance Requests</option>
           </select>
         </div>
-        {/* Tabs for larger screens (hidden on mobile) */}
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -126,9 +130,8 @@ const Attendance = () => {
             <AttendanceRequests locationId={location} />
           </TabsContent>
         </Tabs>
-        {/* Mobile Content (visible on mobile, controlled by dropdown) */}
         <div className="sm:hidden">
-          {activeTab === "mark" && (
+          {activeTab === 'mark' && (
             <MarkAttendance
               month={month}
               year={year}
@@ -140,9 +143,9 @@ const Attendance = () => {
               setYear={setYear}
             />
           )}
-          {activeTab === "monthly" && <MonthlyAttendance />}
-          {activeTab === "overview" && <ViewAttendance />}
-          {activeTab === "requests" && <AttendanceRequests locationId={location} />}
+          {activeTab === 'monthly' && <MonthlyAttendance />}
+          {activeTab === 'overview' && <ViewAttendance />}
+          {activeTab === 'requests' && <AttendanceRequests locationId={location} />}
         </div>
       </div>
     </Layout>

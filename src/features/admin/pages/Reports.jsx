@@ -21,7 +21,7 @@ const Reports = () => {
 
   console.log("salaryReport", salaryReport);
 
-  const [month, setMonth] = useState('5'); // May 2025
+  const [month, setMonth] = useState('6'); // May 2025
   const [year, setYear] = useState('2025');
   const [location, setLocation] = useState('all');
   const [currentPage, setCurrentPage] = useState({ attendance: 1, leave: 1, salary: 1 });

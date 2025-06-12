@@ -173,10 +173,9 @@ const Employees = () => {
   }, [totalPages, currentPage]);
 
   useEffect(() => {
-    if (user?.role !== "admin") navigate("/login");
     dispatch(fetchLocations());
     dispatch(fetchSettings());
-  }, [dispatch, user, navigate]);
+  }, [dispatch]);
 
   useEffect(() => {
     dispatch(

@@ -49,6 +49,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobile, setMobileMenuOpen, isO
           { to: '/admin/register-employee', icon: UserPlus, label: 'Register Employee' },
           { to: '/admin/profile', icon: User, label: 'Profile' },
           { to: '/admin/settings', icon: User, label: 'Settings' },
+          { to: '/admin/create-siteincharge', icon: User, label: 'create-siteincharge' },
         ].map((item) => (
           <NavLink
             key={item.to}
