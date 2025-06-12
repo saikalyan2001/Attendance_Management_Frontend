@@ -97,6 +97,9 @@ const Employees = () => {
   const locationId = user?.locations?.[0]?._id;
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
+    console.log("HIGHLIGHT_DURATION", HIGHLIGHT_DURATION);
+
+
   const departments = useMemo(() => {
     return [...new Set(employees.map((emp) => emp.department))].sort();
   }, [employees]);

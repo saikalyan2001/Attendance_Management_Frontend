@@ -18,19 +18,19 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
-  paidLeavesPerMonth: z
+  paidLeavesPerYear: z
     .number()
     .int()
-    .min(1, 'Paid leaves must be at least 1')
-    .max(30, 'Paid leaves cannot exceed 30'),
+    .min(12, 'Paid leaves per year must be at least 12')
+    .max(360, 'Paid leaves per year cannot exceed 360'),
   halfDayDeduction: z
     .number()
     .min(0, 'Half-day deduction must be at least 0')
     .max(1, 'Half-day deduction cannot exceed 1'),
   highlightDuration: z
     .number()
-    .min(1, 'Highlight duration must be at least 1 minute') // Changed minimum to 1 minute
-    .max(10080, 'Highlight duration cannot exceed 10,080 minutes (7 days)'), // 7 days in minutes
+    .min(1, 'Highlight duration must be at least 1 minute')
+    .max(10080, 'Highlight duration cannot exceed 10,080 minutes (7 days)'),
 });
 
 const Settings = () => {
@@ -44,7 +44,7 @@ const Settings = () => {
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      paidLeavesPerMonth: 2,
+      paidLeavesPerYear: 24, // Default to 24 leaves per year (2 per month)
       halfDayDeduction: 0.5,
       highlightDuration: 1440, // Default to 24 hours (1440 minutes)
     },
@@ -60,7 +60,7 @@ const Settings = () => {
   useEffect(() => {
     if (settings) {
       form.reset({
-        paidLeavesPerMonth: settings.paidLeavesPerMonth,
+        paidLeavesPerYear: settings.paidLeavesPerYear || 24, // Use paidLeavesPerYear from settings
         halfDayDeduction: settings.halfDayDeduction,
         highlightDuration: settings.highlightDuration / (60 * 1000), // Convert milliseconds to minutes
       });
@@ -93,7 +93,7 @@ const Settings = () => {
   const onSubmit = (data) => {
     // Convert highlightDuration from minutes to milliseconds before sending to backend
     const submissionData = {
-      paidLeavesPerMonth: data.paidLeavesPerMonth,
+      paidLeavesPerYear: data.paidLeavesPerYear,
       halfDayDeduction: data.halfDayDeduction,
       highlightDuration: data.highlightDuration * 60 * 1000, // Convert minutes to milliseconds
     };
@@ -181,10 +181,10 @@ const Settings = () => {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
                   control={form.control}
-                  name="paidLeavesPerMonth"
+                  name="paidLeavesPerYear"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">Paid Leaves Per Month</FormLabel>
+                      <FormLabel className="text-sm sm:text-base">Paid Leaves Per Year</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -193,6 +193,9 @@ const Settings = () => {
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
                         />
                       </FormControl>
+                      <p className="text-sm text-body/60 mt-1">
+                        Employees receive {field.value / 12} leaves per month. For mid-year joiners (e.g., March), leaves are prorated based on remaining months.
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -255,7 +258,7 @@ const Settings = () => {
           <CardContent>
             <div className="space-y-4">
               <p className="text-sm text-body">
-                Update the available paid leaves for all employees based on the current "Paid Leaves Per Month" setting. Excess leaves will be carried forward.
+                Update the available paid leaves for all employees based on the current "Paid Leaves Per Year" setting. Leaves are prorated for mid-year joiners based on their join date. Excess leaves will be carried forward.
               </p>
               <Button
                 onClick={handleUpdateLeaves}
@@ -270,12 +273,12 @@ const Settings = () => {
       </div>
 
       {/* Confirmation Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpen simulates={setIsDialogOpen}>
         <DialogContent className="bg-complementary text-body border-accent">
           <DialogHeader>
             <DialogTitle>Confirm Employee Leave Update</DialogTitle>
             <DialogDescription>
-              This action will update the available paid leaves for {employeeCount} employee{employeeCount !== 1 ? 's' : ''} based on the current "Paid Leaves Per Month" setting ({settings?.paidLeavesPerMonth || 0} leaves). Excess leaves will be carried forward. This action cannot be undone.
+              This action will update the available paid leaves for {employeeCount} employee{employeeCount !== 1 ? 's' : ''} based on the current "Paid Leaves Per Year" setting ({settings?.paidLeavesPerYear || 24} leaves, prorated for mid-year joiners). Excess leaves will be carried forward. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

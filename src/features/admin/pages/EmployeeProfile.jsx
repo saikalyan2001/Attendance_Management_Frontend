@@ -122,6 +122,9 @@ const EmployeeProfile = () => {
   const { currentEmployee, attendance, loading, error } = useSelector((state) => state.adminEmployees);
   const { settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.adminSettings);
 
+    console.log("settings", settings);
+
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -172,6 +175,27 @@ const EmployeeProfile = () => {
     control: uploadForm.control,
     name: 'documents',
   });
+
+  // Calculate total yearly paid leaves with proration
+  const totalYearlyPaidLeaves = useMemo(() => {
+    if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
+      return settings?.paidLeavesPerYear || 0; // Default to full yearly leaves if no joinDate
+    }
+
+    const joinDate = new Date(currentEmployee.joinDate);
+    const joinYear = joinDate.getFullYear();
+    const joinMonth = joinDate.getMonth(); // 0-based (0 = January, 2 = March, etc.)
+    const currentYear = new Date().getFullYear();
+
+    // If joined in the current year, prorate based on remaining months
+    if (joinYear === currentYear) {
+      const remainingMonths = 12 - joinMonth;
+      return Math.round((settings.paidLeavesPerYear * remainingMonths) / 12);
+    }
+
+    // If joined in a previous year, use full yearly leaves
+    return settings.paidLeavesPerYear;
+  }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
 
   useEffect(() => {
     if (user?.role !== 'admin') navigate('/login');
@@ -231,7 +255,7 @@ const EmployeeProfile = () => {
       return false;
     }
 
-    const currentTime = new Date("2025-06-02T11:02:00+05:30").getTime(); // Updated to current date and time
+    const currentTime = new Date("2025-06-12T11:21:00+05:30").getTime(); // Updated to current date and time
     const transferTime = transferDate.getTime();
     const timeDifference = currentTime - transferTime;
 
@@ -761,7 +785,8 @@ const EmployeeProfile = () => {
                   <div>
                     <Label className="text-body text-sm font-semibold">Paid Leaves</Label>
                     <p className="text-body text-sm">
-                      Available: {currentEmployee.paidLeaves.available}, Used: {currentEmployee.paidLeaves.used}, Carried Forward: {currentEmployee.paidLeaves.carriedForward || 0}
+                      Total Yearly: {totalYearlyPaidLeaves}, Available: {currentEmployee.paidLeaves.available}, 
+                      Used: {currentEmployee.paidLeaves.used}, Carried Forward: {currentEmployee.paidLeaves.carriedForward || 0}
                     </p>
                   </div>
                 </div>
@@ -804,38 +829,38 @@ const EmployeeProfile = () => {
           </Card>
 
           {/* Attendance History Card */}
-<Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-  <CardHeader>
-    <CardTitle className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-xl md:text-2xl font-bold">
-      <span>Attendance History</span>
-      <div className="flex flex-col gap-3 w-full sm:flex-row sm:gap-2 sm:w-auto">
-        <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
-          <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-40 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-complementary text-body">
-            {months.map((month) => (
-              <SelectItem key={month.value} value={month.value.toString()} className="text-sm">
-                {month.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
-          <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-24 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-complementary text-body">
-            {years.map((year) => (
-              <SelectItem key={year} value={year.toString()} className="text-sm">
-                {year}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </CardTitle>
-  </CardHeader>
+          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
+            <CardHeader>
+              <CardTitle className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-xl md:text-2xl font-bold">
+                <span>Attendance History</span>
+                <div className="flex flex-col gap-3 w-full sm:flex-row sm:gap-2 sm:w-auto">
+                  <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
+                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-40 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-complementary text-body">
+                      {months.map((month) => (
+                        <SelectItem key={month.value} value={month.value.toString()} className="text-sm">
+                          {month.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
+                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-24 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-complementary text-body">
+                      {years.map((year) => (
+                        <SelectItem key={year} value={year.toString()} className="text-sm">
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-4 sm:p-6">
               {loading ? (
                 <div className="space-y-4">

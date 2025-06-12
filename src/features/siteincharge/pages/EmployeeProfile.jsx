@@ -22,10 +22,10 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
 
-// File icon component (copied from Employees.jsx)
+// File icon component
 const FileIcon = () => <svg className="h-5 w-5 text-body" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
 
-// Get file icon based on extension (copied from Employees.jsx)
+// Get file icon based on extension
 const getFileIcon = (fileName) => {
   if (!fileName) return <FileIcon className="h-5 w-5 text-body" />;
   const extension = fileName.toLowerCase().split('.').pop();
@@ -41,7 +41,7 @@ const getFileIcon = (fileName) => {
   return <FileIcon className="h-5 w-5 text-body" />;
 };
 
-// Check if file is an image for preview (copied from Employees.jsx)
+// Check if file is an image for preview
 const isImageFile = (fileName) => {
   if (!fileName) return false;
   const extension = fileName.toLowerCase().split('.').pop();
@@ -55,10 +55,10 @@ const editEmployeeSchema = z.object({
   designation: z.string().min(1, 'This field is required').max(50, 'Designation must be 50 characters or less'),
   department: z.string().min(1, 'This field is required').max(50, 'Department must be 50 characters or less'),
   salary: z.string().min(1, 'This field is required').refine(val => !isNaN(Number(val)) && Number(val) > 0, {
-    message: 'Invalid salary', // Simplified message
+    message: 'Invalid salary',
   }),
   phone: z.string().optional().refine((val) => !val || (/^\d+$/.test(val) && val.length >= 10 && val.length <= 15), {
-    message: 'Invalid phone number', // Simplified message
+    message: 'Invalid phone number',
   }),
   dob: z.string().optional().refine((val) => !val || (new Date(val) <= new Date() && !isNaN(new Date(val))), { message: 'Invalid date of birth' }),
   bankDetails: z.object({
@@ -79,6 +79,20 @@ const editEmployeeSchema = z.object({
       path: ['bankDetails'],
     }
   ),
+  paidLeaves: z.object({
+    available: z.string().refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Available leaves must be a non-negative number',
+    }),
+    used: z.string().refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Used leaves must be a non-negative number',
+    }),
+    carriedForward: z.string().refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Carried forward leaves must be a non-negative number',
+    }),
+  }).refine(data => Number(data.available) >= Number(data.used), {
+    message: 'Available leaves cannot be less than used leaves',
+    path: ['paidLeaves.available'],
+  }),
 });
 
 const uploadDocumentSchema = z.object({
@@ -116,8 +130,11 @@ const EmployeeProfile = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { employee, attendance, loadingGeneral, error, successEdit } = useSelector((state) => state.siteInchargeEmployee);
-  const { settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.adminSettings);
+  const { employee, attendance, loadingGeneral, error, successEdit, settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.siteInchargeEmployee);
+
+  console.log("settings", settings);
+  console.log("employee", employee);
+  
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -156,6 +173,11 @@ const EmployeeProfile = () => {
         bankName: '',
         accountHolder: '',
       },
+      paidLeaves: {
+        available: '0',
+        used: '0',
+        carriedForward: '0',
+      },
     },
   });
 
@@ -170,6 +192,27 @@ const EmployeeProfile = () => {
     control: uploadForm.control,
     name: 'documents',
   });
+
+  // Calculate total yearly paid leaves with proration
+  const totalYearlyPaidLeaves = useMemo(() => {
+    if (!employee?.joinDate || !settings?.paidLeavesPerYear) {
+      return settings?.paidLeavesPerYear || 0; // Default to full yearly leaves if no joinDate
+    }
+
+    const joinDate = new Date(employee.joinDate);
+    const joinYear = joinDate.getFullYear();
+    const joinMonth = joinDate.getMonth(); // 0-based (0 = January)
+    const currentYear = new Date().getFullYear();
+
+    // If joined in the current year, prorate based on remaining months
+    if (joinYear === currentYear) {
+      const remainingMonths = 12 - joinMonth;
+      return Math.round((settings.paidLeavesPerYear * remainingMonths) / 12);
+    }
+
+    // If joined in a previous year, use full yearly leaves
+    return settings.paidLeavesPerYear;
+  }, [employee?.joinDate, settings?.paidLeavesPerYear]);
 
   // Fetch settings and employee data on mount
   useEffect(() => {
@@ -218,15 +261,15 @@ const EmployeeProfile = () => {
       return false;
     }
 
-    const currentTime = new Date("2025-05-31T18:23:00+05:30").getTime(); // Updated to 06:23 PM IST
+    const currentTime = new Date("2025-06-12T16:49:00+05:30").getTime(); // Updated to current date and time
     const transferTime = transferDate.getTime();
     const timeDifference = currentTime - transferTime;
 
     console.log({
       currentTime: new Date(currentTime).toISOString(),
       transferTime: new Date(transferTime).toISOString(),
-      timeDifference: timeDifference / (1000 * 60 * 60), // In hours
-      highlightDuration: HIGHLIGHT_DURATION / (1000 * 60 * 60), // In hours
+      timeDifference: timeDifference / (1000 * 60 * 60),
+      highlightDuration: HIGHLIGHT_DURATION / (1000 * 60 * 60),
       shouldHighlight: timeDifference <= HIGHLIGHT_DURATION,
     });
 
@@ -237,16 +280,13 @@ const EmployeeProfile = () => {
   useEffect(() => {
     if (!employee) return;
 
-    // Initial check
     setIsHighlighted(shouldHighlightEmployee(employee));
 
-    // Set up an interval to check the highlight state every minute
     const interval = setInterval(() => {
       const highlighted = shouldHighlightEmployee(employee);
       setIsHighlighted(highlighted);
-    }, 60 * 1000); // Check every minute
+    }, 60 * 1000);
 
-    // Cleanup interval on unmount or when employee changes
     return () => clearInterval(interval);
   }, [employee, HIGHLIGHT_DURATION]);
 
@@ -317,7 +357,6 @@ const EmployeeProfile = () => {
     currentPage * ITEMS_PER_PAGE
   );
 
-  // Filter documents based on search query
   const filteredDocuments = useMemo(() => {
     if (!employee?.documents) return [];
     if (!searchQuery) return employee.documents;
@@ -354,10 +393,15 @@ const EmployeeProfile = () => {
         email: data.email,
         designation: data.designation,
         department: data.department,
-        salary: Number(data.salary), // Convert string to number for submission
+        salary: Number(data.salary),
         phone: data.phone || undefined,
         dob: data.dob || undefined,
         bankDetails: data.bankDetails,
+        paidLeaves: {
+          available: Number(data.paidLeaves.available),
+          used: Number(data.paidLeaves.used),
+          carriedForward: Number(data.paidLeaves.carriedForward),
+        },
       };
 
       await dispatch(editEmployee({ id, data: employeeData })).unwrap();
@@ -518,7 +562,7 @@ const EmployeeProfile = () => {
       email: emp.email,
       designation: emp.designation,
       department: emp.department,
-      salary: emp.salary ? emp.salary.toString() : '', // Convert number to string for form
+      salary: emp.salary ? emp.salary.toString() : '',
       phone: emp.phone || '',
       dob: emp.dob ? new Date(emp.dob).toISOString().split('T')[0] : '',
       bankDetails: {
@@ -527,11 +571,16 @@ const EmployeeProfile = () => {
         bankName: emp.bankDetails?.bankName || '',
         accountHolder: emp.bankDetails?.accountHolder || '',
       },
+      paidLeaves: {
+        available: emp.paidLeaves.available.toString(),
+        used: emp.paidLeaves.used.toString(),
+        carriedForward: emp.paidLeaves.carriedForward.toString(),
+      },
     });
     setEditDialogOpen(true);
   };
 
-  const openUploadDialog = (emp) => {
+  const openUploadDialog = () => {
     uploadForm.reset({
       documents: [],
     });
@@ -690,7 +739,6 @@ const EmployeeProfile = () => {
         </Alert>
       )}
       <div className="max-w-4xl mx-auto p-4 sm:p-6">
-        {/* Back Button */}
         <Button
           variant="outline"
           onClick={() => navigate(-1)}
@@ -781,9 +829,16 @@ const EmployeeProfile = () => {
                     </p>
                   </div>
                   <div>
+                    <Label className="text-body text-sm font-semibold">Join Date</Label>
+                    <p className="text-body text-sm">
+                      {employee.joinDate ? format(new Date(employee.joinDate), 'MMM d, yyyy') : '-'}
+                    </p>
+                  </div>
+                  <div>
                     <Label className="text-body text-sm font-semibold">Paid Leaves</Label>
                     <p className="text-body text-sm">
-                      Available: {employee.paidLeaves.available}, Used: {employee.paidLeaves.used}
+                      Total Yearly: {totalYearlyPaidLeaves}, Available: {employee.paidLeaves.available}, 
+                      Used: {employee.paidLeaves.used}, Carried Forward: {employee.paidLeaves.carriedForward}
                     </p>
                   </div>
                 </div>
@@ -947,18 +1002,15 @@ const EmployeeProfile = () => {
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <div className="space-y-4">
-                {/* Upload Button */}
                 <Button
                   variant="outline"
-                  onClick={() => openUploadDialog(employee)}
+                  onClick={openUploadDialog}
                   className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
                   aria-label="Upload new documents"
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Upload Documents
                 </Button>
-
-                {/* Search Bar */}
                 <div className="relative">
                   <Input
                     type="text"
@@ -969,8 +1021,6 @@ const EmployeeProfile = () => {
                   />
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent" />
                 </div>
-
-                {/* Document List */}
                 {filteredDocuments.length > 0 ? (
                   <div className="overflow-x-auto">
                     <Table>
@@ -1028,488 +1078,562 @@ const EmployeeProfile = () => {
                       </TableBody>
                     </Table>
                   </div>
-                ) : (
-                  <p className="text-body text-sm">
-                    {searchQuery ? 'No documents match your search.' : 'No documents uploaded.'}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <p className="text-body text-sm">
+                {searchQuery ? 'No documents match your search.' : 'No documents uploaded.'}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
 
-        {/* Edit Employee Dialog */}
-        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="bg-complementary text-body border-accent max-w-[90vw] sm:max-w-lg max-h-[70vh] h-full overflow-hidden flex flex-col">
-            <DialogHeader className="shrink-0 px-4 sm:px-6 pt-4">
-              <DialogTitle className="text-lg">Edit Employee</DialogTitle>
-            </DialogHeader>
-            <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-2 space-y-3">
+    {/* Edit Employee Dialog */}
+    <Dialog open={editDialogOpen} onOpenChange={(open) => {
+      setEditDialogOpen(open);
+      if (!open) {
+        setFormErrors([]);
+        setServerError(null);
+        setShowErrorAlert(false);
+      }
+    }}>
+      <DialogContent className="bg-complementary text-body border-accent max-w-[90vw] sm:max-w-lg max-h-[80vh] h-full overflow-hidden flex flex-col">
+        <DialogHeader className="shrink-0 px-4 sm:px-6 pt-4">
+          <DialogTitle className="text-lg">Edit Employee</DialogTitle>
+        </DialogHeader>
+        <Form {...editForm}>
+          <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-2 space-y-3">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Name *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="e.g., Alice Johnson"
+                        className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.name || editForm.formState.errors.name?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Email *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        {...field}
+                        placeholder="e.g., alice@example.com"
+                        className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.email || editForm.formState.errors.email?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="designation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Designation *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="e.g., Analyst"
+                        className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.designation || editForm.formState.errors.designation?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Department *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="e.g., Finance"
+                        className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.department || editForm.formState.errors.department?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="salary"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Salary *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="text"
+                        {...field}
+                        placeholder="e.g., 55000"
+                        className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.salary || editForm.formState.errors.salary?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Phone</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="e.g., 1234567890"
+                        className="h-9 bg-body text-body border-complementary rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.phone || editForm.formState.errors.phone?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="dob"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-body text-sm font-medium">Date of Birth</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        {...field}
+                        className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                        disabled={loadingGeneral}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-error text-xs">
+                      {serverError?.fields?.dob || editForm.formState.errors.dob?.message}
+                    </FormMessage>
+                  </FormItem>
+                )}
+              />
+              <div className="mt-4">
+                <Label className="text-body text-sm font-semibold">Bank Details</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                   <FormField
                     control={editForm.control}
-                    name="name"
+                    name="bankDetails.accountNo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Name *</FormLabel>
+                        <FormLabel className="text-body text-sm font-medium">Account Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., 123456789012"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['bankDetails.accountNo'] || editForm.formState.errors.bankDetails?.accountNo?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="bankDetails.ifscCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">IFSC Code</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., SBIN0001234"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['bankDetails.ifscCode'] || editForm.formState.errors.bankDetails?.ifscCode?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="bankDetails.bankName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">Bank Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., State Bank of India"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['bankDetails.bankName'] || editForm.formState.errors.bankDetails?.bankName?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="bankDetails.accountHolder"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">Account Holder</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             placeholder="e.g., Alice Johnson"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
                             disabled={loadingGeneral}
                           />
                         </FormControl>
                         <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.name || editForm.formState.errors.name?.message}
+                          {serverError?.fields?.['bankDetails.accountHolder'] || editForm.formState.errors.bankDetails?.accountHolder?.message}
                         </FormMessage>
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={editForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Email *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            {...field}
-                            placeholder="e.g., alice@example.com"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.email || editForm.formState.errors.email?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="designation"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Designation *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Analyst"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.designation || editForm.formState.errors.designation?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="department"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Department *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Finance"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.department || editForm.formState.errors.department?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="salary"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Salary *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            {...field}
-                            placeholder="e.g., 55000"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.salary || editForm.formState.errors.salary?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Phone</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., 1234567890"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.phone || editForm.formState.errors.phone?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="dob"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Date of Birth</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loadingGeneral}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.dob || editForm.formState.errors.dob?.message}
-                        </FormMessage>
-                      </FormItem>
-                    )}
-                  />
-                  <div className="mt-4">
-                    <Label className="text-body text-sm font-semibold">Bank Details</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.accountNo"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Account Number</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., 123456789012"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loadingGeneral}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.['bankDetails.accountNo'] || editForm.formState.errors.bankDetails?.accountNo?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.ifscCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">IFSC Code</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., SBIN0001234"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loadingGeneral}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.['bankDetails.ifscCode'] || editForm.formState.errors.bankDetails?.ifscCode?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.bankName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Bank Name</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., State Bank of India"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loadingGeneral}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.['bankDetails.bankName'] || editForm.formState.errors.bankDetails?.bankName?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.accountHolder"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Account Holder</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., Alice Johnson"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loadingGeneral}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.['bankDetails.accountHolder'] || editForm.formState.errors.bankDetails?.accountHolder?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    {editForm.formState.errors.bankDetails && !editForm.formState.errors.bankDetails.accountNo && (
-                      <p className="text-error text-xs mt-2">{editForm.formState.errors.bankDetails.message}</p>
-                    )}
-                  </div>
                 </div>
-                <DialogFooter className="shrink-0 px-4 sm:px-6 py-4 border-t border-accent/20 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setEditDialogOpen(false)}
-                    className="border-accent text-accent hover:bg-accent-hover rounded-md text-sm py-2 px-3"
-                    disabled={loadingGeneral}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-2 px-3"
-                    disabled={loadingGeneral}
-                  >
-                    {loadingGeneral ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Upload Documents Dialog */}
-        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-          <DialogContent className="bg-complementary text-body max-h-[80vh] overflow-y-auto max-w-[90vw] sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Add Documents</DialogTitle>
-              <DialogDescription>Upload documents (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB).</DialogDescription>
-            </DialogHeader>
-            <Form {...uploadForm}>
-              <form onSubmit={uploadForm.handleSubmit(handleDocumentSubmit)} className="space-y-4 p-4">
-                {documentFields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className={cn(
-                      'mb-3 sm:mb-4 rounded-md border border-complementary/30 bg-body shadow-sm hover:shadow-md transition-shadow duration-300',
-                      removingIndices.includes(index) ? 'animate-fade-out' : 'animate-slide-in-row'
+                {editForm.formState.errors.bankDetails && !editForm.formState.errors.bankDetails.accountNo && (
+                  <p className="text-error text-xs mt-2">{editForm.formState.errors.bankDetails.message}</p>
+                )}
+              </div>
+              <div className="mt-4">
+                <Label className="text-body text-sm font-semibold">Paid Leaves</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <FormField
+                    control={editForm.control}
+                    name="paidLeaves.available"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">Available Leaves</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="text"
+                            placeholder="e.g., 12"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['paidLeaves.available'] || editForm.formState.errors.paidLeaves?.available?.message}
+                        </FormMessage>
+                      </FormItem>
                     )}
-                  >
-                    <FormField
-                      control={uploadForm.control}
-                      name={`documents.${index}.file`}
-                      render={({ field }) => (
-                        <FormItem className="p-3 sm:p-4">
-                          <div
-                            className={cn(
-                              'relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300',
-                              dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
-                              field.value ? 'bg-body' : 'bg-complementary/10',
-                              loadingGeneral && 'opacity-50 cursor-not-allowed'
-                            )}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDragLeave={() => handleDragLeave(index)}
-                            onDrop={(e) => handleDrop(e, index, field.onChange)}
-                            role="region"
-                            aria-label={`Upload document ${index + 1}`}
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                document.getElementById(`add-document-${index}`).click();
-                              }
-                            }}
-                          >
-                            <Input
-                              id={`add-document-${index}`}
-                              type="file"
-                              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-                              onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
-                              className="hidden"
-                              disabled={loadingGeneral}
-                            />
-                            {!field.value ? (
-                              <div className="flex flex-col items-center space-y-2">
-                                <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-body/60" />
-                                <p className="text-[10px] sm:text-sm xl:text-base text-body/60">
-                                  Drag & drop a file here or click to upload
-                                </p>
-                                <div className="flex gap-2">
-                                  <Button
-                                    type="button"
-                                    onClick={() => document.getElementById(`add-document-${index}`).click()}
-                                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                                    disabled={loadingGeneral}
-                                  >
-                                    Choose File
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => handleRemoveDocument(index)}
-                                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                                    disabled={loadingGeneral}
-                                    aria-label="Cancel document upload"
-                                  >
-                                    Cancel
-                                  </Button>
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="paidLeaves.used"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">Used Leaves</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="text"
+                            placeholder="e.g., 2"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['paidLeaves.used'] || editForm.formState.errors.paidLeaves?.usedMnemonic?.text-sm} 
+                          </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="paidLeaves.carriedForward"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-body text-sm font-medium">Carried Forward Leaves</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="text"
+                            placeholder="e.g., 5"
+                            className="h-9 bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                            disabled={loadingGeneral}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-error text-xs">
+                          {serverError?.fields?.['paidLeaves.carriedForward'] || editForm.formState.errors.paidLeaves?.carriedForward?.message}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="shrink-0 px-4 sm:px-6 py-4 border-t border-accent/20 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditDialogOpen(false)}
+                className="border-accent text-accent hover:bg-accent-hover rounded-md text-sm py-2 px-3"
+                disabled={loadingGeneral}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-2 px-3"
+                disabled={loadingGeneral}
+              >
+                {loadingGeneral ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
+      setUploadDialogOpen(open);
+      if (!open) {
+        setFormErrors([]);
+        setServerError(null);
+        setShowErrorModal(false);
+      }
+    }}>
+      <DialogContent className="bg-complementary text-body max-h-[80vh] overflow-y-auto max-w-[90vw] sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Add Documents</DialogTitle>
+          <DialogDescription>Upload documents (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB).</DialogDescription>
+        </DialogHeader>
+        <Form {...uploadForm}>
+          <form onSubmit={uploadForm.handleSubmit(handleDocumentSubmit)} className="space-y-4 p-4">
+            {documentFields.map((field, index) => (
+              <div
+                key={field.id}
+                className={cn(
+                  'mb-3 sm:mb-4 rounded-md border border-complementary/30 bg-body shadow-sm hover:shadow-md transition-shadow duration-300',
+                  removingIndices.includes(index) ? 'animate-fade-out' : 'animate-slide-in-row'
+                )}
+              >
+                <FormField
+                  control={uploadForm.control}
+                  name={`documents.${index}.file`}
+                  render={({ field }) => (
+                    <FormItem className="p-3 sm:p-4">
+                      <div
+                        className={cn(
+                          'relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300',
+                          dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
+                          field.value ? 'bg-body' : 'bg-complementary/10',
+                          loadingGeneral && 'opacity-50 cursor-not-allowed'
+                        )}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragLeave={() => handleDragLeave(index)}
+                        onDrop={(e) => handleDrop(e, index, field.onChange)}
+                        role="region"
+                        aria-label={`Upload document ${index + 1}`}
+                        tabIndex="0"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            document.getElementById(`add-document-${index}`).click();
+                          }
+                        }}
+                      >
+                        <Input
+                          id={`add-document-${index}`}
+                          type="file"
+                          accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                          onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
+                          className="hidden"
+                          disabled={loadingGeneral}
+                        />
+                        {!field.value ? (
+                          <div className="flex flex-col items-center space-y-2">
+                            <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-body/60" />
+                            <p className="text-[10px] sm:text-sm xl:text-base text-body/60">
+                              Drag & drop a file here or click to upload
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                onClick={() => document.getElementById(`add-document-${index}`).click()}
+                                className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
+                                disabled={loadingGeneral}
+                              >
+                                Choose File
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => handleRemoveDocument(index)}
+                                className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
+                                disabled={loadingGeneral}
+                                aria-label="Cancel document upload"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                            <p className="text-[9px] sm:text-xs xl:text-sm text-body/50">
+                              (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB)
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col space-y-2">
+                            <div className="flex items-center justify-between space-x-2">
+                              <div className="flex items-center space-x-2 truncate">
+                                {getFileIcon(field.value.name)}
+                                <div className="truncate">
+                                  <span className="text-[10px] sm:text-sm xl:text-base text-body truncate">
+                                    {field.value.name}
+                                  </span>
+                                  <span className="text-[9px] sm:text-xs xl:text-sm text-body/60 block">
+                                    {(field.value.size / 1024 / 1024).toFixed(2)} MB
+                                  </span>
                                 </div>
-                                <p className="text-[9px] sm:text-xs xl:text-sm text-body/50">
-                                  (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB)
-                                </p>
                               </div>
-                            ) : (
-                              <div className="flex flex-col space-y-2">
-                                <div className="flex items-center justify-between space-x-2">
-                                  <div className="flex items-center space-x-2 truncate">
-                                    {getFileIcon(field.value.name)}
-                                    <div className="truncate">
-                                      <span className="text-[10px] sm:text-sm xl:text-base text-body truncate">
-                                        {field.value.name}
-                                      </span>
-                                      <span className="text-[9px] sm:text-xs xl:text-sm text-body/60 block">
-                                        ({(field.value.size / 1024 / 1024).toFixed(2)} MB)
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handlePreviewDocument(field.value)}
-                                      className={cn(
-                                        "p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full",
-                                        (loadingGeneral || !previewUrls[index]) && "opacity-50 cursor-not-allowed"
-                                      )}
-                                      disabled={loadingGeneral || !isImageFile(field.value.name)}
-                                      aria-label={`Preview document ${field.value.name}`}
-                                    >
-                                      <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleRemoveDocument(index)}
-                                      className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
-                                      disabled={loadingGeneral}
-                                      aria-label={`Remove document ${field.value.name}`}
-                                    >
-                                      <Trash className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                {isImageFile(field.value.name) && previewUrls[index] && (
-                                  <div className="mt-2 flex justify-center">
-                                    <img
-                                      src={previewUrls[index]}
-                                      alt={`Preview of ${field.value.name}`}
-                                      className="h-24 w-24 object-cover rounded-md border border-complementary"
-                                    />
-                                  </div>
-                                )}
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handlePreviewDocument(field.value)}
+                                  className={cn(
+                                    'p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full',
+                                    (loadingGeneral || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
+                                  )}
+                                  disabled={loadingGeneral || !isImageFile(field.value.name)}
+                                  aria-label={`Preview document ${field.value.name}`}
+                                >
+                                  <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveDocument(index)}
+                                  className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
+                                  disabled={loadingGeneral}
+                                  aria-label={`Remove document ${field.value.name}`}
+                                >
+                                  <Trash className="h-4 w-4 sm:h-5 sm:w-5" />
+                                </Button>
+                              </div>
+                            </div>
+                            {isImageFile(field.value.name) && previewUrls[index] && (
+                              <div className="mt-2 flex justify-center">
+                                <img
+                                  src={previewUrls[index]}
+                                  alt={`Preview of ${field.value.name}`}
+                                  className="h-24 w-24 object-cover rounded-md border border-complementary"
+                                />
                               </div>
                             )}
                           </div>
-                          <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base mt-2" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  onClick={() => appendDocument({ file: null })}
-                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
-                  disabled={loadingGeneral}
-                >
-                  <Upload className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                  Add Document
-                </Button>
-                <DialogFooter className="mt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setUploadDialogOpen(false)}
-                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md"
-                    disabled={loadingGeneral}
-                    aria-label="Cancel add documents"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md"
-                    disabled={loadingGeneral}
-                    aria-label="Upload documents"
-                  >
-                    {loadingGeneral ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Upload Documents'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Document Preview Dialog */}
-        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent className="max-w-4xl bg-complementary text-body border-accent">
-            <DialogHeader>
-              <DialogTitle>Document Preview</DialogTitle>
-            </DialogHeader>
-            {previewDocument ? (
-              <div className="relative">
-                <img
-                  src={URL.createObjectURL(previewDocument)}
-                  alt={previewDocument.name}
-                  className="w-full h-48 object-contain rounded-md"
+                        )}
+                      </div>
+                      <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base mt-2" />
+                    </FormItem>
+                  )}
                 />
-                <p className="text-sm mt-1 truncate">{previewDocument.name}</p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={() => {
-                    setPreviewDocument(null);
-                    setPreviewOpen(false);
-                  }}
-                  disabled={loadingGeneral}
-                  aria-label="Close preview"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
-            ) : (
-              <p className="text-body text-sm">No document to preview</p>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
-    </Layout>
-  );
+            ))}
+            <Button
+              type="button"
+              onClick={() => appendDocument({ file: null })}
+              className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-2 px-3"
+              disabled={loadingGeneral}
+            >
+              Add Another Document
+            </Button>
+            <DialogFooter className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUploadDialogOpen(false)}
+                className="border-accent text-accent hover:bg-accent-hover rounded-md text-sm py-2 px-3"
+                disabled={loadingGeneral}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-2 px-3"
+                disabled={loadingGeneral}
+              >
+                {loadingGeneral ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Upload'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+      <DialogContent className="bg-complementary text-body max-w-[90vw] sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Document Preview</DialogTitle>
+        </DialogHeader>
+        {previewDocument && (
+          <div className="mt-4">
+            <img
+              src={URL.createObjectURL(previewDocument)}
+              alt="Document Preview"
+              className="max-w-full h-auto rounded-md"
+            />
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setPreviewOpen(false)}
+            className="border-accent text-accent hover:bg-accent-hover rounded-md"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>
+</Layout>
+);
 };
 
 export default EmployeeProfile;
+
+
+
+
