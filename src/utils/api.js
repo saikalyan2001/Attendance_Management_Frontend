@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://attendance-management-backend-wgvu.onrender.com',
+  baseURL: 'https://attendance-management-backend-wgvu.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
