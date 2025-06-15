@@ -142,8 +142,10 @@ export const fetchEmployeeAttendance = createAsyncThunk(
       const response = await api.get(`/siteincharge/attendance/employee/${employeeId}`, {
         params: { month, year },
       });
-      return response.data.attendance;
+      console.log('Fetched attendance:', response.data); // Debug log
+      return response.data.attendance || []; // Fallback to empty array
     } catch (error) {
+      console.error('Fetch attendance error:', error);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee attendance');
     }
   }

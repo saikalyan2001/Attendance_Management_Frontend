@@ -108,6 +108,8 @@ const MarkAttendance = ({
   const [isBulkMode, setIsBulkMode] = useState(true);
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [lastAttendanceIds, setLastAttendanceIds] = useState([]);
+  const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
+  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
 
   useEffect(() => {
     if (!user || user.role !== "admin") {
@@ -124,18 +126,35 @@ const MarkAttendance = ({
     }
   }, [dispatch, user, navigate, location]);
 
-  useEffect(() => {
-    if (location && location !== "all" && selectedDate) {
-      dispatch(
-        fetchAttendance({
-          month: month,
-          year: year,
-          location,
-          date: format(selectedDate, "yyyy-MM-dd"),
-        })
-      );
+useEffect(() => {
+  if (!selectedDate || !location || location === 'all') return;
+
+  const dateStr = format(selectedDate, 'yyyy-MM-dd');
+  dispatch(fetchAttendance({
+    date: dateStr,
+    location,
+  })).then((result) => {
+    if (fetchAttendance.rejected.match(result)) {
+      console.error('fetchAttendance error in MarkAttendance:', {
+        error: result.error,
+        payload: result.payload,
+        params: { date: dateStr, location },
+      });
+      toast.error(result.payload?.message || 'Failed to fetch attendance data', {
+        duration: 5000,
+        action: {
+          label: 'Retry',
+          onClick: () => dispatch(fetchAttendance({
+            date: dateStr,
+            location,
+          })),
+        },
+      });
+      // Reset attendance state on error
+      dispatch({ type: 'attendance/reset' });
     }
-  }, [dispatch, location, selectedDate, month, year]);
+  });
+}, [dispatch, selectedDate, location]);
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(
@@ -145,13 +164,17 @@ const MarkAttendance = ({
     );
   }, [employees, employeeFilter]);
 
-  const existingAttendanceRecords = useMemo(() => {
-    if (!selectedDate || !location || location === "all") return [];
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    return attendance.filter(
-      (record) => format(new Date(record.date), "yyyy-MM-dd") === dateStr
-    );
-  }, [attendance, selectedDate, location]);
+ const existingAttendanceRecords = useMemo(() => {
+  if (!selectedDate || !location || location === "all") return [];
+  if (!Array.isArray(attendance)) {
+    console.warn('attendance is not an array:', attendance);
+    return [];
+  }
+  const dateStr = format(selectedDate, "yyyy-MM-dd");
+  return attendance.filter(
+    (record) => format(new Date(record.date), "yyyy-MM-dd") === dateStr
+  );
+}, [attendance, selectedDate, location]);
 
   const handleAttendanceChange = (employeeId, status) => {
     setAttendanceData((prev) => ({
@@ -253,10 +276,9 @@ const MarkAttendance = ({
 
     if (existingAttendanceRecords.length > 0) {
       toast.error(
-        `Attendance already marked for ${existingAttendanceRecords.length} employee(s) on ${format(
-          selectedDate,
-          "PPP"
-        )}.`,
+        `Attendance already marked for ${
+          existingAttendanceRecords.length
+        } employee(s) on ${format(selectedDate, "PPP")}.`,
         {
           duration: 5000,
           style: { background: "#FEE2E2", color: "#991B1B" },
@@ -278,23 +300,25 @@ const MarkAttendance = ({
     }
   };
 
-  const confirmBulkSubmit = (overwrite = false) => {
-    const { records: selectedRecords, remaining: remainingRecords } = bulkConfirmDialog;
-    const allRecords = [...selectedRecords, ...remainingRecords];
+ const confirmBulkSubmit = (overwrite = false) => {
+  const { records: selectedRecords, remaining: remainingRecords } = bulkConfirmDialog;
+  const allRecords = [...selectedRecords, ...remainingRecords];
 
-    if (!allRecords.length) {
-      toast.error("No valid attendance records to submit.", {
-        duration: 5000,
-        style: { background: "#FEE2E2", color: "#991B1B" },
-      });
-      setBulkConfirmDialog({
-        open: false,
-        records: [],
-        remaining: [],
-        preview: false,
-      });
-      return;
-    }
+  console.log('Bulk attendance payload:', JSON.stringify({ attendance: allRecords, overwrite }, null, 2));
+
+  if (!allRecords.length) {
+    toast.error("No valid attendance records to submit.", {
+      duration: 5000,
+      style: { background: "#FEE2E2", color: "#991B1B" },
+    });
+    setBulkConfirmDialog({
+      open: false,
+      records: [],
+      remaining: [],
+      preview: false,
+    });
+    return;
+  }
 
     dispatch(bulkMarkAttendance({ attendance: allRecords, overwrite }))
       .unwrap()
@@ -351,14 +375,20 @@ const MarkAttendance = ({
         setBulkSelectedEmployees([]);
         setBulkEmployeeStatuses({});
         setEmployeeFilter("");
+        setAttendanceData({}); // Reset attendance data
+        setBulkConfirmDialog({
+          open: false,
+          records: [],
+          remaining: [],
+          preview: false,
+        });
       })
       .catch((err) => {
         if (err?.existingRecords) {
           toast.error(
-            `Attendance already marked for ${err.existingRecords.length} employee(s) on ${format(
-              selectedDate,
-              "PPP"
-            )}.`,
+            `Attendance already marked for ${
+              err.existingRecords.length
+            } employee(s) on ${format(selectedDate, "PPP")}.`,
             {
               duration: 5000,
               style: { background: "#FEE2E2", color: "#991B1B" },
@@ -372,15 +402,30 @@ const MarkAttendance = ({
           });
         } else {
           const errorMessage = err?.message || "Failed to mark attendance.";
-          let userFriendlyMessage = "An error occurred while marking attendance.";
-          if (errorMessage === "Attendance array is required and must not be empty") {
+          let userFriendlyMessage =
+            "An error occurred while marking attendance.";
+          if (
+            errorMessage ===
+            "Attendance array is required and must not be empty"
+          ) {
             userFriendlyMessage =
               "No valid attendance records to submit. Please select employees or check the filter.";
-          } else if (errorMessage.includes("already marked")) {
+          } else if (
+            errorMessage.includes("already marked") ||
+            errorMessage.includes("E11000 duplicate key")
+          ) {
             userFriendlyMessage = `Attendance already marked for some employees on ${format(
               selectedDate,
               "PPP"
-            )}.`;
+            )}. Would you like to overwrite?`;
+            setOverwriteConfirmDialog({
+              open: true,
+              records: allRecords,
+              mode: "bulk",
+              preview: bulkConfirmDialog.preview,
+            });
+          } else if (errorMessage.includes("insufficient paid leaves")) {
+            userFriendlyMessage = errorMessage;
           }
           toast.error(userFriendlyMessage, {
             duration: 5000,
@@ -438,10 +483,9 @@ const MarkAttendance = ({
 
     if (existingAttendanceRecords.length > 0) {
       toast.error(
-        `Attendance already marked for ${existingAttendanceRecords.length} employee(s) on ${format(
-          selectedDate,
-          "PPP"
-        )}.`,
+        `Attendance already marked for ${
+          existingAttendanceRecords.length
+        } employee(s) on ${format(selectedDate, "PPP")}.`,
         {
           duration: 5000,
           style: { background: "#FEE2E2", color: "#991B1B" },
@@ -485,7 +529,10 @@ const MarkAttendance = ({
         toast.custom(
           (t) => (
             <div className="bg-green text-body p-4 rounded-md shadow-md flex items-center justify-between max-w-md">
-              <span>Attendance marked successfully for {attendanceRecords.length} employee(s).</span>
+              <span>
+                Attendance marked successfully for {attendanceRecords.length}{" "}
+                employee(s).
+              </span>
               <button
                 onClick={() => {
                   dispatch(undoMarkAttendance(lastAttendanceIds))
@@ -522,10 +569,9 @@ const MarkAttendance = ({
       .catch((err) => {
         if (err?.existingRecords) {
           toast.error(
-            `Attendance already marked for ${err.existingRecords.length} employee(s) on ${format(
-              selectedDate,
-              "PPP"
-            )}.`,
+            `Attendance already marked for ${
+              err.existingRecords.length
+            } employee(s) on ${format(selectedDate, "PPP")}.`,
             {
               duration: 5000,
               style: { background: "#FEE2E2", color: "#991B1B" },
@@ -539,8 +585,12 @@ const MarkAttendance = ({
           });
         } else {
           const errorMessage = err?.message || "Failed to mark attendance.";
-          let userFriendlyMessage = "An error occurred while marking attendance.";
-          if (errorMessage === "Attendance array is required and must not be empty") {
+          let userFriendlyMessage =
+            "An error occurred while marking attendance.";
+          if (
+            errorMessage ===
+            "Attendance array is required and must not be empty"
+          ) {
             userFriendlyMessage =
               "No valid attendance records to submit. Please select employees or check status.";
           } else if (errorMessage.includes("already marked")) {
@@ -604,7 +654,10 @@ const MarkAttendance = ({
         <CardContent className="p-6 space-y-6">
           <div className="flex flex-wrap gap-4 gap-y-6">
             <div className="space-y-2 min-w-[180px] flex-1">
-              <Label htmlFor="month" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="month"
+                className="block text-sm font-semibold text-body"
+              >
                 Month
               </Label>
               <Select
@@ -634,7 +687,10 @@ const MarkAttendance = ({
               </Select>
             </div>
             <div className="space-y-2 min-w-[120px]">
-              <Label htmlFor="year" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="year"
+                className="block text-sm font-semibold text-body"
+              >
                 Year
               </Label>
               <Select
@@ -649,7 +705,11 @@ const MarkAttendance = ({
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body text-sm">
                   {[2024, 2025, 2026].map((y) => (
-                    <SelectItem key={y} value={y.toString()} className="text-sm">
+                    <SelectItem
+                      key={y}
+                      value={y.toString()}
+                      className="text-sm"
+                    >
                       {y}
                     </SelectItem>
                   ))}
@@ -673,7 +733,11 @@ const MarkAttendance = ({
                 <SelectContent className="bg-body text-body text-sm">
                   <SelectItem value="all">All Locations</SelectItem>
                   {locations.map((loc) => (
-                    <SelectItem key={loc._id} value={loc._id} className="text-sm">
+                    <SelectItem
+                      key={loc._id}
+                      value={loc._id}
+                      className="text-sm"
+                    >
                       {loc.name}
                     </SelectItem>
                   ))}
@@ -681,7 +745,10 @@ const MarkAttendance = ({
               </Select>
             </div>
             <div className="space-y-2 min-w-[200px] flex-1">
-              <Label htmlFor="date" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="date"
+                className="block text-sm font-semibold text-body"
+              >
                 Select Date
               </Label>
               <Popover>
@@ -693,7 +760,11 @@ const MarkAttendance = ({
                     aria-label="Select date for marking attendance"
                   >
                     <CalendarIcon className="mr-2 h-5 w-5 text-complementary" />
-                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                    {selectedDate ? (
+                      format(selectedDate, "PPP")
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-body text-body">
@@ -712,9 +783,10 @@ const MarkAttendance = ({
           {existingAttendanceRecords.length > 0 && (
             <div className="mb-6 border border-error bg-body text-error w-full max-w-full rounded p-2">
               <AlertDescription>
-                Attendance records already exist for {existingAttendanceRecords.length}{" "}
-                employee(s) on {format(selectedDate, "PPP")}. Would you like to
-                overwrite these records? Proceeding will overwrite these records.
+                Attendance records already exist for{" "}
+                {existingAttendanceRecords.length} employee(s) on{" "}
+                {format(selectedDate, "PPP")}. Would you like to overwrite these
+                records? Proceeding will overwrite these records.
               </AlertDescription>
             </div>
           )}
@@ -797,7 +869,12 @@ const MarkAttendance = ({
                     onClick={() => handleBulkSubmit(true)}
                     variant="outline"
                     className="border-accent text-accent hover:bg-accent hover:text-body text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                    disabled={loading || empLoading || locationsLoading || location === "all"}
+                    disabled={
+                      loading ||
+                      empLoading ||
+                      locationsLoading ||
+                      location === "all"
+                    }
                     aria-label="Preview bulk attendance changes"
                   >
                     <Eye className="h-4 w-4" />
@@ -806,7 +883,12 @@ const MarkAttendance = ({
                   <Button
                     onClick={() => handleBulkSubmit(false)}
                     className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                    disabled={loading || empLoading || locationsLoading || location === "all"}
+                    disabled={
+                      loading ||
+                      empLoading ||
+                      locationsLoading ||
+                      location === "all"
+                    }
                     aria-label="Mark attendance for selected employees"
                   >
                     {loading ? (
@@ -834,7 +916,8 @@ const MarkAttendance = ({
                         <TableHead className="text-body text-sm">
                           <Checkbox
                             checked={
-                              bulkSelectedEmployees.length === filteredEmployees.length
+                              bulkSelectedEmployees.length ===
+                              filteredEmployees.length
                             }
                             onCheckedChange={handleSelectAll}
                             disabled={location === "all" || locationsLoading}
@@ -842,8 +925,12 @@ const MarkAttendance = ({
                             aria-label="Select all employees for bulk marking"
                           />
                         </TableHead>
-                        <TableHead className="text-body text-sm">Employee</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
+                        <TableHead className="text-body text-sm">
+                          Employee
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Status
+                        </TableHead>
                         <TableHead className="text-body text-sm">
                           Available Leaves
                         </TableHead>
@@ -853,12 +940,18 @@ const MarkAttendance = ({
                       {filteredEmployees.map((emp, index) => (
                         <TableRow
                           key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+                          className={
+                            index % 2 === 0 ? "bg-body" : "bg-complementary"
+                          }
                         >
                           <TableCell className="whitespace-nowrap">
                             <Checkbox
-                              checked={bulkSelectedEmployees.includes(emp._id.toString())}
-                              onCheckedChange={() => handleBulkSelect(emp._id.toString())}
+                              checked={bulkSelectedEmployees.includes(
+                                emp._id.toString()
+                              )}
+                              onCheckedChange={() =>
+                                handleBulkSelect(emp._id.toString())
+                              }
                               disabled={location === "all" || locationsLoading}
                               className="h-5 w-5 border-complementary"
                               aria-label={`Select ${emp.name} for bulk marking`}
@@ -869,12 +962,20 @@ const MarkAttendance = ({
                           </TableCell>
                           <TableCell className="text-body whitespace-nowrap">
                             <Select
-                              value={bulkEmployeeStatuses[emp._id.toString()] || "present"}
+                              value={
+                                bulkEmployeeStatuses[emp._id.toString()] ||
+                                "present"
+                              }
                               onValueChange={(value) =>
-                                handleBulkStatusChange(emp._id.toString(), value)
+                                handleBulkStatusChange(
+                                  emp._id.toString(),
+                                  value
+                                )
                               }
                               disabled={
-                                !bulkSelectedEmployees.includes(emp._id.toString()) ||
+                                !bulkSelectedEmployees.includes(
+                                  emp._id.toString()
+                                ) ||
                                 location === "all" ||
                                 locationsLoading
                               }
@@ -892,7 +993,10 @@ const MarkAttendance = ({
                                 <SelectItem value="absent" className="text-sm">
                                   Absent
                                 </SelectItem>
-                                <SelectItem value="half-day" className="text-sm">
+                                <SelectItem
+                                  value="half-day"
+                                  className="text-sm"
+                                >
                                   Half Day
                                 </SelectItem>
                                 <SelectItem
@@ -931,8 +1035,12 @@ const MarkAttendance = ({
                     <Table className="border border-complementary min-w-[600px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-body text-sm">Employee</TableHead>
-                          <TableHead className="text-body text-sm">Status</TableHead>
+                          <TableHead className="text-body text-sm">
+                            Employee
+                          </TableHead>
+                          <TableHead className="text-body text-sm">
+                            Status
+                          </TableHead>
                           <TableHead className="text-body text-sm">
                             Available Leaves
                           </TableHead>
@@ -942,16 +1050,24 @@ const MarkAttendance = ({
                         {filteredEmployees.map((emp, index) => (
                           <TableRow
                             key={emp._id}
-                            className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+                            className={
+                              index % 2 === 0 ? "bg-body" : "bg-complementary"
+                            }
                           >
                             <TableCell className="text-sm whitespace-nowrap text-body">
                               {emp.name} ({emp.employeeId})
                             </TableCell>
                             <TableCell className="text-sm whitespace-nowrap">
                               <Select
-                                value={attendanceData[emp._id.toString()] || "present"}
+                                value={
+                                  attendanceData[emp._id.toString()] ||
+                                  "present"
+                                }
                                 onValueChange={(value) =>
-                                  handleAttendanceChange(emp._id.toString(), value)
+                                  handleAttendanceChange(
+                                    emp._id.toString(),
+                                    value
+                                  )
                                 }
                                 disabled={location === "all" || loading}
                               >
@@ -962,18 +1078,29 @@ const MarkAttendance = ({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="bg-body text-body">
-                                  <SelectItem value="present" className="text-sm">
+                                  <SelectItem
+                                    value="present"
+                                    className="text-sm"
+                                  >
                                     Present
                                   </SelectItem>
-                                  <SelectItem value="absent" className="text-sm">
+                                  <SelectItem
+                                    value="absent"
+                                    className="text-sm"
+                                  >
                                     Absent
                                   </SelectItem>
-                                  <SelectItem value="half-day" className="text-sm">
+                                  <SelectItem
+                                    value="half-day"
+                                    className="text-sm"
+                                  >
                                     Half Day
                                   </SelectItem>
                                   <SelectItem
                                     value="leave"
-                                    disabled={emp.paidLeaves.available_leaves < 1}
+                                    disabled={
+                                      emp.paidLeaves.available_leaves < 1
+                                    }
                                     className="text-sm"
                                   >
                                     Paid Leave
@@ -1077,14 +1204,20 @@ const MarkAttendance = ({
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-body">Selected Employees:</p>
+              <p className="text-sm font-semibold text-body">
+                Selected Employees:
+              </p>
               <div className="mt-2 max-h-40 overflow-y-auto border border-complementary">
                 <Table className="border-none">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-body text-sm">Employee ID</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Employee ID
+                      </TableHead>
                       <TableHead className="text-body text-sm">Name</TableHead>
-                      <TableHead className="text-body text-sm">Status</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Status
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1103,7 +1236,8 @@ const MarkAttendance = ({
                           <TableCell className="text-body text-sm">
                             <span className="flex items-center gap-1">
                               {getStatusIcon(record.status)}
-                              {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                              {record.status.charAt(0).toUpperCase() +
+                                record.status.slice(1)}
                             </span>
                           </TableCell>
                         </TableRow>
@@ -1121,9 +1255,13 @@ const MarkAttendance = ({
                 <Table className="border-none">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-body text-sm">Employee ID</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Employee ID
+                      </TableHead>
                       <TableHead className="text-body text-sm">Name</TableHead>
-                      <TableHead className="text-body text-sm">Status</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Status
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1177,7 +1315,11 @@ const MarkAttendance = ({
                 className="bg-accent text-body hover:bg-accent-hover text-sm"
                 disabled={loading}
               >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Confirm"}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  "Confirm"
+                )}
               </Button>
             )}
           </DialogFooter>
@@ -1221,7 +1363,9 @@ const MarkAttendance = ({
             <Table className="border-none">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-body text-sm">Employee ID</TableHead>
+                  <TableHead className="text-body text-sm">
+                    Employee ID
+                  </TableHead>
                   <TableHead className="text-body text-sm">Name</TableHead>
                   <TableHead className="text-body text-sm">Status</TableHead>
                 </TableRow>
@@ -1242,7 +1386,8 @@ const MarkAttendance = ({
                       <TableCell className="text-body text-sm">
                         <span className="flex items-center">
                           {getStatusIcon(record.status)}
-                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                          {record.status.charAt(0).toUpperCase() +
+                            record.status.slice(1)}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -1279,7 +1424,11 @@ const MarkAttendance = ({
                 className="bg-accent text-body hover:bg-accent-hover text-sm"
                 disabled={loading}
               >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Confirm"}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  "Confirm"
+                )}
               </Button>
             )}
           </DialogFooter>
@@ -1306,25 +1455,33 @@ const MarkAttendance = ({
               Attendance Already Marked
             </DialogTitle>
             <DialogDescription className="text-sm text-body">
-              Attendance records already exist for {existingAttendanceRecords.length}{" "}
-              employee(s) on {format(selectedDate, "PPP")}. Would you like to
-              overwrite these records?
+              Attendance records already exist for{" "}
+              {existingAttendanceRecords.length} employee(s) on{" "}
+              {format(selectedDate, "PPP")}. Would you like to overwrite these
+              records?
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 max-h-[60vh] overflow-y-auto">
             <Table className="border-none">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-body text-sm">Employee ID</TableHead>
+                  <TableHead className="text-body text-sm">
+                    Employee ID
+                  </TableHead>
                   <TableHead className="text-body text-sm">Name</TableHead>
-                  <TableHead className="text-body text-sm">Current Status</TableHead>
-                  <TableHead className="text-body text-sm">New Status</TableHead>
+                  <TableHead className="text-body text-sm">
+                    Current Status
+                  </TableHead>
+                  <TableHead className="text-body text-sm">
+                    New Status
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {existingAttendanceRecords.map((record, index) => {
                   const employee = employees.find(
-                    (emp) => emp._id.toString() === record.employee._id.toString()
+                    (emp) =>
+                      emp._id.toString() === record.employee._id.toString()
                   );
                   const newRecord = overwriteConfirmDialog.records.find(
                     (r) => r.employeeId === record.employee._id.toString()
@@ -1340,13 +1497,16 @@ const MarkAttendance = ({
                       <TableCell className="text-body text-sm">
                         <span className="flex items-center gap-1">
                           {getStatusIcon(record.status)}
-                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                          {record.status.charAt(0).toUpperCase() +
+                            record.status.slice(1)}
                         </span>
                       </TableCell>
                       <TableCell className="text-body text-sm">
                         <span className="flex items-center gap-1">
                           {getStatusIcon(newRecord?.status || "present")}
-                          {(newRecord?.status || "present").charAt(0).toUpperCase() +
+                          {(newRecord?.status || "present")
+                            .charAt(0)
+                            .toUpperCase() +
                             (newRecord?.status || "present").slice(1)}
                         </span>
                       </TableCell>
@@ -1386,7 +1546,11 @@ const MarkAttendance = ({
                 className="bg-accent text-body hover:bg-accent-hover text-sm"
                 disabled={loading}
               >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Overwrite"}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  "Overwrite"
+                )}
               </Button>
             )}
           </DialogFooter>

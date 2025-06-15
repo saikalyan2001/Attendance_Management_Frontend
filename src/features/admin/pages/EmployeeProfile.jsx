@@ -107,10 +107,11 @@ const parseServerError = (error) => {
   if (!error) return { message: 'An unknown error occurred', fields: {} };
   if (typeof error === 'string') return { message: error, fields: {} };
   const message = error.message || 'Operation failed';
-  const fields = error.errors?.reduce((acc, err) => {
-    acc[err.field] = err.message;
-    return acc;
-  }, {}) || {};
+  const fields = error.field ? { [error.field]: error.message } : 
+    (error.errors?.reduce((acc, err) => {
+      acc[err.field] = err.message;
+      return acc;
+    }, {}) || {});
   return { message, fields };
 };
 
@@ -121,9 +122,6 @@ const EmployeeProfile = () => {
   const { user } = useSelector((state) => state.auth);
   const { currentEmployee, attendance, loading, error } = useSelector((state) => state.adminEmployees);
   const { settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.adminSettings);
-
-    console.log("settings", settings);
-
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -176,24 +174,21 @@ const EmployeeProfile = () => {
     name: 'documents',
   });
 
-  // Calculate total yearly paid leaves with proration
   const totalYearlyPaidLeaves = useMemo(() => {
     if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
-      return settings?.paidLeavesPerYear || 0; // Default to full yearly leaves if no joinDate
+      return settings?.paidLeavesPerYear || 0;
     }
 
     const joinDate = new Date(currentEmployee.joinDate);
     const joinYear = joinDate.getFullYear();
-    const joinMonth = joinDate.getMonth(); // 0-based (0 = January, 2 = March, etc.)
+    const joinMonth = joinDate.getMonth();
     const currentYear = new Date().getFullYear();
 
-    // If joined in the current year, prorate based on remaining months
     if (joinYear === currentYear) {
       const remainingMonths = 12 - joinMonth;
       return Math.round((settings.paidLeavesPerYear * remainingMonths) / 12);
     }
 
-    // If joined in a previous year, use full yearly leaves
     return settings.paidLeavesPerYear;
   }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
 
@@ -244,28 +239,14 @@ const EmployeeProfile = () => {
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
   const shouldHighlightEmployee = (employee) => {
-    if (!employee?.transferTimestamp) {
-      console.log("No transferTimestamp found for employee:", employee);
-      return false;
-    }
+    if (!employee?.transferTimestamp) return false;
 
     const transferDate = new Date(employee.transferTimestamp);
-    if (isNaN(transferDate.getTime())) {
-      console.error("Invalid transferTimestamp:", employee.transferTimestamp);
-      return false;
-    }
+    if (isNaN(transferDate.getTime())) return false;
 
-    const currentTime = new Date("2025-06-12T11:21:00+05:30").getTime(); // Updated to current date and time
+    const currentTime = new Date().getTime();
     const transferTime = transferDate.getTime();
     const timeDifference = currentTime - transferTime;
-
-    console.log({
-      currentTime: new Date(currentTime).toISOString(),
-      transferTime: new Date(transferTime).toISOString(),
-      timeDifference: timeDifference / (1000 * 60 * 60),
-      highlightDuration: HIGHLIGHT_DURATION / (1000 * 60 * 60),
-      shouldHighlight: timeDifference <= HIGHLIGHT_DURATION,
-    });
 
     return timeDifference <= HIGHLIGHT_DURATION;
   };
@@ -283,7 +264,6 @@ const EmployeeProfile = () => {
     return () => clearInterval(interval);
   }, [currentEmployee, HIGHLIGHT_DURATION]);
 
-  // Handle errors and form errors without affecting the modal
   useEffect(() => {
     if (error || formErrors.length > 0) {
       const parsedError = error ? parseServerError(error) : { message: 'Form validation failed', fields: {} };
@@ -309,33 +289,53 @@ const EmployeeProfile = () => {
         setShowErrorAlert(false);
         setServerError(null);
         setFormErrors([]);
-        if (error) {
-          dispatch(resetEmployees());
-        }
+        if (error) dispatch(resetEmployees());
       }, autoDismissDuration);
 
       return () => clearTimeout(errorTimer);
     }
   }, [error, formErrors, dispatch, id, monthFilter, yearFilter]);
 
+
   const sortedAttendance = useMemo(() => {
-    return [...attendance].sort((a, b) => {
-      const aValue = sortField === 'date' ? new Date(a.date) : a.status;
-      const bValue = sortField === 'date' ? new Date(b.date) : b.status;
-      if (sortField === 'date') {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-      return sortOrder === 'asc'
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    });
-  }, [attendance, sortField, sortOrder]);
+  // Filter attendance records for the current employee
+  const filteredAttendance = attendance.filter(
+    (record) => record.employee._id.toString() === id
+  );
+
+  // Deduplicate by date and employee (though employee filter makes this less critical)
+  const uniqueAttendance = [];
+  const seenKeys = new Set();
+  filteredAttendance.forEach((record) => {
+    const dateKey = `${record.employee._id}_${format(new Date(record.date), 'yyyy-MM-dd')}`;
+    if (!seenKeys.has(dateKey)) {
+      seenKeys.add(dateKey);
+      uniqueAttendance.push(record);
+    }
+  });
+
+  return uniqueAttendance.sort((a, b) => {
+    const aValue = sortField === 'date' ? new Date(a.date) : a.status;
+    const bValue = sortField === 'date' ? new Date(b.date) : b.status;
+    if (sortField === 'date') {
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+    return sortOrder === 'asc'
+      ? aValue.localeCompare(bValue)
+      : bValue.localeCompare(aValue);
+  });
+}, [attendance, sortField, sortOrder, id]);
 
   const totalPages = Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE);
   const paginatedAttendance = sortedAttendance.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+
+  console.log("paginatedAttendance", paginatedAttendance);
+      console.log("sortedAttendance", sortedAttendance);
+
+  
 
   const filteredDocuments = useMemo(() => {
     if (!currentEmployee?.documents) return [];
@@ -356,12 +356,10 @@ const EmployeeProfile = () => {
 
   const handleEditSubmit = async (data) => {
     try {
-      // Reset previous errors
       setFormErrors([]);
       setServerError(null);
       setShowErrorAlert(false);
 
-      // Validate the form
       const isValid = await editForm.trigger();
       if (!isValid) {
         const errors = Object.entries(editForm.formState.errors).map(([field, error]) => ({
@@ -370,7 +368,7 @@ const EmployeeProfile = () => {
         }));
         setFormErrors(errors);
         toast.error('Please fix the form errors before submitting', { duration: autoDismissDuration });
-        return; // Keep the modal open
+        return;
       }
 
       const employeeData = {
@@ -386,19 +384,17 @@ const EmployeeProfile = () => {
 
       await dispatch(updateEmployee({ id, data: employeeData })).unwrap();
       toast.success('Employee updated successfully', { duration: autoDismissDuration });
-      setEditDialogOpen(false); // Close the modal only on success
+      setEditDialogOpen(false);
     } catch (err) {
       const parsedError = parseServerError(err);
       setServerError(parsedError);
       setShowErrorAlert(true);
       toast.error(parsedError.message, { duration: autoDismissDuration });
-      // Do NOT close the modal on error, let the user fix the issue
     }
   };
 
   const handleDocumentSubmit = async (data) => {
     try {
-      // Reset previous errors
       setFormErrors([]);
       setServerError(null);
       setShowErrorAlert(false);
@@ -412,7 +408,7 @@ const EmployeeProfile = () => {
 
       if (!isValid) {
         toast.error('Please fix the form errors before submitting', { duration: autoDismissDuration });
-        return; // Keep the modal open
+        return;
       }
 
       await dispatch(addEmployeeDocuments({ id, documents: data.documents })).unwrap();
@@ -428,7 +424,6 @@ const EmployeeProfile = () => {
       setServerError(parsedError);
       setShowErrorAlert(true);
       toast.error(parsedError.message, { duration: autoDismissDuration });
-      // Do NOT close the modal on error
     }
   };
 
@@ -444,9 +439,7 @@ const EmployeeProfile = () => {
   const fetchDocumentForPreview = async (docPath, docName) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       const response = await fetch(`http://localhost:5000${docPath}`, {
         headers: {
@@ -454,9 +447,7 @@ const EmployeeProfile = () => {
         },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch document');
-      }
+      if (!response.ok) throw new Error('Failed to fetch document');
 
       const blob = await response.blob();
       const file = new File([blob], docName, { type: blob.type });
@@ -469,9 +460,7 @@ const EmployeeProfile = () => {
   const handleDownloadDocument = async (docPath, docName) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       const response = await fetch(`http://localhost:5000${docPath}`, {
         headers: {
@@ -479,9 +468,7 @@ const EmployeeProfile = () => {
         },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to download document');
-      }
+      if (!response.ok) throw new Error('Failed to download document');
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -524,7 +511,6 @@ const EmployeeProfile = () => {
   };
 
   const openEditDialog = (emp) => {
-    // Reset errors when opening the dialog
     setFormErrors([]);
     setServerError(null);
     setShowErrorAlert(false);
@@ -548,7 +534,6 @@ const EmployeeProfile = () => {
   };
 
   const openUploadDialog = () => {
-    // Reset errors when opening the dialog
     setFormErrors([]);
     setServerError(null);
     setShowErrorAlert(false);
@@ -625,20 +610,7 @@ const EmployeeProfile = () => {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Array(5).fill().map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-              <Skeleton className="h-10 w-32 mt-4" />
-            </CardContent>
-          </Card>
-          <Card className="bg-complementary text-body shadow-md mt-6">
-            <CardHeader>
-              <Skeleton className="h-8 w-1/3" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {Array(3).fill().map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
+                  <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
             </CardContent>
@@ -650,8 +622,7 @@ const EmployeeProfile = () => {
 
   return (
     <Layout title="Employee Profile">
-      {/* Error Alert */}
-      {(serverError || formErrors.length > 0) && showErrorAlert && (
+      {serverError && showErrorAlert && (
         <Alert
           variant="destructive"
           className={cn(
@@ -662,12 +633,12 @@ const EmployeeProfile = () => {
           <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
           <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
           <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
-            {serverError && <p>{serverError.message}</p>}
-            {formErrors.length > 0 && (
+            <p>{serverError.message}</p>
+            {Object.keys(serverError.fields).length > 0 && (
               <div className="mt-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
                 <ul className="list-disc pl-5 space-y-1">
-                  {formErrors.map((error, index) => (
-                    <li key={index}>{error.message} (Field: {error.field})</li>
+                  {Object.entries(serverError.fields).map(([field, message], index) => (
+                    <li key={index}>{message} (Field: {field})</li>
                   ))}
                 </ul>
               </div>
@@ -686,7 +657,6 @@ const EmployeeProfile = () => {
       )}
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6">
-        {/* Back Button */}
         <Button
           variant="outline"
           onClick={() => navigate('/admin/employees')}
@@ -697,380 +667,321 @@ const EmployeeProfile = () => {
           Back
         </Button>
 
-        <div className="space-y-6">
-          {/* Employee Details Card */}
-          <Card
-            className={cn(
-              "bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in",
-              isHighlighted ? "bg-accent-light animate-pulse" : ""
-            )}
-          >
-            <CardHeader>
-              <CardTitle className="text-xl md:text-2xl font-bold flex items-center">
-                Employee Details
-                {isHighlighted && (
-                  <span className="text-sm text-accent-dark font-normal ml-2">(Recently Transferred)</span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Name</Label>
-                    <p className="text-body text-sm">{currentEmployee.name}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Employee ID</Label>
-                    <p className="text-body text-sm">{currentEmployee.employeeId}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Email</Label>
-                    <div className="flex items-center space-x-2">
-                      <p className="text-body text-sm">{currentEmployee.email}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(currentEmployee.email)}
-                        aria-label="Copy email to clipboard"
-                      >
-                        <Copy className="h-4 w-4 text-accent" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Designation</Label>
-                    <p className="text-body text-sm">{currentEmployee.designation}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Department</Label>
-                    <p className="text-body text-sm">{currentEmployee.department}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Salary</Label>
-                    <p className="text-body text-sm">₹{(parseFloat(currentEmployee.salary) || 0).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Location</Label>
-                    <p className="text-body text-sm">{currentEmployee.location?.city || currentEmployee.location?.name || 'Unknown'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Phone</Label>
-                    <div className="flex items-center space-x-2">
-                      <p className="text-body text-sm">{currentEmployee.phone || '-'}</p>
-                      {currentEmployee.phone && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyToClipboard(currentEmployee.phone)}
-                          aria-label="Copy phone number to clipboard"
-                        >
-                          <Copy className="h-4 w-4 text-accent" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Date of Birth</Label>
-                    <p className="text-body text-sm">
-                      {currentEmployee.dob ? format(new Date(currentEmployee.dob), 'MMM d, yyyy') : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Join Date</Label>
-                    <p className="text-body text-sm">
-                      {currentEmployee.joinDate ? format(new Date(currentEmployee.joinDate), 'MMM d, yyyy') : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-body text-sm font-semibold">Paid Leaves</Label>
-                    <p className="text-body text-sm">
-                      Total Yearly: {totalYearlyPaidLeaves}, Available: {currentEmployee.paidLeaves.available}, 
-                      Used: {currentEmployee.paidLeaves.used}, Carried Forward: {currentEmployee.paidLeaves.carriedForward || 0}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <Label className="text-body text-sm font-semibold">Bank Details</Label>
-                  {currentEmployee.bankDetails ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      <div>
-                        <Label className="text-body text-sm font-medium">Account Number</Label>
-                        <p className="text-body text-sm">{currentEmployee.bankDetails.accountNo}</p>
-                      </div>
-                      <div>
-                        <Label className="text-body text-sm font-medium">IFSC Code</Label>
-                        <p className="text-body text-sm">{currentEmployee.bankDetails.ifscCode}</p>
-                      </div>
-                      <div>
-                        <Label className="text-body text-sm font-medium">Bank Name</Label>
-                        <p className="text-body text-sm">{currentEmployee.bankDetails.bankName}</p>
-                      </div>
-                      <div>
-                        <Label className="text-body text-sm font-medium">Account Holder</Label>
-                        <p className="text-body text-sm">{currentEmployee.bankDetails.accountHolder}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-body text-sm mt-2">No bank details available</p>
-                  )}
-                </div>
+        <Card className={cn(
+          'bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in',
+          isHighlighted && 'border-accent/50 bg-accent/5'
+        )}>
+          <CardHeader>
+            <CardTitle className="text-xl md:text-2xl font-bold flex items-center justify-between">
+              <span>{currentEmployee.name}'s Profile</span>
+              <div className="flex space-x-2">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={() => openEditDialog(currentEmployee)}
-                  className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                  aria-label="Edit employee details"
+                  className="border-accent text-accent rounded-md"
                 >
                   <Edit className="h-4 w-4 mr-2" />
-                  Edit Details
+                  Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openUploadDialog}
+                  className="border-accent text-accent rounded-md"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Documents
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium">Employee ID</Label>
+                <div className="flex items-center mt-1">
+                  <p className="text-body">{currentEmployee.employeeId}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(currentEmployee.employeeId)}
+                    className="ml-2"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Email</Label>
+                <div className="flex items-center mt-1">
+                  <p className="text-body">{currentEmployee.email}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(currentEmployee.email)}
+                    className="ml-2"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Designation</Label>
+                <p className="text-body mt-1">{currentEmployee.designation}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Department</Label>
+                <p className="text-body mt-1">{currentEmployee.department}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Salary</Label>
+                <p className="text-body mt-1">₹{currentEmployee.salary.toLocaleString()}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Phone</Label>
+                <p className="text-body mt-1">{currentEmployee.phone || 'N/A'}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Date of Birth</Label>
+                <p className="text-body mt-1">
+                  {currentEmployee.dob ? format(new Date(currentEmployee.dob), 'MMM dd, yyyy') : 'N/A'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Join Date</Label>
+                <p className="text-body mt-1">
+                  {currentEmployee.joinDate ? format(new Date(currentEmployee.joinDate), 'MMM dd, yyyy') : 'N/A'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Location</Label>
+                <p className="text-body mt-1">{currentEmployee.location?.city || 'N/A'}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Paid Leaves</Label>
+                <p className="text-body mt-1">
+                  {currentEmployee.paidLeaves?.available || 0} / {totalYearlyPaidLeaves} available
+                </p>
+              </div>
+            </div>
 
-          {/* Attendance History Card */}
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-xl md:text-2xl font-bold">
-                <span>Attendance History</span>
-                <div className="flex flex-col gap-3 w-full sm:flex-row sm:gap-2 sm:w-auto">
+            {currentEmployee.bankDetails && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold">Bank Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label className="text-sm font-medium">Account Number</Label>
+                    <p className="text-body mt-1">{currentEmployee.bankDetails.accountNo || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">IFSC Code</Label>
+                    <p className="text-body mt-1">{currentEmployee.bankDetails.ifscCode || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Bank Name</Label>
+                    <p className="text-body mt-1">{currentEmployee.bankDetails.bankName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Account Holder</Label>
+                    <p className="text-body mt-1">{currentEmployee.bankDetails.accountHolder || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold">Attendance History</h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-2">
+                <div className="flex space-x-2">
                   <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
-                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-40 text-sm">
-                      <SelectValue />
+                    <SelectTrigger className="w-[140px] bg-body text-body border-complementary">
+                      <SelectValue placeholder="Month" />
                     </SelectTrigger>
                     <SelectContent className="bg-complementary text-body">
                       {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()} className="text-sm">
+                        <SelectItem key={month.value} value={month.value.toString()}>
                           {month.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
-                    <SelectTrigger className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md h-9 w-full sm:w-24 text-sm">
-                      <SelectValue />
+                    <SelectTrigger className="w-[100px] bg-body text-body border-complementary">
+                      <SelectValue placeholder="Year" />
                     </SelectTrigger>
                     <SelectContent className="bg-complementary text-body">
                       {years.map((year) => (
-                        <SelectItem key={year} value={year.toString()} className="text-sm">
+                        <SelectItem key={year} value={year.toString()}>
                           {year}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              {loading ? (
-                <div className="space-y-4">
-                  {Array(3).fill().map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : paginatedAttendance.length > 0 ? (
-                <>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-body">
-                            <Button variant="ghost" onClick={() => handleSort('date')} className="flex items-center space-x-1">
-                              Date
-                              <ArrowUpDown className="h-4 w-4" />
-                            </Button>
-                          </TableHead>
-                          <TableHead className="text-body">
-                            <Button variant="ghost" onClick={() => handleSort('status')} className="flex items-center space-x-1">
-                              Status
-                              <ArrowUpDown className="h-4 w-4" />
-                            </Button>
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedAttendance.map((att) => (
-                          <TableRow key={att._id}>
-                            <TableCell className="text-body text-sm">
-                              {format(new Date(att.date), 'MMM d, yyyy')}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  att.status === 'present'
-                                    ? 'success'
-                                    : att.status === 'absent'
-                                    ? 'destructive'
-                                    : 'warning'
-                                }
-                                className="text-sm"
-                              >
-                                {att.status.charAt(0).toUpperCase() + att.status.slice(1)}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  {totalPages > 1 && (
-                    <div className="flex justify-between items-center mt-4">
-                      <Button
-                        variant="outline"
-                        onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                        disabled={currentPage === 1}
-                        className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                      >
-                        Previous
-                      </Button>
-                      <span className="text-sm text-body">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                        disabled={currentPage === totalPages}
-                        className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-body text-sm">No attendance records found</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Documents Card */}
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="text-xl md:text-2xl font-bold">Documents</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="space-y-4">
-                <Button
-                  variant="outline"
-                  onClick={openUploadDialog}
-                  className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                  aria-label="Upload new documents"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Documents
-                </Button>
-
-                <div className="relative">
-                  <Input
-                    type="text"
-                    placeholder="Search documents by name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm pl-10"
-                  />
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent" />
-                </div>
-
-                {filteredDocuments.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-body text-sm">Name</TableHead>
-                          <TableHead className="text-body text-sm">Size</TableHead>
-                          <TableHead className="text-body text-sm">Uploaded At</TableHead>
-                          <TableHead className="text-body text-sm">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredDocuments.map((doc, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="text-body text-sm">
-                              <div className="flex items-center space-x-2">
-                                {getFileIcon(doc.name)}
-                                <span>{doc.name}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-body text-sm">
-                              {(doc.size / 1024 / 1024).toFixed(2)} MB
-                            </TableCell>
-                            <TableCell className="text-body text-sm">
-                              {format(new Date(doc.uploadedAt), 'MMM d, yyyy')}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex space-x-2">
-                                {doc.path.match(/\.(jpeg|jpg|png)$/i) && (
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => fetchDocumentForPreview(doc.path, doc.name)}
-                                    className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                                    aria-label={`Preview ${doc.name}`}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => handleDownloadDocument(doc.path, doc.name)}
-                                  className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
-                                  aria-label={`Download ${doc.name}`}
-                                >
-                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 6l-4-4m0 0L8 6m4-4v12" />
-                                  </svg>
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <p className="text-body text-sm">
-                    {searchQuery ? 'No documents match your search.' : 'No documents uploaded.'}
-                  </p>
-                )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Table className="mt-4">
+                <TableHeader>
+                  <TableRow className="bg-accent/10">
+                    <TableHead
+                      onClick={() => handleSort('date')}
+                      className="cursor-pointer flex items-center"
+                    >
+                      Date
+                      {sortField === 'date' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      )}
+                    </TableHead>
+                    <TableHead
+                      onClick={() => handleSort('status')}
+                      className="cursor-pointer flex items-center"
+                    >
+                      Status
+                      {sortField === 'status' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      )}
+                    </TableHead>
+                    <TableHead>Location</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedAttendance.length > 0 ? (
+                    paginatedAttendance.map((record) => (
+                      <TableRow key={record._id}>
+                        <TableCell>{format(new Date(record.date), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              record.status === 'present'
+                                ? 'success'
+                                : record.status === 'absent'
+                                ? 'destructive'
+                                : 'default'
+                            }
+                          >
+                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{record.location?.name || 'N/A'}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center">
+                        No attendance records found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+              {totalPages > 1 && (
+                <div className="flex justify-between items-center mt-4">
+                  <Button
+                    variant="outline"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    className="border-accent text-accent rounded-md"
+                  >
+                    Previous
+                  </Button>
+                  <span>
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    className="border-accent text-accent rounded-md"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </div>
 
-        {/* Edit Employee Dialog */}
-        <Dialog open={editDialogOpen} onOpenChange={(isOpen) => {
-          setEditDialogOpen(isOpen);
-          if (!isOpen) {
-            setFormErrors([]);
-            setServerError(null);
-            setShowErrorAlert(false);
-          }
-        }}>
-          <DialogContent className="bg-complementary text-body border-accent max-w-[90vw] sm:max-w-lg max-h-[70vh] h-full overflow-hidden flex flex-col">
-            <DialogHeader className="shrink-0 px-4 sm:px-6 pt-4">
-              <DialogTitle className="text-lg">Edit Employee</DialogTitle>
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold">Documents</h3>
+              <div className="flex items-center mt-2">
+                <Input
+                  placeholder="Search documents..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="max-w-sm bg-body text-body border-complementary focus:border-accent rounded-md"
+                />
+                <Search className="h-5 w-5 ml-2 text-body" />
+              </div>
+              <Table className="mt-4">
+                <TableHeader>
+                  <TableRow className="bg-accent/10">
+                    <TableHead>Name</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredDocuments.length > 0 ? (
+                    filteredDocuments.map((doc) => (
+                      <TableRow key={doc._id}>
+                        <TableCell className="flex items-center">
+                          {getFileIcon(doc.name)}
+                          <span className="ml-2">{doc.name}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            {isImageFile(doc.name) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fetchDocumentForPreview(doc.path, doc.name)}
+                                className="border-accent text-accent rounded-md"
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                Preview
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownloadDocument(doc.path, doc.name)}
+                              className="border-accent text-accent rounded-md"
+                            >
+                              Download
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={2} className="text-center">
+                        No documents found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="bg-complementary text-body rounded-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
+            <DialogHeader>
+              <DialogTitle>Edit Employee</DialogTitle>
             </DialogHeader>
             <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-2 space-y-3">
+              <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={editForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Name *</FormLabel>
+                        <FormLabel>Name *</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Alice Johnson"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.name || editForm.formState.errors.name?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.name && <p className="text-error text-xs">{serverError.fields.name}</p>}
                       </FormItem>
                     )}
                   />
@@ -1079,19 +990,12 @@ const EmployeeProfile = () => {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Email *</FormLabel>
+                        <FormLabel>Email *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="email"
-                            {...field}
-                            placeholder="e.g., alice@example.com"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} type="email" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.email || editForm.formState.errors.email?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.email && <p className="text-error text-xs">{serverError.fields.email}</p>}
                       </FormItem>
                     )}
                   />
@@ -1100,18 +1004,12 @@ const EmployeeProfile = () => {
                     name="designation"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Designation *</FormLabel>
+                        <FormLabel>Designation *</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Analyst"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.designation || editForm.formState.errors.designation?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.designation && <p className="text-error text-xs">{serverError.fields.designation}</p>}
                       </FormItem>
                     )}
                   />
@@ -1120,18 +1018,12 @@ const EmployeeProfile = () => {
                     name="department"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Department *</FormLabel>
+                        <FormLabel>Department *</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Finance"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.department || editForm.formState.errors.department?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.department && <p className="text-error text-xs">{serverError.fields.department}</p>}
                       </FormItem>
                     )}
                   />
@@ -1140,19 +1032,12 @@ const EmployeeProfile = () => {
                     name="salary"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Salary *</FormLabel>
+                        <FormLabel>Salary *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="text"
-                            {...field}
-                            placeholder="e.g., 55000"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} type="number" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.salary || editForm.formState.errors.salary?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.salary && <p className="text-error text-xs">{serverError.fields.salary}</p>}
                       </FormItem>
                     )}
                   />
@@ -1161,18 +1046,12 @@ const EmployeeProfile = () => {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Phone</FormLabel>
+                        <FormLabel>Phone</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., 1234567890"
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.phone || editForm.formState.errors.phone?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.phone && <p className="text-error text-xs">{serverError.fields.phone}</p>}
                       </FormItem>
                     )}
                   />
@@ -1181,306 +1060,95 @@ const EmployeeProfile = () => {
                     name="dob"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-body text-sm font-medium">Date of Birth</FormLabel>
+                        <FormLabel>Date of Birth</FormLabel>
                         <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                            disabled={loading}
-                          />
+                          <Input {...field} type="date" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
                         </FormControl>
-                        <FormMessage className="text-error text-xs">
-                          {serverError?.fields?.dob || editForm.formState.errors.dob?.message}
-                        </FormMessage>
+                        <FormMessage />
+                        {serverError?.fields?.dob && <p className="text-error text-xs">{serverError.fields.dob}</p>}
                       </FormItem>
                     )}
                   />
-                  <div className="space-y-3">
-                    <Label className="text-body text-sm font-medium">Bank Details</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.accountNo"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Account Number</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., 1234567890"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loading}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.bankDetails?.accountNo || editForm.formState.errors.bankDetails?.accountNo?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.ifscCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">IFSC Code</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., ABCD0001234"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loading}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.bankDetails?.ifscCode || editForm.formState.errors.bankDetails?.ifscCode?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.bankName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Bank Name</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., State Bank of India"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loading}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.bankDetails?.bankName || editForm.formState.errors.bankDetails?.bankName?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="bankDetails.accountHolder"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-sm font-medium">Account Holder</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="e.g., Alice Johnson"
-                                className="h-9 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-sm"
-                                disabled={loading}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-xs">
-                              {serverError?.fields?.bankDetails?.accountHolder || editForm.formState.errors.bankDetails?.accountHolder?.message}
-                            </FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    {editForm.formState.errors.bankDetails && !editForm.formState.errors.bankDetails.accountNo && (
-                      <p className="text-error text-xs mt-2">{editForm.formState.errors.bankDetails.message}</p>
-                    )}
-                  </div>
                 </div>
-                <DialogFooter className="shrink-0 px-4 sm:px-6 py-4 border-t border-accent/20 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setEditDialogOpen(false)}
-                    className="border-accent text-accent hover:bg-accent-hover rounded-md text-sm py-2 px-3"
-                    disabled={loading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-2 px-3"
-                    disabled={loading}
-                  >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Upload Documents Dialog */}
-        <Dialog open={uploadDialogOpen} onOpenChange={(isOpen) => {
-          setUploadDialogOpen(isOpen);
-          if (!isOpen) {
-            setFormErrors([]);
-            setServerError(null);
-            setShowErrorAlert(false);
-          }
-        }}>
-          <DialogContent className="bg-complementary text-body max-h-[80vh] overflow-y-auto max-w-[90vw] sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Add Documents</DialogTitle>
-              <DialogDescription>Upload documents (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB).</DialogDescription>
-            </DialogHeader>
-            <Form {...uploadForm}>
-              <form onSubmit={uploadForm.handleSubmit(handleDocumentSubmit)} className="space-y-4 p-4">
-                {documentFields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className={cn(
-                      'mb-3 sm:mb-4 rounded-md border border-complementary/30 bg-body shadow-sm hover:shadow-md transition-shadow duration-300',
-                      removingIndices.includes(index) ? 'animate-fade-out' : 'animate-slide-in-row'
-                    )}
-                  >
+                <div className="space-y-2">
+                  <FormLabel>Bank Details</FormLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
-                      control={uploadForm.control}
-                      name={`documents.${index}.file`}
+                      control={editForm.control}
+                      name="bankDetails.accountNo"
                       render={({ field }) => (
-                        <FormItem className="p-3 sm:p-4">
-                          <div
-                            className={cn(
-                              'relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300',
-                              dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
-                              field.value ? 'bg-body' : 'bg-complementary/10',
-                              loading && 'opacity-50 cursor-not-allowed'
-                            )}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDragLeave={() => handleDragLeave(index)}
-                            onDrop={(e) => handleDrop(e, index, field.onChange)}
-                            role="region"
-                            aria-label={`Upload document ${index + 1}`}
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                document.getElementById(`add-document-${index}`).click();
-                              }
-                            }}
-                          >
-                            <Input
-                              id={`add-document-${index}`}
-                              type="file"
-                              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-                              onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
-                              className="hidden"
-                              disabled={loading}
-                            />
-                            {!field.value ? (
-                              <div className="flex flex-col items-center space-y-2">
-                                <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-body/60" />
-                                <p className="text-[10px] sm:text-sm xl:text-base text-body/60">
-                                  Drag & drop a file here or click to upload
-                                </p>
-                                <div className="flex gap-2">
-                                  <Button
-                                    type="button"
-                                    onClick={() => document.getElementById(`add-document-${index}`).click()}
-                                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                                    disabled={loading}
-                                  >
-                                    Choose File
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => handleRemoveDocument(index)}
-                                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                                    disabled={loading}
-                                    aria-label="Cancel document upload"
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                                <p className="text-[9px] sm:text-xs xl:text-sm text-body/50">
-                                  (PDF, DOC, DOCX, JPG, JPEG, PNG; Max 5MB)
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col space-y-2">
-                                <div className="flex items-center justify-between space-x-2">
-                                  <div className="flex items-center space-x-2 truncate">
-                                    {getFileIcon(field.value.name)}
-                                    <div className="truncate">
-                                      <span className="text-[10px] sm:text-sm xl:text-base text-body truncate">
-                                        {field.value.name}
-                                      </span>
-                                      <span className="text-[9px] sm:text-xs xl:text-sm text-body/60 block">
-                                        ({(field.value.size / 1024 / 1024).toFixed(2)} MB)
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handlePreviewDocument(field.value)}
-                                      className={cn(
-                                        "p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full",
-                                        (loading || !previewUrls[index]) && "opacity-50 cursor-not-allowed"
-                                      )}
-                                      disabled={loading || !isImageFile(field.value.name)}
-                                      aria-label={`Preview document ${field.value.name}`}
-                                    >
-                                      <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleRemoveDocument(index)}
-                                      className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
-                                      disabled={loading}
-                                      aria-label={`Remove document ${field.value.name}`}
-                                    >
-                                      <Trash className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                {isImageFile(field.value.name) && previewUrls[index] && (
-                                  <div className="mt-2 flex justify-center">
-                                    <img
-                                      src={previewUrls[index]}
-                                      alt={`Preview of ${field.value.name}`}
-                                      className="h-24 w-24 object-cover rounded-md border border-complementary"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base mt-2" />
+                        <FormItem>
+                          <FormLabel>Account Number</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          </FormControl>
+                          <FormMessage />
+                          {serverError?.fields?.['bankDetails.accountNo'] && <p className="text-error text-xs">{serverError.fields['bankDetails.accountNo']}</p>}
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="bankDetails.ifscCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>IFSC Code</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          </FormControl>
+                          <FormMessage />
+                          {serverError?.fields?.['bankDetails.ifscCode'] && <p className="text-error text-xs">{serverError.fields['bankDetails.ifscCode']}</p>}
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="bankDetails.bankName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Bank Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          </FormControl>
+                          <FormMessage />
+                          {serverError?.fields?.['bankDetails.bankName'] && <p className="text-error text-xs">{serverError.fields['bankDetails.bankName']}</p>}
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="bankDetails.accountHolder"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Account Holder</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          </FormControl>
+                          <FormMessage />
+                          {serverError?.fields?.['bankDetails.accountHolder'] && <p className="text-error text-xs">{serverError.fields['bankDetails.accountHolder']}</p>}
                         </FormItem>
                       )}
                     />
                   </div>
-                ))}
-                <Button
-                  type="button"
-                  onClick={() => appendDocument({ file: null })}
-                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
-                  disabled={loading}
-                >
-                  <Upload className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                  Add Document
-                </Button>
-                <DialogFooter className="mt-4">
+                </div>
+                <DialogFooter>
                   <Button
-                    type="button"
                     variant="outline"
-                    onClick={() => setUploadDialogOpen(false)}
-                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md"
-                    disabled={loading}
-                    aria-label="Cancel add documents"
+                    onClick={() => setEditDialogOpen(false)}
+                    className="border-accent text-accent rounded-md"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
-                    className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md"
-                    disabled={loading}
-                    aria-label="Upload documents"
+                    disabled={editForm.formState.isSubmitting}
+                    className="bg-accent text-white hover:bg-accent-hover rounded-md"
                   >
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Upload Documents'}
+                    {editForm.formState.isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Save'
+                    )}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1488,37 +1156,132 @@ const EmployeeProfile = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Document Preview Dialog */}
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogContent className="bg-complementary text-body rounded-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
+            <DialogHeader>
+              <DialogTitle>Upload Documents</DialogTitle>
+            </DialogHeader>
+            <Form {...uploadForm}>
+              <form onSubmit={uploadForm.handleSubmit(handleDocumentSubmit)} className="space-y-4">
+                <div className="space-y-2">
+                  <FormLabel>Documents *</FormLabel>
+                  <div className="space-y-2">
+                    {documentFields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className={cn(
+                          'flex items-center space-x-2 p-2 border rounded-md transition-all duration-300',
+                          dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
+                          removingIndices.includes(index) ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+                        )}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragLeave={() => handleDragLeave(index)}
+                        onDrop={(e) => handleDrop(e, index, uploadForm.setValue(`documents.${index}.file`))}
+                      >
+                        <FormField
+                          control={uploadForm.control}
+                          name={`documents.${index}.file`}
+                          render={({ field: { onChange, value, ...field } }) => (
+                            <FormItem className="flex-1">
+                              <FormControl>
+                                <div className="flex items-center space-x-2">
+                                  <Input
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                    onChange={(e) => handleFileChange(index, e.target.files[0], onChange)}
+                                    className="bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
+                                    {...field}
+                                  />
+                                  {previewUrls[index] && (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      type="button"
+                                      onClick={() => handlePreviewDocument({ url: previewUrls[index], type: value?.type })}
+                                      className="border-accent text-accent rounded-md"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    type="button"
+                                    onClick={() => handleRemoveDocument(index)}
+                                    className="border-error text-error rounded-md"
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                              {serverError?.fields?.[`documents.${index}.file`] && (
+                                <p className="text-error text-xs">{serverError.fields[`documents.${index}.file`]}</p>
+                              )}
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => appendDocument({ file: null })}
+                      className="border-accent text-accent rounded-md"
+                    >
+                      Add Document
+                    </Button>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setUploadDialogOpen(false)}
+                    className="border-accent text-accent rounded-md"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={uploadForm.formState.isSubmitting}
+                    className="bg-accent text-white hover:bg-accent-hover rounded-md"
+                  >
+                    {uploadForm.formState.isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Upload'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent className="max-w-4xl bg-complementary text-body border-accent">
+          <DialogContent className="bg-complementary text-body rounded-md max-w-3xl">
             <DialogHeader>
               <DialogTitle>Document Preview</DialogTitle>
             </DialogHeader>
-            {previewDocument ? (
-              <div className="relative">
-                <img
-                  src={URL.createObjectURL(previewDocument)}
-                  alt={previewDocument.name}
-                  className="w-full h-48 object-contain rounded-md"
-                />
-                <p className="text-sm mt-1 truncate">{previewDocument.name}</p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={() => {
-                    setPreviewDocument(null);
-                    setPreviewOpen(false);
-                  }}
-                  disabled={loading}
-                  aria-label="Close preview"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <p className="text-body text-sm">No document to preview</p>
+            {previewDocument && (
+              <img
+                src={previewDocument.url || URL.createObjectURL(previewDocument)}
+                alt="Document Preview"
+                className="w-full h-auto max-h-[60vh] object-contain"
+              />
             )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPreviewOpen(false);
+                  setPreviewDocument(null);
+                }}
+                className="border-accent text-accent rounded-md"
+              >
+                Close
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

@@ -72,6 +72,9 @@ const Employees = () => {
     loading: employeesLoading,
   } = useSelector((state) => state.siteInchargeEmployee);
 
+  console.log("settings", settings);
+  
+
   const initialDepartment = searchParams.get("department") || "all";
   const initialStatus = searchParams.get("status") || "all";
   const [filterDepartment, setFilterDepartment] = useState(initialDepartment);
@@ -145,6 +148,10 @@ const Employees = () => {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  console.log("sortedEmployees", sortedEmployees);
+  console.log("paginatedEmployees", paginatedEmployees);
+  
 
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {

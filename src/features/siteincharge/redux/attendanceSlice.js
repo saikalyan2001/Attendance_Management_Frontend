@@ -26,25 +26,77 @@ export const markAttendance = createAsyncThunk(
   async (records, { rejectWithValue }) => {
     try {
       console.log('Marking attendance with records:', records);
+      if (!Array.isArray(records)) {
+        throw new Error('Records must be an array');
+      }
       const response = await api.post('/siteincharge/attendance', records);
-      return Array.isArray(records) ? response.data : [response.data];
+      const attendance = Array.isArray(response.data.attendance)
+        ? response.data.attendance
+        : Array.isArray(response.data)
+        ? response.data
+        : [response.data];
+      const attendanceIds = Array.isArray(response.data.attendanceIds)
+        ? response.data.attendanceIds
+        : attendance.map((rec) => rec._id);
+      return { attendance, attendanceIds };
     } catch (error) {
       console.error('Mark attendance error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to mark attendance');
+      return rejectWithValue(error.response?.data?.message || error.message || 'Failed to mark attendance');
     }
   }
 );
 
 export const bulkMarkAttendance = createAsyncThunk(
   'siteInchargeAttendance/bulkMarkAttendance',
-  async (records, { rejectWithValue }) => {
+  async ({ attendance, overwrite }, { rejectWithValue }) => {
     try {
-      console.log('Marking bulk attendance:', records);
-      const response = await api.post('/siteincharge/attendance/bulk', records);
-      return response.data.attendance;
+      console.log('Sending bulk attendance payload:', { attendance, overwrite }); // Debug log
+      if (!Array.isArray(attendance)) {
+        throw new Error('Attendance must be an array');
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const response = await api.post(
+        '/siteincharge/attendance/bulk',
+        { attendance, overwrite }, // Ensure payload structure
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+
+      const attendanceRecords = Array.isArray(response.data.attendance)
+        ? response.data.attendance
+        : [];
+      const attendanceIds = Array.isArray(response.data.attendanceIds)
+        ? response.data.attendanceIds
+        : [];
+
+      return {
+        attendance: attendanceRecords,
+        attendanceIds,
+      };
     } catch (error) {
-      console.error('Bulk mark attendance error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to mark bulk attendance');
+      console.error('Bulk mark attendance error:', error.response?.data || error.message); // Line ~79
+      if (error.name === 'AbortError') {
+        return rejectWithValue('Request timed out');
+      }
+      return rejectWithValue(error.response?.data?.message || error.message || 'Failed to mark bulk attendance');
+    }
+  }
+);
+
+export const undoAttendance = createAsyncThunk(
+  'siteInchargeAttendance/undoAttendance',
+  async ({ attendanceIds }, { rejectWithValue }) => {
+    try {
+      console.log('Undoing attendance:', attendanceIds);
+      if (!Array.isArray(attendanceIds)) {
+        throw new Error('attendanceIds must be an array');
+      }
+      await api.delete('/siteincharge/attendance', { data: { attendanceIds } });
+      return attendanceIds;
+    } catch (error) {
+      console.error('Undo attendance error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || error.message || 'Failed to undo attendance');
     }
   }
 );
@@ -152,7 +204,7 @@ const attendanceSlice = createSlice({
       })
       .addCase(bulkMarkAttendance.fulfilled, (state, action) => {
         state.loading = false;
-        state.attendance.push(...action.payload);
+        state.attendance = action.payload.attendance;
       })
       .addCase(bulkMarkAttendance.rejected, (state, action) => {
         state.loading = false;

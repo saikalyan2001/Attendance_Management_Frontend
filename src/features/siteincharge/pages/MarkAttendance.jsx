@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  markAttendance,
-  bulkMarkAttendance,
-} from "../redux/attendanceSlice";
+import { markAttendance, bulkMarkAttendance, fetchAttendance } from "../redux/attendanceSlice";
 import { fetchEmployees } from "../redux/employeeSlice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -157,93 +154,151 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     }
   };
 
-  const handleBulkSubmit = (preview = false) => {
-    if (!filteredEmployees.length) {
-      toast.error("No employees available", { duration: 5000 });
-      return;
-    }
-    if (!selectedDate) {
-      toast.error("Please select a date", { duration: 5000 });
-      return;
-    }
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    const selectedRecords = bulkSelectedEmployees.map((employeeId) => ({
-      employeeId,
-      date: dateStr,
-      status: bulkEmployeeStatuses[employeeId] || "present",
-      location: locationId,
-    }));
-    const remainingEmployees = filteredEmployees.filter(
-      (emp) => !bulkSelectedEmployees.includes(emp._id.toString())
-    );
-    const remainingRecords = remainingEmployees.map((emp) => ({
-      employeeId: emp._id,
-      date: dateStr,
-      status: "present",
-      location: locationId,
-    }));
-    setBulkConfirmDialog({
-      open: true,
-      records: selectedRecords,
-      remaining: remainingRecords,
-      preview,
-    });
-  };
+ const handleBulkSubmit = (preview = false) => {
+  if (!filteredEmployees.length) {
+    toast.error("No employees available", { duration: 5000 });
+    return;
+  }
+  if (!selectedDate) {
+    toast.error("Please select a date", { duration: 5000 });
+    return;
+  }
+  const dateStr = format(selectedDate, "yyyy-MM-dd");
 
-  const confirmBulkSubmit = () => {
-    const { records: selectedRecords, remaining: remainingRecords } = bulkConfirmDialog;
-    const allRecords = [...selectedRecords, ...remainingRecords];
+  const selectedRecords = bulkSelectedEmployees.map((employeeId) => ({
+    employeeId,
+    date: dateStr,
+    status: bulkEmployeeStatuses[employeeId] || "present",
+    location: locationId,
+  }));
+  const remainingEmployees = filteredEmployees.filter(
+    (emp) => !bulkSelectedEmployees.includes(emp._id.toString())
+  );
+  const remainingRecords = remainingEmployees.map((emp) => ({
+    employeeId: emp._id.toString(),
+    date: dateStr,
+    status: "present",
+    location: locationId,
+  }));
 
-    dispatch(bulkMarkAttendance(allRecords))
-      .unwrap()
-      .then(() => {
-        const statusCounts = selectedRecords.reduce(
-          (acc, record) => ({
-            ...acc,
-            [record.status]: (acc[record.status] || 0) + 1,
-          }),
-          {}
-        );
-        const statusMessage = Object.entries(statusCounts)
-          .map(([status, count]) => `${count} as ${status}`)
-          .join(", ");
-        toast.success(
-          selectedRecords.length > 0
-            ? `Marked ${selectedRecords.length} employee(s): ${statusMessage}, and ${remainingRecords.length} as Present`
-            : `Marked all ${remainingRecords.length} employee(s) as Present`,
-          {
-            action: {
-              label: "Undo",
-              onClick: () => {
-                dispatch(bulkMarkAttendance([]))
-                  .unwrap()
-                  .then(() => {
-                    toast.success("Attendance marking undone");
-                  })
-                  .catch((err) => {
-                    toast.error("Failed to undo attendance marking");
-                  });
-              },
-            },
-            duration: 10000,
-          }
-        );
-        setBulkSelectedEmployees([]);
-        setBulkEmployeeStatuses({});
-        setEmployeeFilter("");
-      })
-      .catch((err) => {
-        toast.error(err || "Operation failed", { duration: 10000 });
-      })
-      .finally(() => {
-        setBulkConfirmDialog({
-          open: false,
-          records: [],
-          remaining: [],
-          preview: false,
-        });
+  dispatch(fetchAttendance({ date: dateStr, location: locationId }))
+    .unwrap()
+    .then((existing) => {
+      setBulkConfirmDialog({
+        open: true,
+        records: selectedRecords,
+        remaining: remainingRecords,
+        preview,
+        overwrite: existing.length > 0 ? false : undefined,
+        existingRecords: existing.length > 0 ? existing : [],
       });
-  };
+    })
+    .catch((err) => {
+      console.error('Fetch attendance error:', err);
+      toast.error("Failed to check existing attendance", { duration: 5000 });
+      // Proceed with dialog even if fetch fails
+      setBulkConfirmDialog({
+        open: true,
+        records: selectedRecords,
+        remaining: remainingRecords,
+        preview,
+      });
+    });
+};
+
+const confirmBulkSubmit = () => {
+  const { records: selectedRecords = [], remaining: remainingRecords = [] } = bulkConfirmDialog;
+  if (!Array.isArray(selectedRecords) || !Array.isArray(remainingRecords)) {
+    console.error('Invalid records:', { selectedRecords, remainingRecords });
+    toast.error('Invalid attendance data', { duration: 10000 });
+    setBulkConfirmDialog({
+      open: false,
+      records: [],
+      remaining: [],
+      preview: false,
+    });
+    dispatch({ type: 'siteInchargeAttendance/reset' });
+    return;
+  }
+
+  const allRecords = [...selectedRecords, ...remainingRecords];
+  if (!allRecords.length) {
+    toast.error('No attendance records to submit', { duration: 10000 });
+    setBulkConfirmDialog({
+      open: false,
+      records: [],
+      remaining: [],
+      preview: false,
+    });
+    dispatch({ type: 'siteInchargeAttendance/reset' });
+    return;
+  }
+
+  console.log('Dispatching bulkMarkAttendance with records:', allRecords); // Debug log
+  dispatch(bulkMarkAttendance({ attendance: allRecords, overwrite: false }))
+    .unwrap()
+    .then((response) => {
+      const statusCounts = selectedRecords.reduce(
+        (acc, record) => ({
+          ...acc,
+          [record.status]: (acc[record.status] || 0) + 1,
+        }),
+        {}
+      );
+      const statusMessage = Object.entries(statusCounts)
+        .map(([status, count]) => `${count} as ${status}`)
+        .join(", ");
+      toast.success(
+        selectedRecords.length > 0
+          ? `Marked ${selectedRecords.length} employee(s): ${statusMessage}, and ${remainingRecords.length} as Present`
+          : `Marked all ${remainingRecords.length} employee(s) as Present`,
+        {
+          action: {
+            label: "Undo",
+            onClick: () => {
+              dispatch(undoAttendance({ attendanceIds: response.attendanceIds || [] }))
+                .unwrap()
+                .then(() => {
+                  toast.success("Attendance marking undone");
+                })
+                .catch((error) => {
+                  toast.error("Failed to undo attendance marking");
+                });
+            },
+          },
+          duration: 10000,
+        }
+      );
+      setBulkSelectedEmployees([]);
+      setBulkEmployeeStatuses({});
+      setEmployeeFilter("");
+    })
+    .catch((err) => {
+      console.error('Bulk submit error:', err); // Line ~265
+      const errorMessage = typeof err === 'string' ? err : err.message || 'Operation failed';
+      if (errorMessage.toLowerCase().includes('already marked')) {
+        setBulkConfirmDialog((prev) => ({
+          ...prev,
+          open: true,
+          preview: false,
+          overwrite: true,
+          existingRecords: err.existingRecords || [],
+        }));
+      } else {
+        toast.error(errorMessage, { duration: 10000 });
+      }
+    })
+    .finally(() => {
+      console.log('Finally block executed');
+      setBulkConfirmDialog({
+        open: false,
+        records: [],
+        remaining: [],
+        preview: false,
+      });
+      dispatch({ type: 'siteInchargeAttendance/reset' });
+    });
+};
 
   const handleSubmit = (preview = false) => {
     if (!filteredEmployees.length) {
@@ -268,41 +323,45 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     });
   };
 
-  const confirmIndividualSubmit = () => {
-    const { records: attendanceRecords } = individualConfirmDialog;
-    dispatch(markAttendance(attendanceRecords))
-      .unwrap()
-      .then(() => {
-        toast.success("Attendance marked successfully", {
-          action: {
-            label: "Undo",
-            onClick: () => {
-              dispatch(markAttendance([]))
-                .unwrap()
-                .then(() => {
-                  toast.success("Attendance marking undone");
-                })
-                .catch((err) => {
-                  toast.error("Failed to undo attendance marking");
-                });
-            },
+ const confirmIndividualSubmit = () => {
+  const { records: attendanceRecords } = individualConfirmDialog;
+  dispatch(markAttendance(attendanceRecords))
+    .unwrap()
+    .then((response) => {
+      toast.success("Attendance marked successfully", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            dispatch(undoAttendance({ attendanceIds: response.attendanceIds || [] }))
+              .unwrap()
+              .then(() => {
+                toast.success("Attendance marking undone");
+              })
+              .catch((err) => {
+                toast.error("Failed to undo attendance marking");
+              });
           },
-          duration: 10000,
-        });
-        setAttendanceData({});
-        setEmployeeFilter("");
-      })
-      .catch((err) => {
-        toast.error(err || "Operation failed", { duration: 10000 });
-      })
-      .finally(() => {
-        setIndividualConfirmDialog({
-          open: false,
-          records: [],
-          preview: false,
-        });
+        },
+        duration: 10000,
       });
-  };
+      setAttendanceData({});
+      setEmployeeFilter("");
+    })
+    .catch((err) => {
+      console.error('Individual submit error:', err);
+      const errorMessage = typeof err === 'string' ? err : err.message || 'Operation failed';
+      toast.error(errorMessage, { duration: 10000 });
+    })
+    .finally(() => {
+      console.log('Individual finally block executed');
+      setIndividualConfirmDialog({
+        open: false,
+        records: [],
+        preview: false,
+      });
+      dispatch({ type: 'siteInchargeAttendance/reset' });
+    });
+};
 
   const handleDateSelect = (date) => {
     if (date > new Date()) {
@@ -341,11 +400,20 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
         <CardContent className="p-6 space-y-6">
           <div className="flex flex-wrap gap-4 gap-y-6">
             <div className="space-y-2 min-w-[180px] flex-1">
-              <Label htmlFor="month" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="month"
+                className="block text-sm font-semibold text-body"
+              >
                 Month
               </Label>
-              <Select value={month.toString()} onValueChange={(val) => setMonth(parseInt(val))}>
-                <SelectTrigger id="month" className="bg-transparent text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm">
+              <Select
+                value={month.toString()}
+                onValueChange={(val) => setMonth(parseInt(val))}
+              >
+                <SelectTrigger
+                  id="month"
+                  className="bg-transparent text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                >
                   <SelectValue placeholder="Select month" />
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body text-sm">
@@ -353,7 +421,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                     value: i + 1,
                     label: format(new Date(2025, i, 1), "MMM"),
                   })).map((obj) => (
-                    <SelectItem key={obj.value} value={obj.value.toString()} className="text-sm">
+                    <SelectItem
+                      key={obj.value}
+                      value={obj.value.toString()}
+                      className="text-sm"
+                    >
                       {obj.label}
                     </SelectItem>
                   ))}
@@ -361,16 +433,29 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               </Select>
             </div>
             <div className="space-y-2 min-w-[120px]">
-              <Label htmlFor="year" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="year"
+                className="block text-sm font-semibold text-body"
+              >
                 Year
               </Label>
-              <Select value={year.toString()} onValueChange={(val) => setYear(parseInt(val))}>
-                <SelectTrigger id="year" className="bg-transparent text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm">
+              <Select
+                value={year.toString()}
+                onValueChange={(val) => setYear(parseInt(val))}
+              >
+                <SelectTrigger
+                  id="year"
+                  className="bg-transparent text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                >
                   <SelectValue placeholder="Select year" />
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body text-sm">
                   {[2024, 2025, 2026].map((y) => (
-                    <SelectItem key={y} value={y.toString()} className="text-sm">
+                    <SelectItem
+                      key={y}
+                      value={y.toString()}
+                      className="text-sm"
+                    >
                       {y}
                     </SelectItem>
                   ))}
@@ -378,17 +463,27 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               </Select>
             </div>
             <div className="space-y-2 min-w-[200px] flex-1">
-              <Label htmlFor="location" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="location"
+                className="block text-sm font-semibold text-body"
+              >
                 Location
               </Label>
               <Select value={locationId || "none"} disabled>
-                <SelectTrigger id="location" className="bg-body text-body border-complementary h-12 text-sm">
+                <SelectTrigger
+                  id="location"
+                  className="bg-body text-body border-complementary h-12 text-sm"
+                >
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body text-sm">
                   <SelectItem value="none">No Location</SelectItem>
                   {user?.locations?.map((loc) => (
-                    <SelectItem key={loc._id} value={loc._id} className="text-sm">
+                    <SelectItem
+                      key={loc._id}
+                      value={loc._id}
+                      className="text-sm"
+                    >
                       {loc.name}
                     </SelectItem>
                   ))}
@@ -396,7 +491,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               </Select>
             </div>
             <div className="space-y-2 min-w-[200px] flex-1">
-              <Label htmlFor="date" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="date"
+                className="block text-sm font-semibold text-body"
+              >
                 Select Date
               </Label>
               <Popover>
@@ -408,7 +506,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                     aria-label="Select date for marking attendance"
                   >
                     <CalendarIcon className="mr-2 h-5 w-5 text-complementary" />
-                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                    {selectedDate ? (
+                      format(selectedDate, "PPP")
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-body text-body">
@@ -426,7 +528,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="employeeFilter" className="block text-sm font-semibold text-body">
+              <Label
+                htmlFor="employeeFilter"
+                className="block text-sm font-semibold text-body"
+              >
                 Filter Employees
               </Label>
               <div className="relative">
@@ -485,7 +590,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent className="bg-body text-body border-complementary text-sm">
-                        <p>Employees not selected will be marked as Present upon submission. If no employees are selected, all will be marked as Present.</p>
+                        <p>
+                          Employees not selected will be marked as Present upon
+                          submission. If no employees are selected, all will be
+                          marked as Present.
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -531,28 +640,43 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                       <TableRow>
                         <TableHead className="text-body text-sm">
                           <Checkbox
-                            checked={bulkSelectedEmployees.length === filteredEmployees.length}
+                            checked={
+                              bulkSelectedEmployees.length ===
+                              filteredEmployees.length
+                            }
                             onCheckedChange={handleSelectAll}
                             disabled={!locationId}
                             className="h-5 w-5 border-complementary"
                             aria-label="Select all employees for bulk marking"
                           />
                         </TableHead>
-                        <TableHead className="text-body text-sm">Employee</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
-                        <TableHead className="text-body text-sm">Available Leaves</TableHead>
+                        <TableHead className="text-body text-sm">
+                          Employee
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Available Leaves
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredEmployees.map((emp, index) => (
                         <TableRow
                           key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+                          className={
+                            index % 2 === 0 ? "bg-body" : "bg-complementary"
+                          }
                         >
                           <TableCell className="whitespace-nowrap">
                             <Checkbox
-                              checked={bulkSelectedEmployees.includes(emp._id.toString())}
-                              onCheckedChange={() => handleBulkSelect(emp._id.toString())}
+                              checked={bulkSelectedEmployees.includes(
+                                emp._id.toString()
+                              )}
+                              onCheckedChange={() =>
+                                handleBulkSelect(emp._id.toString())
+                              }
                               disabled={!locationId}
                               className="h-5 w-5 border-complementary"
                               aria-label={`Select ${emp.name} for bulk marking`}
@@ -563,9 +687,21 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                           </TableCell>
                           <TableCell className="text-body whitespace-nowrap">
                             <Select
-                              value={bulkEmployeeStatuses[emp._id.toString()] || "present"}
-                              onValueChange={(value) => handleBulkStatusChange(emp._id.toString(), value)}
-                              disabled={!bulkSelectedEmployees.includes(emp._id.toString()) || !locationId}
+                              value={
+                                bulkEmployeeStatuses[emp._id.toString()] ||
+                                "present"
+                              }
+                              onValueChange={(value) =>
+                                handleBulkStatusChange(
+                                  emp._id.toString(),
+                                  value
+                                )
+                              }
+                              disabled={
+                                !bulkSelectedEmployees.includes(
+                                  emp._id.toString()
+                                ) || !locationId
+                              }
                             >
                               <SelectTrigger
                                 className="w-full sm:w-32 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
@@ -574,9 +710,18 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-body text-body text-sm">
-                                <SelectItem value="present" className="text-sm">Present</SelectItem>
-                                <SelectItem value="absent" className="text-sm">Absent</SelectItem>
-                                <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
+                                <SelectItem value="present" className="text-sm">
+                                  Present
+                                </SelectItem>
+                                <SelectItem value="absent" className="text-sm">
+                                  Absent
+                                </SelectItem>
+                                <SelectItem
+                                  value="half-day"
+                                  className="text-sm"
+                                >
+                                  Half Day
+                                </SelectItem>
                                 <SelectItem
                                   value="leave"
                                   disabled={emp.paidLeaves.available < 1}
@@ -612,24 +757,39 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   <Table className="border border-complementary min-w-[600px]">
                     <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
                       <TableRow>
-                        <TableHead className="text-body text-sm">Employee</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
-                        <TableHead className="text-body text-sm">Available Leaves</TableHead>
+                        <TableHead className="text-body text-sm">
+                          Employee
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Available Leaves
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredEmployees.map((emp, index) => (
                         <TableRow
                           key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+                          className={
+                            index % 2 === 0 ? "bg-body" : "bg-complementary"
+                          }
                         >
                           <TableCell className="text-body text-sm whitespace-nowrap">
                             {emp.name} ({emp.employeeId})
                           </TableCell>
                           <TableCell className="text-body whitespace-nowrap">
                             <Select
-                              value={attendanceData[emp._id.toString()] || "present"}
-                              onValueChange={(value) => handleAttendanceChange(emp._id.toString(), value)}
+                              value={
+                                attendanceData[emp._id.toString()] || "present"
+                              }
+                              onValueChange={(value) =>
+                                handleAttendanceChange(
+                                  emp._id.toString(),
+                                  value
+                                )
+                              }
                               disabled={!locationId}
                             >
                               <SelectTrigger
@@ -639,9 +799,18 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-body text-body text-sm">
-                                <SelectItem value="present" className="text-sm">Present</SelectItem>
-                                <SelectItem value="absent" className="text-sm">Absent</SelectItem>
-                                <SelectItem value="half-day" className="text-sm">Half Day</SelectItem>
+                                <SelectItem value="present" className="text-sm">
+                                  Present
+                                </SelectItem>
+                                <SelectItem value="absent" className="text-sm">
+                                  Absent
+                                </SelectItem>
+                                <SelectItem
+                                  value="half-day"
+                                  className="text-sm"
+                                >
+                                  Half Day
+                                </SelectItem>
                                 <SelectItem
                                   value="leave"
                                   disabled={emp.paidLeaves.available < 1}
@@ -668,7 +837,12 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   onClick={() => handleSubmit(true)}
                   variant="outline"
                   className="border-accent text-accent hover:bg-accent hover:text-white text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                  disabled={loading || empLoading || !filteredEmployees.length || !locationId}
+                  disabled={
+                    loading ||
+                    empLoading ||
+                    !filteredEmployees.length ||
+                    !locationId
+                  }
                   aria-label="Preview individual attendance changes"
                 >
                   <Eye className="h-4 w-4" />
@@ -677,7 +851,12 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                 <Button
                   onClick={() => handleSubmit(false)}
                   className="bg-accent text-white hover:bg-accent-hover text-sm py-2 px-2 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                  disabled={loading || empLoading || !filteredEmployees.length || !locationId}
+                  disabled={
+                    loading ||
+                    empLoading ||
+                    !filteredEmployees.length ||
+                    !locationId
+                  }
                   aria-label="Mark attendance for all employees individually"
                 >
                   {loading ? (
@@ -709,41 +888,40 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
         }
       >
         <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg max-h-[80vh] w-full overflow-hidden flex flex-col rounded-lg animate-scale-in">
-          <DialogHeader className="shrink-0 px-6 pt-6">
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              {bulkConfirmDialog.preview ? (
-                <>
-                  <Eye className="h-5 w-5 text-accent" />
-                  Preview Bulk Attendance
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-5 w-5 text-accent" />
-                  Confirm Bulk Attendance
-                </>
-              )}
+          <DialogHeader>
+            <DialogTitle>
+              {bulkConfirmDialog.overwrite
+                ? "Overwrite Existing Attendance?"
+                : bulkConfirmDialog.preview
+                ? "Preview Bulk Attendance"
+                : "Confirm Bulk Attendance"}
             </DialogTitle>
-            <DialogDescription className="text-sm mt-2">
-              {bulkConfirmDialog.preview
-                ? bulkConfirmDialog.records.length > 0
-                  ? `Review the attendance changes for ${bulkConfirmDialog.records.length} employee(s) and ${bulkConfirmDialog.remaining.length} to be marked as Present.`
-                  : `Review the attendance: all ${bulkConfirmDialog.remaining.length} employee(s) will be marked as Present.`
-                : bulkConfirmDialog.records.length > 0
-                ? `Are you sure you want to mark attendance for ${bulkConfirmDialog.records.length} employee(s) with the selected statuses and ${bulkConfirmDialog.remaining.length} employee(s) as Present?`
-                : `Are you sure you want to mark all ${bulkConfirmDialog.remaining.length} employee(s) as Present?`
-              }
+            <DialogDescription>
+              {bulkConfirmDialog.overwrite
+                ? `Attendance already exists for ${
+                    bulkConfirmDialog.existingRecords.length
+                  } employee(s) on ${format(selectedDate, "PPP")}. Overwrite?`
+                : bulkConfirmDialog.preview
+                ? `Review the attendance changes for ${bulkConfirmDialog.records.length} employee(s) and ${bulkConfirmDialog.remaining.length} to be marked as Present.`
+                : `Mark attendance for ${bulkConfirmDialog.records.length} employee(s) and ${bulkConfirmDialog.remaining.length} as Present?`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-body">Selected Employees:</p>
+              <p className="text-sm font-semibold text-body">
+                Selected Employees:
+              </p>
               <div className="mt-2 max-h-40 overflow-y-auto border border-complementary rounded-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-body text-sm">Employee ID</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Employee ID
+                      </TableHead>
                       <TableHead className="text-body text-sm">Name</TableHead>
-                      <TableHead className="text-body text-sm">Status</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Status
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -762,7 +940,8 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                           <TableCell className="text-body text-sm">
                             <span className="flex items-center gap-1">
                               {getStatusIcon(record.status)}
-                              {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                              {record.status.charAt(0).toUpperCase() +
+                                record.status.slice(1)}
                             </span>
                           </TableCell>
                         </TableRow>
@@ -780,9 +959,13 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-body text-sm">Employee ID</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Employee ID
+                      </TableHead>
                       <TableHead className="text-body text-sm">Name</TableHead>
-                      <TableHead className="text-body text-sm">Status</TableHead>
+                      <TableHead className="text-body text-sm">
+                        Status
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -812,9 +995,9 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               </div>
             </div>
           </div>
-          <DialogFooter className="shrink-0 px-6 py-4 border-t border-complementary">
+          
+          <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setBulkConfirmDialog({
@@ -824,20 +1007,54 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   preview: false,
                 })
               }
-              className="border-complementary text-body hover:bg-accent hover:text-white text-sm py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={loading}
             >
-              {bulkConfirmDialog.preview ? "Close" : "Cancel"}
+              {bulkConfirmDialog.preview || bulkConfirmDialog.overwrite
+                ? "Cancel"
+                : "Close"}
             </Button>
             {!bulkConfirmDialog.preview && (
               <Button
-                type="button"
-                onClick={confirmBulkSubmit}
-                className="bg-accent text-white hover:bg-accent-hover text-sm py-3 px-4 flex items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                onClick={() => {
+                  if (bulkConfirmDialog.overwrite) {
+                    dispatch(
+                      bulkMarkAttendance({
+                        attendance: allRecords,
+                        overwrite: true,
+                      })
+                    )
+                      .unwrap()
+                      .then(() => {
+                        toast.success("Attendance overwritten successfully", {
+                          duration: 10000,
+                        });
+                        setBulkSelectedEmployees([]);
+                        setBulkEmployeeStatuses({});
+                        setEmployeeFilter("");
+                      })
+                      .catch((err) => {
+                        toast.error(err || "Failed to overwrite attendance", {
+                          duration: 10000,
+                        });
+                      })
+                      .finally(() => {
+                        setBulkConfirmDialog({
+                          open: false,
+                          records: [],
+                          remaining: [],
+                          preview: false,
+                        });
+                      });
+                  } else {
+                    confirmBulkSubmit();
+                  }
+                }}
                 disabled={loading}
               >
                 {loading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
+                ) : bulkConfirmDialog.overwrite ? (
+                  "Overwrite"
                 ) : (
                   "Confirm"
                 )}
@@ -877,8 +1094,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
             <DialogDescription className="text-sm mt-2">
               {individualConfirmDialog.preview
                 ? `Review the attendance changes for ${individualConfirmDialog.records.length} employee(s).`
-                : `Are you sure you want to mark attendance for ${individualConfirmDialog.records.length} employee(s) with the selected statuses?`
-              }
+                : `Are you sure you want to mark attendance for ${individualConfirmDialog.records.length} employee(s) with the selected statuses?`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -886,7 +1102,9 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-body text-sm">Employee ID</TableHead>
+                    <TableHead className="text-body text-sm">
+                      Employee ID
+                    </TableHead>
                     <TableHead className="text-body text-sm">Name</TableHead>
                     <TableHead className="text-body text-sm">Status</TableHead>
                   </TableRow>
@@ -907,7 +1125,8 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                         <TableCell className="text-body text-sm">
                           <span className="flex items-center gap-1">
                             {getStatusIcon(record.status)}
-                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                            {record.status.charAt(0).toUpperCase() +
+                              record.status.slice(1)}
                           </span>
                         </TableCell>
                       </TableRow>
@@ -930,7 +1149,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               }
               className="border-complementary text-body hover:bg-accent hover:text-white text-sm py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={loading}
-              aria-label={individualConfirmDialog.preview ? "Close preview" : "Cancel attendance marking"}
+              aria-label={
+                individualConfirmDialog.preview
+                  ? "Close preview"
+                  : "Cancel attendance marking"
+              }
             >
               {individualConfirmDialog.preview ? "Close" : "Cancel"}
             </Button>
@@ -941,7 +1164,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                 disabled={loading}
                 aria-label="Confirm individual attendance marking"
               >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Confirm"}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  "Confirm"
+                )}
               </Button>
             )}
           </DialogFooter>

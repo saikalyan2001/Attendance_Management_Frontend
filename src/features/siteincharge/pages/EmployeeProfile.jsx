@@ -339,17 +339,29 @@ const EmployeeProfile = () => {
   }, [successEdit, dispatch]);
 
   const sortedAttendance = useMemo(() => {
-    return [...attendance].sort((a, b) => {
-      const aValue = sortField === 'date' ? new Date(a.date) : a.status;
-      const bValue = sortField === 'date' ? new Date(b.date) : b.status;
-      if (sortField === 'date') {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+  console.log('Attendance prop:', attendance); // Debug log
+  // Deduplicate by employee, date, location
+  const uniqueAttendance = Object.values(
+    attendance.reduce((acc, att) => {
+      const dateKey = `${att.employee}-${new Date(att.date).toISOString().split('T')[0]}-${att.location}`;
+      if (!acc[dateKey] || new Date(att.updatedAt) > new Date(acc[dateKey].updatedAt)) {
+        acc[dateKey] = att;
       }
-      return sortOrder === 'asc'
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    });
-  }, [attendance, sortField, sortOrder]);
+      return acc;
+    }, {})
+  );
+
+  return uniqueAttendance.sort((a, b) => {
+    const aValue = sortField === 'date' ? new Date(a.date) : a.status;
+    const bValue = sortField === 'date' ? new Date(b.date) : b.status;
+    if (sortField === 'date') {
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+    return sortOrder === 'asc'
+      ? aValue.localeCompare(bValue)
+      : bValue.localeCompare(aValue);
+  });
+}, [attendance, sortField, sortOrder]);
 
   const totalPages = Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE);
   const paginatedAttendance = sortedAttendance.slice(
@@ -1633,7 +1645,6 @@ const EmployeeProfile = () => {
 };
 
 export default EmployeeProfile;
-
 
 
 

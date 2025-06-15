@@ -17,6 +17,22 @@ export const fetchEmployees = createAsyncThunk(
   }
 );
 
+export const fetchMonthlyLeaves = createAsyncThunk(
+  'employees/fetchMonthlyLeaves',
+  async ({ month, year, location, status }, { rejectWithValue }) => {
+    try {
+      const params = { month, year };
+      if (location && location !== 'all') params.location = location;
+      if (status && status !== 'all') params.status = status;
+      const response = await api.get('/admin/employees/leaves', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Fetch monthly leaves error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch monthly leaves');
+    }
+  }
+);
+
 export const fetchEmployeeById = createAsyncThunk(
   'employees/fetchEmployeeById',
   async (id, { rejectWithValue }) => {
@@ -192,6 +208,7 @@ const employeesSlice = createSlice({
   name: 'employees',
   initialState: {
     employees: [],
+    monthlyLeaves: [], // Added for monthly leave data
     currentEmployee: null,
     history: null,
     attendance: [],
@@ -210,7 +227,8 @@ const employeesSlice = createSlice({
       state.currentEmployee = null;
       state.history = null;
       state.attendance = [];
-      // Note: Not resetting settings to keep it cached
+      state.monthlyLeaves = []; // Reset monthlyLeaves
+      // Note: Not resetting state.settings to keep it cached
     },
   },
   extraReducers: (builder) => {
@@ -229,7 +247,21 @@ const employeesSlice = createSlice({
         state.error = action.payload;
         state.employees = [];
       })
-      // Fetch Employee by ID
+      // Fetch Monthly Leaves
+      .addCase(fetchMonthlyLeaves.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchMonthlyLeaves.fulfilled, (state, action) => {
+        state.loading = false;
+        state.monthlyLeaves = action.payload || [];
+      })
+      .addCase(fetchMonthlyLeaves.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.monthlyLeaves = [];
+      })
+      // Fetch Employee By ID
       .addCase(fetchEmployeeById.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -370,7 +402,7 @@ const employeesSlice = createSlice({
       })
       .addCase(getEmployeeHistory.fulfilled, (state, action) => {
         state.loading = false;
-        state.history = action.payload; // Includes transferHistory, employmentHistory, advanceHistory
+        state.history = action.payload;
       })
       .addCase(getEmployeeHistory.rejected, (state, action) => {
         state.loading = false;
