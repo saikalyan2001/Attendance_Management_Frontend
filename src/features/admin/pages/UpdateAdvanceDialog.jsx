@@ -1,3 +1,4 @@
+// components/UpdateAdvanceDialog.js
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateEmployeeAdvance, reset as resetEmployees } from '../redux/employeeSlice';
@@ -5,12 +6,14 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 
 const updateAdvanceSchema = z.object({
   advance: z
@@ -18,6 +21,18 @@ const updateAdvanceSchema = z.object({
     .min(1, 'Advance is required')
     .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
       message: 'Advance must be a non-negative number',
+    }),
+  month: z
+    .string()
+    .min(1, 'Month is required')
+    .refine((val) => !isNaN(Number(val)) && Number(val) >= 1 && Number(val) <= 12, {
+      message: 'Invalid month',
+    }),
+  year: z
+    .string()
+    .min(1, 'Year is required')
+    .refine((val) => !isNaN(Number(val)) && Number(val) >= 2000, {
+      message: 'Invalid year',
     }),
 });
 
@@ -31,16 +46,28 @@ const UpdateAdvanceDialog = ({
   const dispatch = useDispatch();
   const { loading: employeesLoading } = useSelector((state) => state.adminEmployees);
 
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1; // 1-based
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: (i + 1).toString(),
+    label: format(new Date(2025, i), 'MMMM'),
+  }));
+  const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+
   const form = useForm({
     resolver: zodResolver(updateAdvanceSchema),
     defaultValues: {
       advance: employee?.advance ? employee.advance.toString() : '0',
+      month: currentMonth.toString(),
+      year: currentYear.toString(),
     },
   });
 
   const handleSubmit = (data) => {
     const advance = Number(data.advance);
-    dispatch(updateEmployeeAdvance({ id: employee._id, advance })).then((result) => {
+    const year = Number(data.year);
+    const month = Number(data.month);
+    dispatch(updateEmployeeAdvance({ id: employee._id, advance, year, month })).then((result) => {
       if (result.meta.requestStatus === 'fulfilled') {
         onOpenChange(false);
         setSuccessMessage('Employee advance updated successfully');
@@ -81,6 +108,54 @@ const UpdateAdvanceDialog = ({
                     placeholder="Enter advance amount"
                   />
                 </FormControl>
+                <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base" />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="month"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-[10px] sm:text-sm xl:text-lg font-medium">Month</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg">
+                      <SelectValue placeholder="Select month" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent className="bg-complementary text-body">
+                    {months.map((m) => (
+                      <SelectItem key={m.value} value={m.value} className="text-[10px] sm:text-sm xl:text-lg">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base" />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="year"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-[10px] sm:text-sm xl:text-lg font-medium">Year</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent className="bg-complementary text-body">
+                    {years.map((y) => (
+                      <SelectItem key={y} value={y} className="text-[10px] sm:text-sm xl:text-lg">
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base" />
               </FormItem>
             )}
