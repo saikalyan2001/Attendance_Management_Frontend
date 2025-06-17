@@ -191,9 +191,9 @@ export const getEmployeeHistory = createAsyncThunk(
 
 export const updateEmployeeAdvance = createAsyncThunk(
   'siteInchargeEmployee/updateEmployeeAdvance',
-  async ({ id, advance }, { rejectWithValue }) => {
+  async ({ id, advance, month, year }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/siteincharge/employees/${id}/advance`, { advance });
+      const response = await api.put(`/siteincharge/employees/${id}/advance`, { advance, month, year });
       return response.data;
     } catch (error) {
       console.error('Update employee advance error:', error.response?.data || error.message);

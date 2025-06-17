@@ -11,7 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const SalaryTable = ({
-  salaryReport,
+ salaryReport,
   locations,
   reportsLoading,
   month,
@@ -27,7 +27,7 @@ const SalaryTable = ({
   viewMode,
   setViewMode,
 }) => {
-  const calculateTotals = (data) => {
+ const calculateTotals = (data) => {
     return data.reduce(
       (acc, emp) => ({
         grossSalary: acc.grossSalary + (typeof emp.grossSalary === 'number' ? emp.grossSalary : 0),

@@ -76,6 +76,9 @@ const MonthlyAttendance = () => {
   const { attendance, loading } = useSelector(
     (state) => state.adminAttendance
   );
+
+  console.log("MonthlyAttendance attendance data:", attendance);
+
   const { locations, loading: locationsLoading } = useSelector(
     (state) => state.adminLocations
   );
@@ -99,22 +102,28 @@ const MonthlyAttendance = () => {
   const employeesPerPage = 10;
 
   useEffect(() => {
-    if (!user || user.role !== "admin") {
-      navigate("/login");
-      return;
-    }
-    dispatch(fetchLocations());
-    if (locationFilter && locationFilter !== "all") {
-      dispatch(fetchEmployees({ location: locationFilter }));
-      dispatch(
-        fetchAttendance({
-          month: monthFilter,
-          year: yearFilter,
-          location: locationFilter,
-        })
-      );
-    }
-  }, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter]);
+  console.log("MonthlyAttendance useEffect triggered with filters:", {
+    locationFilter,
+    monthFilter,
+    yearFilter,
+  });
+  console.log("Current attendance state:", attendance);
+  if (!user || user.role !== "admin") {
+    navigate("/login");
+    return;
+  }
+  dispatch(fetchLocations());
+  if (locationFilter && locationFilter !== "all") {
+    dispatch(fetchEmployees({ location: locationFilter }));
+    dispatch(
+      fetchAttendance({
+        month: monthFilter,
+        year: yearFilter,
+        location: locationFilter,
+      })
+    );
+  }
+}, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter]);
 
   const handleEditAttendance = (attendanceId, employeeName, date, currentStatus) => {
     setEditDialog({

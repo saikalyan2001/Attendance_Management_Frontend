@@ -76,11 +76,16 @@ const getStatusIcon = (status) => {
 
 const AttendanceRequests = ({ locationId }) => {
   const dispatch = useDispatch();
-  const { attendanceRequests, loading: reqLoading, error: attError } =
-    useSelector((state) => state.adminAttendance);
-  const { employees, loading: empLoading, error: empError } = useSelector(
-    (state) => state.adminEmployees
-  );
+  const {
+    attendanceRequests,
+    loading: reqLoading,
+    error: attError,
+  } = useSelector((state) => state.adminAttendance);
+  const {
+    employees,
+    loading: empLoading,
+    error: empError,
+  } = useSelector((state) => state.adminEmployees);
   const { locations, loading: locLoading } = useSelector(
     (state) => state.adminLocations
   );
@@ -186,12 +191,17 @@ const AttendanceRequests = ({ locationId }) => {
       } else if (sortConfig.column === "requestedStatus") {
         aValue = a.requestedStatus || "";
         bValue = b.requestedStatus || "";
+      } else if (sortConfig.column === "currentStatus") {
+        aValue = a.currentStatus || "";
+        bValue = b.currentStatus || "";
       } else {
         aValue = a.status || "";
         bValue = b.status || "";
       }
       if (sortConfig.column === "date") {
-        return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
       }
       return sortConfig.direction === "asc"
         ? aValue.localeCompare(bValue)
@@ -248,23 +258,48 @@ const AttendanceRequests = ({ locationId }) => {
       requestId,
       action,
       employeeName,
-      date,
+      date: date, // Store the raw ISO date string (e.g., "2025-06-16T18:30:00.000Z")
       requestedStatus,
     });
   };
 
   const confirmRequestAction = () => {
-    const { requestId, action } = actionDialog;
+    const { requestId, action, date, employeeName, requestedStatus } =
+      actionDialog;
     dispatch(handleAttendanceRequest({ id: requestId, status: action }))
       .unwrap()
       .then(() => {
         toast.success(`Request ${action} successfully`, {
           action: {
             label: "Undo",
-            onClick: () => toast.info("Undo functionality not implemented yet."),
+            onClick: () =>
+              toast.info("Undo functionality not implemented yet."),
           },
         });
         dispatch(fetchAttendanceRequests());
+        // Parse the request date correctly
+        const requestDate = new Date(actionDialog.date); // Ensure date is the ISO string from req.date
+        if (isNaN(requestDate)) {
+          console.error("Invalid date in actionDialog:", actionDialog.date);
+          return;
+        }
+        const month = requestDate.getMonth() + 1;
+        const year = requestDate.getFullYear();
+        const location = locationFilter === "all" ? locationId : locationFilter;
+        console.log("Dispatching fetchAttendance with:", {
+          month,
+          year,
+          location,
+          employeeName,
+          requestedStatus,
+        });
+        dispatch(
+          fetchAttendance({
+            month,
+            year,
+            location: location || undefined,
+          })
+        );
       })
       .catch((err) => toast.error(err || "Failed to handle request"))
       .finally(() =>
@@ -335,9 +370,7 @@ const AttendanceRequests = ({ locationId }) => {
                 className="pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
                 aria-label="Filter requests by employee name or ID"
               />
-              <Search
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-complementary"
-              />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-complementary" />
             </div>
           </div>
           <div className="flex-1 min-w-[150px]">
@@ -347,10 +380,7 @@ const AttendanceRequests = ({ locationId }) => {
             >
               Filter by Status
             </Label>
-            <Select
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-            >
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger
                 id="statusFilter"
                 className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
@@ -398,7 +428,9 @@ const AttendanceRequests = ({ locationId }) => {
                         <ArrowUpDown className="h-5 w-5" />
                       </Button>
                     </TableHead>
-                    <TableHead className="text-body text-sm">Location</TableHead>
+                    <TableHead className="text-body text-sm">
+                      Location
+                    </TableHead>
                     <TableHead className="text-body text-sm">
                       <Button
                         variant="ghost"
@@ -407,6 +439,17 @@ const AttendanceRequests = ({ locationId }) => {
                         aria-label="Sort by date"
                       >
                         Date
+                        <ArrowUpDown className="h-5 w-5" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="text-body text-sm">
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("currentStatus")}
+                        className="flex items-center space-x-1"
+                        aria-label="Sort by current status"
+                      >
+                        Current Status
                         <ArrowUpDown className="h-5 w-5" />
                       </Button>
                     </TableHead>
@@ -444,19 +487,37 @@ const AttendanceRequests = ({ locationId }) => {
                         index % 2 === 0 ? "bg-complementary" : "bg-body"
                       }
                     >
-                      <TableCell
-                        className="text-body text-sm truncate max-w-[150px]"
-                      >
+                      <TableCell className="text-body text-sm truncate max-w-[150px]">
                         {req.employee?.name || "Unknown"} (
                         {req.employee?.employeeId || "N/A"})
                       </TableCell>
-                      <TableCell
-                        className="text-body text-sm truncate max-w-[150px]"
-                      >
+                      <TableCell className="text-body text-sm truncate max-w-[150px]">
                         {req.location?.name || "N/A"}
                       </TableCell>
                       <TableCell className="text-body text-sm">
                         {format(new Date(req.date), "PPP")}
+                      </TableCell>
+                      <TableCell className="text-body text-sm">
+                        <Badge
+                          variant={
+                            req.currentStatus === "present"
+                              ? "success"
+                              : req.currentStatus === "absent"
+                              ? "destructive"
+                              : req.currentStatus === "N/A"
+                              ? "secondary"
+                              : "warning"
+                          }
+                          className="text-xs"
+                        >
+                          <span className="flex items-center gap-1">
+                            {getStatusIcon(req.currentStatus)}
+                            {req.currentStatus === "N/A"
+                              ? "N/A"
+                              : req.currentStatus.charAt(0).toUpperCase() +
+                                req.currentStatus.slice(1)}
+                          </span>
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-body text-sm">
                         <Badge
@@ -487,7 +548,8 @@ const AttendanceRequests = ({ locationId }) => {
                                   setReasonDialog({
                                     open: true,
                                     reason: req.reason,
-                                    employeeName: req.employee?.name || "Unknown",
+                                    employeeName:
+                                      req.employee?.name || "Unknown",
                                     date: format(new Date(req.date), "PPP"),
                                   })
                                 }
@@ -531,7 +593,7 @@ const AttendanceRequests = ({ locationId }) => {
                                   req._id,
                                   "approved",
                                   req.employee?.name || "Unknown",
-                                  format(new Date(req.date), "PPP"),
+                                  req.date, // Pass the raw ISO date string
                                   req.requestedStatus
                                 )
                               }
@@ -548,7 +610,7 @@ const AttendanceRequests = ({ locationId }) => {
                                   req._id,
                                   "rejected",
                                   req.employee?.name || "Unknown",
-                                  format(new Date(req.date), "PPP"),
+                                  req.date, // Pass the raw ISO date string
                                   req.requestedStatus
                                 )
                               }

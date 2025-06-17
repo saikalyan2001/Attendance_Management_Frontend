@@ -89,9 +89,9 @@ export const updateEmployee = createAsyncThunk(
 
 export const updateEmployeeAdvance = createAsyncThunk(
   'employees/updateEmployeeAdvance',
-  async ({ id, advance }, { rejectWithValue }) => {
+  async ({ id, advance, year, month }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/admin/employees/${id}/advance`, { advance });
+      const response = await api.put(`/admin/employees/${id}/advance`, { advance, year, month });
       return response.data;
     } catch (error) {
       console.error('Update employee advance error:', error.response?.data || error.message);

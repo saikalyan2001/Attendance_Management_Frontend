@@ -203,12 +203,13 @@ const EmployeeProfile = () => {
   }, [dispatch, id, user, navigate, monthFilter, yearFilter]);
 
   useEffect(() => {
+    console.log('Attendance data:', attendance); // Debug attendance data
     return () => {
       Object.values(previewUrls).forEach((url) => {
         if (url) URL.revokeObjectURL(url);
       });
     };
-  }, [previewUrls]);
+  }, [attendance, previewUrls]);
 
   useEffect(() => {
     if (settingsError) {
@@ -296,35 +297,34 @@ const EmployeeProfile = () => {
     }
   }, [error, formErrors, dispatch, id, monthFilter, yearFilter]);
 
-
   const sortedAttendance = useMemo(() => {
-  // Filter attendance records for the current employee
-  const filteredAttendance = attendance.filter(
-    (record) => record.employee._id.toString() === id
-  );
+    // Filter attendance records for the current employee, skipping null/undefined records
+    const filteredAttendance = attendance.filter(
+      (record) => record && record.employee && record.employee._id && record.employee._id.toString() === id
+    );
 
-  // Deduplicate by date and employee (though employee filter makes this less critical)
-  const uniqueAttendance = [];
-  const seenKeys = new Set();
-  filteredAttendance.forEach((record) => {
-    const dateKey = `${record.employee._id}_${format(new Date(record.date), 'yyyy-MM-dd')}`;
-    if (!seenKeys.has(dateKey)) {
-      seenKeys.add(dateKey);
-      uniqueAttendance.push(record);
-    }
-  });
+    // Deduplicate by date and employee
+    const uniqueAttendance = [];
+    const seenKeys = new Set();
+    filteredAttendance.forEach((record) => {
+      const dateKey = `${record.employee._id}_${format(new Date(record.date), 'yyyy-MM-dd')}`;
+      if (!seenKeys.has(dateKey)) {
+        seenKeys.add(dateKey);
+        uniqueAttendance.push(record);
+      }
+    });
 
-  return uniqueAttendance.sort((a, b) => {
-    const aValue = sortField === 'date' ? new Date(a.date) : a.status;
-    const bValue = sortField === 'date' ? new Date(b.date) : b.status;
-    if (sortField === 'date') {
-      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-    }
-    return sortOrder === 'asc'
-      ? aValue.localeCompare(bValue)
-      : bValue.localeCompare(aValue);
-  });
-}, [attendance, sortField, sortOrder, id]);
+    return uniqueAttendance.sort((a, b) => {
+      const aValue = sortField === 'date' ? new Date(a.date) : a.status;
+      const bValue = sortField === 'date' ? new Date(b.date) : b.status;
+      if (sortField === 'date') {
+        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      return sortOrder === 'asc'
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    });
+  }, [attendance, sortField, sortOrder, id]);
 
   const totalPages = Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE);
   const paginatedAttendance = sortedAttendance.slice(
@@ -333,9 +333,7 @@ const EmployeeProfile = () => {
   );
 
   console.log("paginatedAttendance", paginatedAttendance);
-      console.log("sortedAttendance", sortedAttendance);
-
-  
+  console.log("sortedAttendance", sortedAttendance);
 
   const filteredDocuments = useMemo(() => {
     if (!currentEmployee?.documents) return [];
@@ -847,7 +845,7 @@ const EmployeeProfile = () => {
                 <TableBody>
                   {paginatedAttendance.length > 0 ? (
                     paginatedAttendance.map((record) => (
-                      <TableRow key={record._id}>
+                      <TableRow key={record._id || Math.random()}>
                         <TableCell>{format(new Date(record.date), 'MMM dd, yyyy')}</TableCell>
                         <TableCell>
                           <Badge

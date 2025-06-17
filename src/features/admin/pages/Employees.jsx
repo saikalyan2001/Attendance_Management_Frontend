@@ -1,3 +1,4 @@
+// components/Employees.js
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -116,6 +117,16 @@ const Employees = () => {
 
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
+  // Helper function to get the current month's advance
+  const getCurrentAdvance = (employee) => {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // 1-based
+    const advanceEntry = employee.advances?.find(
+      (adv) => adv.year === currentYear && adv.month === currentMonth
+    );
+    return advanceEntry ? advanceEntry.amount : 0;
+  };
+
   const shouldHighlightEmployee = (employee) => {
     if (!employee.transferTimestamp) return false;
     const transferTime = new Date(employee.transferTimestamp).getTime();
@@ -134,9 +145,12 @@ const Employees = () => {
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     let aValue, bValue;
 
-    if (sortField === "salary" || sortField === "advance") {
+    if (sortField === "salary") {
       aValue = a[sortField] || 0;
       bValue = b[sortField] || 0;
+    } else if (sortField === "advance") {
+      aValue = getCurrentAdvance(a); // Use current month's advance
+      bValue = getCurrentAdvance(b);
     } else if (sortField === "location") {
       aValue = a.location?.name || a.location?.city || "";
       bValue = b.location?.name || b.location?.city || "";
@@ -243,7 +257,15 @@ const Employees = () => {
   };
 
   const handleUpdateAdvanceClick = (employee) => {
-    setEmployeeToUpdateAdvance(employee);
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    const currentAdvance = employee.advances?.find(
+      (adv) => adv.year === currentYear && adv.month === currentMonth
+    );
+    setEmployeeToUpdateAdvance({
+      ...employee,
+      advance: currentAdvance ? currentAdvance.amount : 0,
+    });
     setOpenUpdateAdvanceDialog(true);
   };
 
@@ -540,7 +562,7 @@ const Employees = () => {
                             ₹{employee.salary}
                           </TableCell>
                           <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            ₹{employee.advance || 0}
+                            ₹{getCurrentAdvance(employee)} {/* Display current month's advance */}
                           </TableCell>
                           <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
                             {openingLeaves}/{closingLeaves}

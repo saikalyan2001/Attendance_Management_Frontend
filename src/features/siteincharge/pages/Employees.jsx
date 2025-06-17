@@ -1,3 +1,4 @@
+// components/siteincharge/Employees.js
 import { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -34,6 +35,7 @@ import {
   LogOut,
   UserPlus,
   IndianRupee,
+  Pencil, // Add Pencil icon
 } from "lucide-react";
 import {
   Tooltip,
@@ -58,6 +60,7 @@ import {
   fetchSettings,
   reset,
 } from "../redux/employeeSlice";
+import { format } from 'date-fns';
 
 const Employees = () => {
   const dispatch = useDispatch();
@@ -71,9 +74,6 @@ const Employees = () => {
     settings,
     loading: employeesLoading,
   } = useSelector((state) => state.siteInchargeEmployee);
-
-  console.log("settings", settings);
-  
 
   const initialDepartment = searchParams.get("department") || "all";
   const initialStatus = searchParams.get("status") || "all";
@@ -95,17 +95,25 @@ const Employees = () => {
   const [deactivateEmployeeId, setDeactivateEmployeeId] = useState(null);
   const [employeeToUpdateAdvance, setEmployeeToUpdateAdvance] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [advanceMonth, setAdvanceMonth] = useState(new Date().getMonth() + 1); // Current month (1-12)
+  const [advanceYear, setAdvanceYear] = useState(new Date().getFullYear()); // Current year
   const itemsPerPage = 5;
 
   const locationId = user?.locations?.[0]?._id;
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
-    console.log("HIGHLIGHT_DURATION", HIGHLIGHT_DURATION);
-
-
   const departments = useMemo(() => {
     return [...new Set(employees.map((emp) => emp.department))].sort();
   }, [employees]);
+
+  // Helper function to get advance for the selected month and year
+  const getCurrentAdvance = (employee) => {
+    if (!employee?.advances || !Array.isArray(employee.advances)) return 0;
+    const advanceEntry = employee.advances.find(
+      (adv) => adv.year === advanceYear && adv.month === advanceMonth
+    );
+    return advanceEntry ? advanceEntry.amount : 0;
+  };
 
   const filteredEmployees = useMemo(() => {
     return employees
@@ -123,9 +131,12 @@ const Employees = () => {
   const sortedEmployees = useMemo(() => {
     return [...filteredEmployees].sort((a, b) => {
       let aValue, bValue;
-      if (sortField === "salary" || sortField === "advance") {
+      if (sortField === "salary") {
         aValue = a[sortField] || 0;
         bValue = b[sortField] || 0;
+      } else if (sortField === "advance") {
+        aValue = getCurrentAdvance(a) || 0;
+        bValue = getCurrentAdvance(b) || 0;
       } else if (sortField === "location") {
         aValue = (a.location?.name || a.location?.city || "").toLowerCase();
         bValue = (b.location?.name || b.location?.city || "").toLowerCase();
@@ -141,23 +152,19 @@ const Employees = () => {
       }
       return sortOrder === "asc" ? (aValue < bValue ? -1 : 1) : (aValue > bValue ? -1 : 1);
     });
-  }, [filteredEmployees, sortField, sortOrder]);
+  }, [filteredEmployees, sortField, advanceMonth, advanceYear]);
 
-  const totalPages = Math.ceil(sortedEmployees.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
   const paginatedEmployees = sortedEmployees.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  console.log("sortedEmployees", sortedEmployees);
-  console.log("paginatedEmployees", paginatedEmployees);
-  
-
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
+      setCurrentPage(1);
     }
-  }, [totalPages, currentPage]);
+  }, [totalPages]);
 
   useEffect(() => {
     dispatch(fetchMe()).unwrap().catch(() => navigate("/login"));
@@ -185,8 +192,8 @@ const Employees = () => {
   const handleFilterDepartmentChange = (value) => {
     setFilterDepartment(value);
     setSearchParams({
-      ...(value !== "all" && { department: value }),
-      ...(filterStatus !== "all" && { status: filterStatus }),
+      ...(value !== "all" && { department: value}),
+      ...(filterStatus !== "all" && { status: value }),
     });
     setCurrentPage(1);
   };
@@ -200,6 +207,16 @@ const Employees = () => {
     setCurrentPage(1);
   };
 
+  const handleAdvanceMonthChange = (value) => {
+    setAdvanceMonth(parseInt(value));
+    setCurrentPage(1);
+  };
+
+  const handleAdvanceYearChange = (value) => {
+    setAdvanceYear(parseInt(value));
+    setCurrentPage(1);
+  };
+
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
@@ -207,7 +224,7 @@ const Employees = () => {
   };
 
   const handleUpdateAdvanceClick = (employee) => {
-    setEmployeeToUpdateAdvance(employee);
+    setEmployeeToUpdateAdvance({ ...employee, currentMonth: advanceMonth, currentYear: advanceYear });
     setOpenUpdateAdvanceDialog(true);
   };
 
@@ -218,10 +235,16 @@ const Employees = () => {
     return currentTime - transferTime <= HIGHLIGHT_DURATION;
   };
 
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: (i + 1).toString(),
+    label: format(new Date(2025, i), 'MMMM'),
+  }));
+  const years = [2024, 2025, 2026].map(y => y.toString());
+
   return (
     <Layout title="Employees" role="siteincharge">
       <Alerts />
-      <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in max-w-full mx-auto">
+      <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-max-w-full mx-auto">
         <CardHeader>
           <CardTitle className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full max-w-full">
             <span className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">
@@ -232,25 +255,22 @@ const Employees = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-5 w-5" />
                 <Input
                   placeholder="Search by name or ID"
-                  className="pl-10 h-9 xl:h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base transition-all duration-300 hover:shadow-sm w-full"
+                  className="pl-10 h-9 xl:h-10 bg-body text-background border-background focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base transition-all duration-300 hover:shadow-sm w-full"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search employees"
                 />
               </div>
               <Select
                 value={filterDepartment}
                 onValueChange={handleFilterDepartmentChange}
               >
-                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base truncate">
-                  <SelectValue placeholder="Filter by department" />
+                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-complementary">
+                  <SelectValue placeholder="Filter by Department" />
                 </SelectTrigger>
                 <SelectContent className="bg-complementary text-body">
-                  <SelectItem value="all" className="text-xs sm:text-sm xl:text-base">
-                    All Departments
-                  </SelectItem>
+                  <SelectItem value="all">All Departments</SelectItem>
                   {departments.map((dept) => (
-                    <SelectItem key={dept} value={dept} className="text-xs sm:text-sm xl:text-base">
+                    <SelectItem key={dept} value={dept}>
                       {dept}
                     </SelectItem>
                   ))}
@@ -260,25 +280,48 @@ const Employees = () => {
                 value={filterStatus}
                 onValueChange={handleFilterStatusChange}
               >
-                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base truncate">
-                  <SelectValue placeholder="Filter by status" />
+                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-background">
+                  <SelectValue placeholder="Filter by Status" />
                 </SelectTrigger>
                 <SelectContent className="bg-complementary text-body">
-                  <SelectItem value="all" className="text-xs sm:text-sm xl:text-base">
-                    All Statuses
-                  </SelectItem>
-                  <SelectItem value="active" className="text-xs sm:text-sm xl:text-base">
-                    Active
-                  </SelectItem>
-                  <SelectItem value="inactive" className="text-xs sm:text-sm xl:text-base">
-                    Inactive
-                  </SelectItem>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={advanceMonth.toString()}
+                onValueChange={handleAdvanceMonthChange}
+              >
+                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-background">
+                  <SelectValue placeholder="Select Month" />
+                </SelectTrigger>
+                <SelectContent className="bg-complementary text-body">
+                  {months.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={advanceYear.toString()}
+                onValueChange={handleAdvanceYearChange}
+              >
+                <SelectTrigger className="w-full lg:w-48 h-9 xl:h-10 bg-complementary text-body border-background">
+                  <SelectValue placeholder="Select Year" />
+                </SelectTrigger>
+                <SelectContent className="bg-complementary text-body">
+                  {years.map((y) => (
+                    <SelectItem key={y} value={y}>
+                      {y}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button
                 onClick={() => navigate("/siteincharge/register-employee")}
-                className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md w-full lg:w-auto"
-                aria-label="Register new employee"
+                className="bg-accent text-background hover:bg-accent-dark rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md w-full lg:w-auto"
               >
                 <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                 Add Employee
@@ -304,7 +347,6 @@ const Employees = () => {
                               variant="ghost"
                               onClick={() => handleSort(field)}
                               className="text-body hover:text-accent w-full text-left flex items-center gap-1 text-xs sm:text-sm xl:text-base"
-                              aria-label={`Sort by ${field}`}
                             >
                               {field === "leaves"
                                 ? "Leaves (O/C)"
@@ -341,33 +383,15 @@ const Employees = () => {
                             shouldHighlightEmployee(employee) && "bg-accent-light animate-pulse"
                           )}
                         >
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.employeeId}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.name}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.designation}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.department}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.location?.name || employee.location?.city || "N/A"}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            ₹{employee.salary}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            ₹{employee.advance || 0}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {openingLeaves}/{closingLeaves}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.status}
-                          </TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.employeeId}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.name}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.designation}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.department}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.location?.name || employee.location?.city || "N/A"}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">₹{employee.salary?.toFixed(2)}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">₹{getCurrentAdvance(employee).toFixed(2)}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{openingLeaves}/{closingLeaves}</TableCell>
+                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">{employee.status}</TableCell>
                           <TableCell className="px-4 py-2 space-x-2">
                             <TooltipProvider>
                               <Tooltip>
@@ -377,7 +401,6 @@ const Employees = () => {
                                     size="sm"
                                     onClick={() => navigate(`/siteincharge/employees/${employee._id}`)}
                                     className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`View employee ${employee.name}`}
                                   >
                                     <Eye className="h-5 w-5" />
                                   </Button>
@@ -394,21 +417,8 @@ const Employees = () => {
                                       setOpenEditDialog(true);
                                     }}
                                     className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Edit employee ${employee.name}`}
                                   >
-                                    <svg
-                                      className="h-5 w-5"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
-                                      />
-                                    </svg>
+                                    <Pencil className="h-5 w-5" /> {/* Replaced SVG with Pencil icon */}
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Edit Employee</TooltipContent>
@@ -424,7 +434,6 @@ const Employees = () => {
                                     }}
                                     className="text-accent hover:text-accent-hover transition-colors"
                                     disabled={employee.status !== "active"}
-                                    aria-label={`Transfer employee ${employee.name}`}
                                   >
                                     <Truck className="h-5 w-5" />
                                   </Button>
@@ -438,7 +447,6 @@ const Employees = () => {
                                     size="sm"
                                     onClick={() => navigate(`/siteincharge/employees/${employee._id}/history`)}
                                     className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`View history for employee ${employee.name}`}
                                   >
                                     <History className="h-5 w-5" />
                                   </Button>
@@ -455,7 +463,6 @@ const Employees = () => {
                                       setOpenAddDocumentsDialog(true);
                                     }}
                                     className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Add documents for employee ${employee.name}`}
                                   >
                                     <FilePlus className="h-5 w-5" />
                                   </Button>
@@ -467,12 +474,8 @@ const Employees = () => {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => {
-                                      setEmployeeToUpdateAdvance(employee);
-                                      setOpenUpdateAdvanceDialog(true);
-                                    }}
+                                    onClick={() => handleUpdateAdvanceClick(employee)}
                                     className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Update advance for employee ${employee.name}`}
                                   >
                                     <IndianRupee className="h-4 w-4" />
                                   </Button>
@@ -490,7 +493,6 @@ const Employees = () => {
                                         setOpenDeactivateDialog(true);
                                       }}
                                       className="text-error hover:text-error-hover transition-colors"
-                                      aria-label={`Deactivate employee ${employee.name}`}
                                     >
                                       <LogOut className="h-4 w-4" />
                                     </Button>
@@ -508,7 +510,6 @@ const Employees = () => {
                                         setOpenRejoinDialog(true);
                                       }}
                                       className="text-accent hover:text-accent-hover transition-colors"
-                                      aria-label={`Rejoin employee ${employee.name}`}
                                     >
                                       <UserPlus className="h-4 w-4" />
                                     </Button>
@@ -532,7 +533,6 @@ const Employees = () => {
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                     className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
-                    aria-label="Previous page"
                   >
                     <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
@@ -544,11 +544,10 @@ const Employees = () => {
                       onClick={() => handlePageChange(page)}
                       className={cn(
                         currentPage === page
-                          ? "bg-accent text-body"
+                          ? "bg-accent text-bg-accent"
                           : "border-complementary text-body hover:bg-complementary/10",
                         "rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
                       )}
-                      aria-label={`Go to page ${page}`}
                     >
                       {page}
                     </Button>
@@ -559,7 +558,6 @@ const Employees = () => {
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                     className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-2 sm:px-3"
-                    aria-label="Next page"
                   >
                     <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
@@ -574,8 +572,7 @@ const Employees = () => {
               </p>
               <Button
                 onClick={() => navigate("/siteincharge/register-employee")}
-                className="mt-2 bg-accent text-body hover:bg-accent-hover rounded-md text-xs sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4"
-                aria-label="Register new employee"
+                className="mt-2 bg-accent text-bg-accent hover:bg-accent-hover rounded-md text-xs sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4"
               >
                 <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                 Add Employee
