@@ -1,17 +1,17 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://attendance-management-backend-wgvu.onrender.com/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: 'http://localhost:5000/api',
 });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  console.log('API request:', { url: config.url, token: token ? 'Present' : 'Missing' });
-  if (token) {
+    if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Only set Content-Type if not multipart/form-data
+  if (!config.headers['Content-Type'] || config.headers['Content-Type'] === 'application/json') {
+    config.headers['Content-Type'] = 'application/json';
   }
   return config;
 });

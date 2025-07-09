@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../../redux/slices/authSlice';
-import AdminSidebar from '../../features/admin/components/Sidebar'; 
-import SiteInchargeSidebar from '../../features/siteincharge/components/Sidebar'; 
+import AdminSidebar from '../../features/admin/components/Sidebar';
+import SiteInchargeSidebar from '../../features/siteincharge/components/Sidebar';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { Toaster, toast } from 'react-hot-toast';
 
 const Layout = ({ children, title, role: propRole }) => {
   const dispatch = useDispatch();
@@ -17,10 +17,8 @@ const Layout = ({ children, title, role: propRole }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Determine the role: Use propRole if provided, otherwise fall back to user.role from Redux
-  const role = propRole || user?.role || 'siteincharge'; // Default to 'siteincharge' if no role is found
-
-  // Select the appropriate Sidebar component based on the role
+  const role = propRole || user?.role || 'siteincharge';
+  
   const Sidebar = role === 'siteincharge' ? SiteInchargeSidebar : AdminSidebar;
 
   const toggleSidebar = () => {
@@ -29,7 +27,11 @@ const Layout = ({ children, title, role: propRole }) => {
 
   const handleLogout = () => {
     dispatch(logout()).then(() => {
-      toast.success('Logged out successfully');
+      toast.success('Logged out successfully', {
+        id: 'logout-success', // Unique ID
+        position: 'top-center',
+        duration: 5000,
+      });
       navigate('/login');
     });
   };
@@ -38,7 +40,7 @@ const Layout = ({ children, title, role: propRole }) => {
 
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      {/* Sidebar for Laptop (Extra Large and above) */}
+      <Toaster position="top-center" />
       <div
         className={cn(
           'hidden xl:block fixed top-0 left-0 h-full bg-complementary text-body shadow-md z-30 transition-all duration-300',
@@ -53,7 +55,6 @@ const Layout = ({ children, title, role: propRole }) => {
           isOpen={true}
         />
       </div>
-      {/* Mobile/Tablet Header */}
       <div className="xl:hidden fixed top-0 left-0 right-0 z-50 bg-complementary text-body shadow-md p-3 flex justify-between items-center">
         <Button
           variant="outline"
@@ -80,7 +81,6 @@ const Layout = ({ children, title, role: propRole }) => {
           </Button>
         </div>
       </div>
-      {/* Mobile/Tablet Sidebar and Backdrop */}
       {mobileMenuOpen && (
         <>
           <div className="xl:hidden fixed top-0 left-0 z-50">
@@ -105,9 +105,7 @@ const Layout = ({ children, title, role: propRole }) => {
           isSidebarCollapsed ? 'xl:ml-[72px]' : 'xl:ml-[256px]'
         )}
       >
-        {/* Mobile/Tablet Navbar Spacer */}
         <div className="xl:hidden" style={{ height: `${navbarHeight}px` }} />
-        {/* Page Header for Laptop */}
         <header className="hidden xl:flex justify-between items-center p-3 sm:p-4 bg-complementary text-body shadow-md rounded-md mb-4 sm:mb-5 md:mb-6">
           <h1 className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">{title}</h1>
           <div className="flex items-center space-x-3 sm:space-x-4">

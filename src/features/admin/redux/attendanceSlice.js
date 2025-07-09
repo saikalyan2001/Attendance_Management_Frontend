@@ -11,7 +11,7 @@ export const fetchAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Fetch attendance error:",
         error.response?.data || error.message
       );
@@ -31,7 +31,7 @@ export const fetchMonthlyAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Fetch monthly attendance error:",
         error.response?.data || error.message
       );
@@ -52,7 +52,7 @@ export const markAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Mark attendance error:",
         error.response?.data || error.message
       );
@@ -73,7 +73,7 @@ export const bulkMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Bulk mark attendance error:",
         error.response?.data || error.message
       );
@@ -92,7 +92,7 @@ export const editAttendance = createAsyncThunk(
       const response = await api.put(`/admin/attendance/${id}`, { status });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Edit attendance error:",
         error.response?.data || error.message
       );
@@ -110,7 +110,7 @@ export const fetchAttendanceRequests = createAsyncThunk(
       const response = await api.get("/admin/attendance/requests");
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Fetch attendance requests error:",
         error.response?.data || error.message
       );
@@ -123,14 +123,15 @@ export const fetchAttendanceRequests = createAsyncThunk(
 
 export const handleAttendanceRequest = createAsyncThunk(
   "attendance/handleAttendanceRequest",
-  async ({ id, status }, { rejectWithValue }) => {
+  async ({ id, status, date }, { rejectWithValue }) => {
     try {
       const response = await api.put(`/admin/attendance/requests/${id}`, {
         status,
+        date,
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Handle attendance request error:",
         error.response?.data || error.message
       );
@@ -152,7 +153,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Request attendance edit error:",
         error.response?.data || error.message
       );
@@ -180,7 +181,7 @@ export const exportAttendance = createAsyncThunk(
       link.remove();
       return true;
     } catch (error) {
-      console.error(
+      (
         "Export attendance error:",
         error.response?.data || error.message
       );
@@ -200,7 +201,7 @@ export const undoMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
+      (
         "Undo attendance error:",
         error.response?.data || error.message
       );

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { FileText, Image as ImageIcon, Trash2, Eye, PlusCircle, Loader2 } from "lucide-react";
 import { uploadDocument } from "../redux/employeeSlice";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { toast } from "react-hot-toast";
 
 const FileIcon = () => (
   <svg className="h-5 w-5 text-body" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,6 +57,8 @@ const isImageFile = (file) => {
 const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
   const dispatch = useDispatch();
   const { loading: employeesLoading } = useSelector((state) => state.siteInchargeEmployee);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationTriggered, setValidationTriggered] = useState(false);
   const form = useForm({
     resolver: zodResolver(uploadDocumentSchema),
     defaultValues: { documents: [] },
@@ -77,18 +79,84 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
     };
   }, [previewUrls]);
 
-  const handleSubmit = (data) => {
-    dispatch(uploadDocument({ id: employeeId, documents: data.documents })).then((result) => {
-      if (result.meta.requestStatus === "fulfilled") {
-        onOpenChange(false);
-        toast.success("Documents added successfully", { duration: 5000 });
-        setDragStates({});
-        setPreviewUrls({});
-        setRemovingIndices([]);
+    const handleSubmit = async (data) => {
+    try {
+      setIsSubmitting(true);
+      await dispatch(uploadDocument({ id: employeeId, documents: data.documents })).unwrap();
+      toast.success("Documents added successfully", {
+        id: 'add-documents-success',
+        duration: 10000,
+        position: 'top-center',
+      });
+      onOpenChange(false);
+      setDragStates({});
+      setPreviewUrls({});
+      setRemovingIndices([]);
+      form.reset();
+    } catch (error) {
+      toast.error(error.message || "Failed to add documents", {
+        id: 'add-documents-error',
+        duration: 5000,
+        position: 'top-center',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (validationTriggered && !isSubmitting) {
+            const errors = [];
+
+      // Check for array-level error (no documents)
+      if (form.formState.errors.documents?.message) {
+        errors.push({ field: 'documents', message: form.formState.errors.documents.message });
+      } else if (form.formState.errors.documents?.root?.message) {
+        errors.push({ field: 'documents', message: form.formState.errors.documents.root.message });
       } else {
-        toast.error(result.payload || "Failed to add documents", { duration: 5000 });
+        // Check for individual file errors
+        form.formState.errors.documents?.forEach((docError, index) => {
+          if (docError?.file?.message) {
+            errors.push({ field: `documents[${index}].file`, message: docError.file.message, index });
+          }
+        });
       }
-    });
+
+      
+      if (errors.length > 0) {
+        const firstError = errors[0];
+        toast.error(firstError.message, {
+          id: firstError.index !== undefined ? `add-documents-validation-error-file-${firstError.index}` : 'add-documents-validation-error',
+          duration: 5000,
+          position: 'top-center',
+        });
+        const fieldElement = document.querySelector(`[id="add-document-${firstError.index || 0}"]`);
+        if (fieldElement) {
+          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          fieldElement.focus();
+        }
+      } else if (form.formState.isValid) {
+        form.handleSubmit(handleSubmit)();
+      }
+
+      setValidationTriggered(false);
+    }
+  }, [validationTriggered, form.formState.errors, form.formState.isValid, form, handleSubmit, isSubmitting]);
+
+
+
+  const handleUploadClick = async () => {
+    try {
+            await form.trigger();
+      setValidationTriggered(true);
+    } catch (error) {
+      ('handleUploadClick error:', error);
+      toast.error("Error submitting form, please try again", {
+        id: 'add-documents-form-error',
+        duration: 5000,
+        position: 'top-center',
+      });
+    }
   };
 
   const handleRemoveDocument = (index) => {
@@ -128,6 +196,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
       const previewUrl = URL.createObjectURL(file);
       setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
       onChange(file);
+      form.trigger(`documents.${index}.file`);
     }
     setDragStates((prev) => ({ ...prev, [index]: false }));
   };
@@ -137,6 +206,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
       const previewUrl = URL.createObjectURL(file);
       setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
       onChange(file);
+      form.trigger(`documents.${index}.file`);
     }
   };
 
@@ -149,7 +219,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
           </DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 p-4">
+          <form className="space-y-4 p-4">
             {fields.map((field, index) => (
               <div
                 key={field.id}
@@ -168,7 +238,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                           "relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300",
                           dragStates[index] ? "border-accent bg-accent/10" : "border-complementary",
                           field.value ? "bg-body" : "bg-complementary/10",
-                          employeesLoading && "opacity-50 cursor-not-allowed"
+                          (employeesLoading || isSubmitting) && "opacity-50 cursor-not-allowed"
                         )}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDragLeave={() => handleDragLeave(index)}
@@ -189,7 +259,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                           accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
                           onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
                           className="hidden"
-                          disabled={employeesLoading}
+                          disabled={employeesLoading || isSubmitting}
                         />
                         {!field.value ? (
                           <div className="flex flex-col items-center space-y-2">
@@ -202,7 +272,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                                 type="button"
                                 onClick={() => document.getElementById(`add-document-${index}`).click()}
                                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4"
-                                disabled={employeesLoading}
+                                disabled={employeesLoading || isSubmitting}
                               >
                                 Choose File
                               </Button>
@@ -211,7 +281,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                                 variant="outline"
                                 onClick={() => handleRemoveDocument(index)}
                                 className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4"
-                                disabled={employeesLoading}
+                                disabled={employeesLoading || isSubmitting}
                                 aria-label="Cancel document upload"
                               >
                                 Cancel
@@ -242,11 +312,11 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                                   rel="noopener noreferrer"
                                   className={cn(
                                     "p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full",
-                                    (employeesLoading || !previewUrls[index]) && "opacity-50 cursor-not-allowed"
+                                    (employeesLoading || isSubmitting || !previewUrls[index]) && "opacity-50 cursor-not-allowed"
                                   )}
                                   aria-label={`Preview document ${field.value.name}`}
                                   onClick={(e) => {
-                                    if (employeesLoading || !previewUrls[index]) {
+                                    if (employeesLoading || isSubmitting || !previewUrls[index]) {
                                       e.preventDefault();
                                     }
                                   }}
@@ -259,7 +329,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                                   size="sm"
                                   onClick={() => handleRemoveDocument(index)}
                                   className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
-                                  disabled={employeesLoading}
+                                  disabled={employeesLoading || isSubmitting}
                                   aria-label={`Remove document ${field.value.name}`}
                                 >
                                   <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -288,7 +358,7 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
               type="button"
               onClick={() => append({ file: null })}
               className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center"
-              disabled={employeesLoading}
+              disabled={employeesLoading || isSubmitting}
             >
               <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               Add Document
@@ -299,18 +369,19 @@ const AddDocumentsDialog = ({ open, onOpenChange, employeeId }) => {
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px]"
-                disabled={employeesLoading}
+                disabled={employeesLoading || isSubmitting}
                 aria-label="Cancel add documents"
               >
                 Cancel
               </Button>
               <Button
-                type="submit"
+                type="button"
+                onClick={handleUploadClick}
                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px]"
-                disabled={employeesLoading}
+                disabled={employeesLoading || isSubmitting}
                 aria-label="Upload documents"
               >
-                {employeesLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Upload Documents"}
+                {employeesLoading || isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Upload Documents"}
               </Button>
             </DialogFooter>
           </form>

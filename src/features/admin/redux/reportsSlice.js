@@ -1,54 +1,68 @@
-
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api'; // Use authenticated Axios instance
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import api from "../../../utils/api";
 
 export const fetchAttendanceReport = createAsyncThunk(
-  'adminReports/fetchAttendanceReport',
+  "adminReports/fetchAttendanceReport",
   async ({ startDate, endDate, location }, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/reports/attendance', {
+      const response = await api.get("/admin/reports/attendance", {
         params: { startDate, endDate, location },
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch attendance report error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch attendance report');
+      console.error(
+        "Fetch attendance report error:",
+        error.response?.data || error.message
+      );
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch attendance report"
+      );
     }
   }
 );
 
 export const fetchLeaveReport = createAsyncThunk(
-  'adminReports/fetchLeaveReport',
-  async ({ location }, { rejectWithValue }) => {
+  "adminReports/fetchLeaveReport",
+  async ({ location, month, year, page = 1, limit = 10 }, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/reports/leaves', {
-        params: { location },
+      const response = await api.get("/admin/reports/leaves", {
+        params: { location, month, year, page, limit },
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch leave report error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch leave report');
+      console.error(
+        "Fetch leave report error:",
+        error.response?.data || error.message
+      );
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch leave report"
+      );
     }
   }
 );
 
 export const fetchSalaryReport = createAsyncThunk(
-  'adminReports/fetchSalaryReport',
-  async ({ startDate, endDate, location }, { rejectWithValue }) => {
+  "adminReports/fetchSalaryReport",
+  async ({ startDate, endDate, location, page, limit }, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/reports/salary', {
-        params: { startDate, endDate, location },
+      const response = await api.get("/admin/reports/salary", {
+        params: { startDate, endDate, location, page, limit },
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch salary report error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch salary report');
+      console.error(
+        "Fetch salary report error:",
+        error.response?.data || error.message
+      );
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch salary report"
+      );
     }
   }
 );
 
 const reportsSlice = createSlice({
-  name: 'adminReports',
+  name: "adminReports",
   initialState: {
     attendanceReport: null,
     leaveReport: null,
@@ -105,5 +119,3 @@ const reportsSlice = createSlice({
 
 export const { reset } = reportsSlice.actions;
 export default reportsSlice.reducer;
-
-

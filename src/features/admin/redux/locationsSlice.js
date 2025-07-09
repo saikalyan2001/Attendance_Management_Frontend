@@ -11,7 +11,7 @@ export const fetchLocations = createAsyncThunk(
       const response = await api.get(endpoint);
       return response.data;
     } catch (error) {
-      console.error('Fetch locations error:', error.response?.data || error.message);
+      ('Fetch locations error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
     }
   }
@@ -24,7 +24,7 @@ export const addLocation = createAsyncThunk(
       const response = await api.post('/admin/locations', { name, address, city, state });
       return response.data;
     } catch (error) {
-      console.error('Add location error:', error.response?.data || error.message);
+      ('Add location error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to add location');
     }
   }
@@ -34,11 +34,10 @@ export const editLocation = createAsyncThunk(
   'adminLocations/editLocation',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      console.log('Sending PUT request to:', `/admin/locations/${id}`, data);
-      const response = await api.put(`/admin/locations/${id}`, data);
+            const response = await api.put(`/admin/locations/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Edit location error:', error.response?.data || error.message);
+      ('Edit location error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to edit location');
     }
   }
@@ -48,11 +47,10 @@ export const deleteLocation = createAsyncThunk(
   'adminLocations/deleteLocation',
   async (id, { rejectWithValue }) => {
     try {
-      console.log('Sending DELETE request to:', `/admin/locations/${id}`);
-      await api.delete(`/admin/locations/${id}`);
+            await api.delete(`/admin/locations/${id}`);
       return id;
     } catch (error) {
-      console.error('Delete location error:', error.response?.data || error.message);
+      ('Delete location error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to delete location');
     }
   }

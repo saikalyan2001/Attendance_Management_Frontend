@@ -56,7 +56,7 @@ const Requests = ({ locationId, activeTab, setServerError }) => {
           });
         })
         .catch((err) => {
-          console.error("Polling error:", err);
+          ("Polling error:", err);
         });
     }, 30000);
     return () => clearInterval(interval);

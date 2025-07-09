@@ -62,9 +62,12 @@ import {
   X,
   Users,
   User,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 const MonthlyAttendance = () => {
   const dispatch = useDispatch();
@@ -76,9 +79,6 @@ const MonthlyAttendance = () => {
   const { attendance, loading } = useSelector(
     (state) => state.adminAttendance
   );
-
-  console.log("MonthlyAttendance attendance data:", attendance);
-
   const { locations, loading: locationsLoading } = useSelector(
     (state) => state.adminLocations
   );
@@ -86,6 +86,8 @@ const MonthlyAttendance = () => {
   const [locationFilter, setLocationFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
+  const [displayMonth, setDisplayMonth] = useState(new Date().getMonth() + 1);
+  const [displayYear, setDisplayYear] = useState(new Date().getFullYear());
   const [editDialog, setEditDialog] = useState({
     open: false,
     attendanceId: null,
@@ -98,32 +100,30 @@ const MonthlyAttendance = () => {
   const [sortOrder, setSortOrder] = useState("asc");
   const [monthlySearch, setMonthlySearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
+  const employeesPerPage = 5; // Fixed page size of 5
   const [dateFilter, setDateFilter] = useState(null);
-  const employeesPerPage = 10;
 
   useEffect(() => {
-  console.log("MonthlyAttendance useEffect triggered with filters:", {
-    locationFilter,
-    monthFilter,
-    yearFilter,
-  });
-  console.log("Current attendance state:", attendance);
-  if (!user || user.role !== "admin") {
-    navigate("/login");
-    return;
-  }
-  dispatch(fetchLocations());
-  if (locationFilter && locationFilter !== "all") {
-    dispatch(fetchEmployees({ location: locationFilter }));
-    dispatch(
-      fetchAttendance({
-        month: monthFilter,
-        year: yearFilter,
-        location: locationFilter,
-      })
-    );
-  }
-}, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter]);
+    if (!user || user.role !== "admin") {
+      toast.error("Unauthorized access. Please log in as an admin.", {
+        duration: 5000,
+      });
+      navigate("/login");
+      return;
+    }
+    dispatch(fetchLocations());
+    if (locationFilter && locationFilter !== "all") {
+      dispatch(fetchEmployees({ location: locationFilter }));
+      dispatch(
+        fetchAttendance({
+          month: monthFilter,
+          year: yearFilter,
+          location: locationFilter,
+        })
+      );
+    }
+  }, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter]);
 
   const handleEditAttendance = (attendanceId, employeeName, date, currentStatus) => {
     setEditDialog({
@@ -137,22 +137,30 @@ const MonthlyAttendance = () => {
   };
 
   const handleMonthChange = (value) => {
-    setMonthFilter(parseInt(value));
+    const parsedMonth = parseInt(value);
+    setMonthFilter(parsedMonth);
+    setDisplayMonth(parsedMonth);
     setCurrentPage(1);
+    setDateFilter(null);
   };
 
   const handleYearChange = (value) => {
-    setYearFilter(parseInt(value));
+    const parsedYear = parseInt(value);
+    setYearFilter(parsedYear);
+    setDisplayYear(parsedYear);
     setCurrentPage(1);
+    setDateFilter(null);
   };
 
   const handleLocationChange = (value) => {
     setLocationFilter(value);
     setCurrentPage(1);
+    setDateFilter(null);
   };
 
-  const handleMarkSort = () => {
+  const handleSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    setCurrentPage(1);
   };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -166,18 +174,23 @@ const MonthlyAttendance = () => {
 
   const startDate = startOfMonth(new Date(yearFilter, monthFilter - 1));
   const endDate = endOfMonth(startDate);
-  const days = eachDayOfInterval({ start: startDate, end: endDate })
-    .filter(
-      (day) =>
-        !dateFilter ||
-        format(day, "yyyy-MM-dd") === format(dateFilter, "yyyy-MM-dd")
-    )
-    .map((day) => ({
-      date: day,
-      dayName: format(day, "EEE"),
-      formatted: format(day, "MMM d"),
-      isSunday: isSunday(day),
-    }));
+  const displayStartDate = startOfMonth(new Date(displayYear, displayMonth - 1));
+  const displayEndDate = endOfMonth(displayStartDate);
+
+  const days = useMemo(() => {
+    return eachDayOfInterval({ start: startDate, end: endDate })
+      .filter(
+        (day) =>
+          !dateFilter ||
+          format(day, "yyyy-MM-dd") === format(dateFilter, "yyyy-MM-dd")
+      )
+      .map((day) => ({
+        date: day,
+        dayName: format(day, "EEE"),
+        formatted: format(day, "d"),
+        isSunday: isSunday(day),
+      }));
+  }, [startDate, endDate, dateFilter]);
 
   const sortedEmployees = useMemo(() => {
     return [...employees]
@@ -202,16 +215,32 @@ const MonthlyAttendance = () => {
 
   const totalPages = Math.ceil(sortedEmployees.length / employeesPerPage);
 
+  const getPageNumbers = () => {
+    const maxPagesToShow = 5;
+    const pages = [];
+    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
   const getStatusIcon = (status) => {
     switch (status) {
       case "present":
-        return <CheckCircle2 className="h-4 w-4 text-accent" />;
+        return <CheckCircle2 className="h-4 w-4 text-green" />;
       case "absent":
         return <X className="h-4 w-4 text-error" />;
       case "leave":
-        return <User className="h-4 w-4 text-error" />;
+        return <User className="h-4 w-4 text-yellow" />;
       case "half-day":
-        return <Users className="h-4 w-4 text-error" />;
+        return <Users className="h-4 w-4 text-accent" />;
       default:
         return null;
     }
@@ -223,23 +252,295 @@ const MonthlyAttendance = () => {
     return loc?.name || "Unknown";
   };
 
+  const handleDownloadExcel = () => {
+    if (!attendance || !attendance.length) {
+      toast.error("No attendance data available to export. Please select a location and ensure data is loaded.", { duration: 5000 });
+      return;
+    }
+    setIsExporting(true);
+    const monthlyTotals = {
+      present: 0,
+      absent: 0,
+      leave: 0,
+      "half-day": 0,
+    };
+
+    const data = sortedEmployees.map((emp) => {
+      const counts = {
+        present: 0,
+        absent: 0,
+        leave: 0,
+        "half-day": 0,
+      };
+      const statuses = days.map((day) => {
+        const record = attendance.find(
+          (att) =>
+            att.employee?._id?.toString() === emp._id.toString() &&
+            format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        );
+        if (record) {
+          counts[record.status]++;
+          monthlyTotals[record.status]++;
+          return record.status.charAt(0).toUpperCase();
+        }
+        return "-";
+      });
+      return {
+        ID: emp.employeeId,
+        Employee: emp.name,
+        ...days.reduce((acc, day, index) => {
+          acc[day.formatted] = statuses[index];
+          return acc;
+        }, {}),
+        Present: counts.present,
+        Absent: counts.absent,
+        Leave: counts.leave,
+        "HD": counts["half-day"],
+      };
+    });
+
+    data.push({
+      ID: "",
+      Employee: "Daily Totals",
+      ...days.reduce((acc, day) => {
+        const records = attendance.filter(
+          (att) =>
+            format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        );
+        const totals = {
+          present: records.filter((r) => r.status === "present").length,
+          absent: records.filter((r) => r.status === "absent").length,
+          leave: records.filter((r) => r.status === "leave").length,
+          "half-day": records.filter((r) => r.status === "half-day").length,
+        };
+        acc[day.formatted] = `P:${totals.present},A:${totals.absent},L:${totals.leave},HD:${totals["half-day"]}`;
+        return acc;
+      }, {}),
+      Present: monthlyTotals.present,
+      Absent: monthlyTotals.absent,
+      Leave: monthlyTotals.leave,
+      "HD": monthlyTotals["half-day"],
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data, {
+      header: ["ID", "Employee", ...days.map((day) => day.formatted), "Present", "Absent", "Leave", "HD"],
+    });
+
+    ws['!cols'] = [
+      { wch: 15 },
+      { wch: 30 },
+      ...days.map(() => ({ wch: 10 })),
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+    ];
+
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
+      if (cell) {
+        cell.s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: "3B82F6" } },
+          color: { rgb: "FFFFFF" },
+          alignment: { horizontal: "center" },
+        };
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Monthly Attendance");
+
+    const headerWs = XLSX.utils.json_to_sheet([
+      { A: "Monthly Attendance Report" },
+      { A: `Month: ${months.find((m) => m.value === monthFilter).label} ${yearFilter}` },
+      { A: `Location: ${getLocationName()}` },
+      { A: "Note: Daily Totals format is P:Present, A:Absent, L:Leave, HD:Half-Day" },
+      { A: "" },
+    ], { skipHeader: true });
+    XLSX.utils.book_append_sheet(wb, headerWs, "Header");
+
+    XLSX.writeFile(wb, `Attendance_${months.find((m) => m.value === monthFilter).label}_${yearFilter}.xlsx`, {
+      bookType: "xlsx",
+      type: "binary",
+    });
+    toast.success("Excel downloaded successfully", { duration: 5000 });
+    setIsExporting(false);
+  };
+
+  const handleDownloadPDF = () => {
+    if (!attendance || !attendance.length) {
+      toast.error("No attendance data available to export. Please select a location and ensure data is loaded.", { duration: 5000 });
+      return;
+    }
+    setIsExporting(true);
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    doc.setFont("helvetica", "normal");
+
+    doc.setFontSize(14);
+    doc.text("Monthly Attendance Report", 15, 15);
+    doc.setFontSize(10);
+    doc.text(
+      `Month: ${months.find((m) => m.value === monthFilter).label} ${yearFilter}`,
+      15,
+      22
+    );
+    doc.text(`Location: ${getLocationName()}`, 15, 29);
+
+    doc.setFontSize(8);
+    doc.text(
+      "Note: Daily Totals format is P:Present, A:Absent, L:Leave, HD:Half-Day",
+      15,
+      34
+    );
+
+    const monthlyTotals = {
+      present: 0,
+      absent: 0,
+      leave: 0,
+      "half-day": 0,
+    };
+
+    const body = sortedEmployees.map((emp) => {
+      const counts = {
+        present: 0,
+        absent: 0,
+        leave: 0,
+        "half-day": 0,
+      };
+      const statuses = days.map((day) => {
+        const record = attendance.find(
+          (att) =>
+            att.employee?._id?.toString() === emp._id.toString() &&
+            format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        );
+        if (record) {
+          counts[record.status]++;
+          monthlyTotals[record.status]++;
+          return record.status.charAt(0).toUpperCase();
+        }
+        return "-";
+      });
+      return [
+        emp.employeeId || "N/A",
+        emp.name || "Unknown",
+        ...statuses,
+        counts.present,
+        counts.absent,
+        counts.leave,
+        counts["half-day"],
+      ];
+    });
+
+    body.push([
+      "",
+      "Daily Totals",
+      ...days.map((day) => {
+        const records = attendance.filter(
+          (att) =>
+            format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        );
+        const totals = {
+          present: records.filter((r) => r.status === "present").length,
+          absent: records.filter((r) => r.status === "absent").length,
+          leave: records.filter((r) => r.status === "leave").length,
+          "half-day": records.filter((r) => r.status === "half-day").length,
+        };
+        return `P:${totals.present},A:${totals.absent},L:${totals.leave},HD:${totals["half-day"]}`;
+      }),
+      monthlyTotals.present,
+      monthlyTotals.absent,
+      monthlyTotals.leave,
+      monthlyTotals["half-day"],
+    ]);
+
+    const totalWidth = 180;
+    const fixedColumnsWidth = 12 + 25 + 8 * 4;
+    const daysWidth = days.length > 0 ? (totalWidth - fixedColumnsWidth) / days.length : 4;
+
+    autoTable(doc, {
+      startY: 40,
+      head: [["ID", "Employee", ...days.map((day) => day.formatted), "Present", "Absent", "Leave", "HD"]],
+      body,
+      theme: "striped",
+      pageBreak: "auto",
+      margin: { top: 40, left: 15, right: 15, bottom: 20 },
+      styles: {
+        font: "helvetica",
+        fontSize: 5,
+        cellPadding: 1,
+        overflow: "linebreak",
+        minCellHeight: 5,
+      },
+      headStyles: {
+        fillColor: [59, 130, 246],
+        textColor: [255, 255, 255],
+        fontSize: 5,
+        fontStyle: "bold",
+        font: "helvetica",
+      },
+      columnStyles: {
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: 25, overflow: "linebreak" },
+        ...days.reduce((acc, _, index) => {
+          acc[index + 2] = { cellWidth: Math.max(4, daysWidth), halign: "center", textRotation: 45 };
+          return acc;
+        }, {}),
+        [days.length + 2]: { cellWidth: 8, halign: "center" },
+        [days.length + 3]: { cellWidth: 8, halign: "center" },
+        [days.length + 4]: { cellWidth: 8, halign: "center" },
+        [days.length + 5]: { cellWidth: 8, halign: "center" },
+      },
+      rowStyles: {
+        [body.length - 1]: {
+          fontStyle: "bold",
+          fillColor: [200, 200, 200],
+          fontSize: 4.5,
+          halign: "center",
+        },
+      },
+      didDrawPage: (data) => {
+        doc.setFontSize(8);
+        doc.setFont("helvetica");
+        doc.text(
+          `Page ${doc.internal.getNumberOfPages()}`,
+          doc.internal.pageSize.width - 20,
+          doc.internal.pageSize.height - 10,
+          { align: "right" }
+        );
+      },
+    });
+
+    doc.save(`Attendance_${months.find((m) => m.value === monthFilter).label}_${yearFilter}.pdf`);
+    toast.success("PDF downloaded successfully", { duration: 5000 });
+    setIsExporting(false);
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 p-4 animate-fade-in">
       {(loading || locationsLoading || empLoading) && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-center z-50">
+        <div className="fixed inset-0 bg-overlay bg-opacity-50 flex justify-center items-center z-50">
           <Loader2 className="h-8 w-8 animate-spin text-accent" />
         </div>
       )}
-      <Card className="bg-body text-body border border-complementary rounded-md shadow-sm">
+      <Card className="bg-body text-body border border-complementary rounded-lg shadow-md">
         <CardHeader className="border-b border-complementary">
-          <CardTitle className="text-2xl font-bold">Monthly Attendance</CardTitle>
+          <CardTitle className="text-2xl font-bold text-body">
+            Monthly Attendance
+          </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <div className="flex-1 min-w-[200px]">
+        <CardContent className="p-6 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
               <Label
                 htmlFor="locationFilter"
-                className="block text-sm font-medium text-body"
+                className="text-sm font-semibold text-body"
               >
                 Location
               </Label>
@@ -250,20 +551,20 @@ const MonthlyAttendance = () => {
               >
                 <SelectTrigger
                   id="locationFilter"
-                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                  className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                   aria-label="Select location for monthly attendance"
                 >
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
-                <SelectContent className="bg-body text-body">
-                  <SelectItem value="all" className="text-sm">
+                <SelectContent className="bg-body text-body border-complementary">
+                  <SelectItem value="all" className="text-sm hover:bg-accent-light">
                     All Locations
                   </SelectItem>
                   {locations.map((loc) => (
                     <SelectItem
                       key={loc._id}
                       value={loc._id}
-                      className="text-sm"
+                      className="text-sm hover:bg-accent-light"
                     >
                       {loc.name}
                     </SelectItem>
@@ -271,10 +572,10 @@ const MonthlyAttendance = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1 min-w-[200px]">
+            <div className="space-y-2">
               <Label
                 htmlFor="monthlySearch"
-                className="block text-sm font-medium text-body"
+                className="text-sm font-semibold text-body"
               >
                 Search Employees
               </Label>
@@ -283,17 +584,20 @@ const MonthlyAttendance = () => {
                   id="monthlySearch"
                   placeholder="Search by name or ID..."
                   value={monthlySearch}
-                  onChange={(e) => setMonthlySearch(e.target.value)}
-                  className="pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                  onChange={(e) => {
+                    setMonthlySearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                   aria-label="Search employees in monthly attendance"
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-complementary" />
               </div>
             </div>
-            <div className="flex-1 min-w-[200px]">
+            <div className="space-y-2">
               <Label
                 htmlFor="dateFilter"
-                className="block text-sm font-medium text-body"
+                className="text-sm font-semibold text-body"
               >
                 Filter by Date
               </Label>
@@ -301,149 +605,70 @@ const MonthlyAttendance = () => {
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                    className="w-full justify-start text-left font-semibold bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md truncate text-sm"
                     disabled={locationFilter === "all" || locationsLoading}
                     aria-label="Select date to filter monthly attendance"
                   >
-                    <CalendarIcon className="mr-2 h-5 w-5 text-complementary" />
-                    {dateFilter ? format(dateFilter, "PPP") : <span>Pick a date</span>}
+                    <CalendarIcon className="mr-2 h-5 w-5 text-complementary flex-shrink-0" />
+                    <span className="truncate">
+                      {dateFilter ? format(dateFilter, "PPP") : "Pick a date or view full month"}
+                    </span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-body text-body">
-                  <Calendar
-                    mode="single"
-                    selected={dateFilter}
-                    onSelect={(date) => {
-                      if (date > new Date()) {
-                        toast.error("Cannot select a future date", {
-                          duration: 5000,
-                        });
-                        return;
-                      }
-                      setDateFilter(date);
-                      setCurrentPage(1);
-                    }}
-                    initialFocus
-                    disabled={(date) => date > new Date() || date < startDate || date > endDate}
-                    className="border border-complementary rounded-md"
-                  />
+                  <div className="p-4 space-y-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDateFilter(null);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full border-accent text-accent hover:bg-accent-light hover:text-body text-sm py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                      aria-label="Show full month attendance"
+                    >
+                      Clear Date Filter
+                    </Button>
+                    <Calendar
+                      mode="single"
+                      selected={dateFilter}
+                      month={new Date(displayYear, displayMonth - 1)}
+                      onSelect={(date) => {
+                        if (date > new Date()) {
+                          toast.error("Cannot select a future date", {
+                            duration: 5000,
+                          });
+                          return;
+                        }
+                        setDateFilter(date);
+                        setMonthFilter(date.getMonth() + 1);
+                        setYearFilter(date.getFullYear());
+                        setDisplayMonth(date.getMonth() + 1);
+                        setDisplayYear(date.getFullYear());
+                        setCurrentPage(1);
+                      }}
+                      onMonthChange={(newMonth) => {
+                        setDisplayMonth(newMonth.getMonth() + 1);
+                        setDisplayYear(newMonth.getFullYear());
+                      }}
+                      initialFocus
+                      disabled={(date) => date > new Date()}
+                      className="border border-complementary rounded-md text-sm"
+                      modifiers={{
+                        selected: dateFilter,
+                      }}
+                      modifiersClassNames={{
+                        selected: "bg-accent text-body font-bold border-2 border-accent rounded-full",
+                        today: "bg-complementary-light text-body border border-complementary rounded-full",
+                      }}
+                    />
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
-            <div className="flex-1 min-w-[100px]">
-              <Label className="block text-sm font-medium text-body"> </Label>
-              <Button
-                variant="outline"
-                onClick={() => setDateFilter(null)}
-                className="w-full border-accent text-accent hover:bg-accent-hover text-sm py-3 px-4 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={!dateFilter || locationFilter === "all" || locationsLoading}
-                aria-label="Reset date filter"
-              >
-                <RotateCcw className="h-5 w-5" />
-                Reset Date
-              </Button>
-            </div>
-            <div className="flex-1 min-w-[100px]">
-              <Label className="block text-sm font-medium text-body"> </Label>
-              <Button
-                onClick={() => {
-                  if (!attendance || !attendance.length) {
-                    toast.error("No attendance data available to export", { duration: 5000 });
-                    return;
-                  }
-                  const doc = new jsPDF();
-                  doc.text("Monthly Attendance Report", 14, 20);
-                  doc.text(
-                    `Month: ${months.find((m) => m.value === monthFilter).label} ${yearFilter}`,
-                    14,
-                    30
-                  );
-                  doc.text(`Location: ${getLocationName()}`, 14, 40);
-
-                  const monthlyTotals = {
-                    present: 0,
-                    absent: 0,
-                    leave: 0,
-                    "half-day": 0,
-                  };
-
-                  const body = sortedEmployees.map((emp) => {
-                    const counts = {
-                      present: 0,
-                      absent: 0,
-                      leave: 0,
-                      "half-day": 0,
-                    };
-                    const statuses = days.map((day) => {
-                      const record = attendance.find(
-                        (att) =>
-                          att.employee?._id?.toString() === emp._id.toString() &&
-                          format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                      );
-                      if (record) {
-                        counts[record.status]++;
-                        monthlyTotals[record.status]++;
-                        return record.status.charAt(0).toUpperCase();
-                      }
-                      return "-";
-                    });
-                    return [
-                      emp.employeeId,
-                      emp.name,
-                      ...statuses,
-                      counts.present,
-                      counts.absent,
-                      counts.leave,
-                      counts["half-day"],
-                    ];
-                  });
-
-                  body.push([
-                    "",
-                    "Daily Totals",
-                    ...days.map((day) => {
-                      const records = attendance.filter(
-                        (att) =>
-                          format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                      );
-                      const totals = {
-                        present: records.filter((r) => r.status === "present").length,
-                        absent: records.filter((r) => r.status === "absent").length,
-                        leave: records.filter((r) => r.status === "leave").length,
-                        "half-day": records.filter((r) => r.status === "half-day").length,
-                      };
-                      return `P:${totals.present}, A:${totals.absent}, L:${totals.leave}, HD:${totals["half-day"]}`;
-                    }),
-                    monthlyTotals.present,
-                    monthlyTotals.absent,
-                    monthlyTotals.leave,
-                    monthlyTotals["half-day"],
-                  ]);
-
-                  autoTable(doc, {
-                    startY: 50,
-                    head: [["ID", "Employee", ...days.map((day) => day.formatted), "Present", "Absent", "Leave", "Half-Day"]],
-                    body,
-                    theme: "striped",
-                    styles: { fontSize: 8, cellPadding: 2 },
-                    headStyles: { fillColor: [59, 130, 246] },
-                  });
-
-                  doc.save(`Attendance_${months.find((m) => m.value === monthFilter).label}_${yearFilter}.pdf`);
-                  toast.success("PDF downloaded successfully", { duration: 5000 });
-                }}
-                className="w-full border-accent text-accent hover:bg-accent-hover text-sm py-3 px-4 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={loading || empLoading || locationsLoading || !sortedEmployees.length || locationFilter === "all" || !attendance?.length}
-                aria-label="Download monthly attendance as PDF"
-              >
-                <Download className="h-5 w-5" />
-                Download PDF
-              </Button>
-            </div>
-            <div className="flex-1 min-w-[120px]">
+            <div className="space-y-2">
               <Label
                 htmlFor="monthFilter"
-                className="block text-sm font-medium text-body"
+                className="text-sm font-semibold text-body"
               >
                 Month
               </Label>
@@ -454,17 +679,17 @@ const MonthlyAttendance = () => {
               >
                 <SelectTrigger
                   id="monthFilter"
-                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                  className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                   aria-label="Select month for monthly attendance"
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-body text-body">
+                <SelectContent className="bg-body text-body border-complementary">
                   {months.map((month) => (
                     <SelectItem
                       key={month.value}
                       value={month.value.toString()}
-                      className="text-sm"
+                      className="text-sm hover:bg-accent-light"
                     >
                       {month.label}
                     </SelectItem>
@@ -472,10 +697,10 @@ const MonthlyAttendance = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1 min-w-[100px]">
+            <div className="space-y-2">
               <Label
                 htmlFor="yearFilter"
-                className="block text-sm font-medium text-body"
+                className="text-sm font-semibold text-body"
               >
                 Year
               </Label>
@@ -486,17 +711,17 @@ const MonthlyAttendance = () => {
               >
                 <SelectTrigger
                   id="yearFilter"
-                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                  className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                   aria-label="Select year for monthly attendance"
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-body text-body">
+                <SelectContent className="bg-body text-body border-complementary">
                   {years.map((year) => (
                     <SelectItem
                       key={year}
                       value={year.toString()}
-                      className="text-sm"
+                      className="text-sm hover:bg-accent-light"
                     >
                       {year}
                     </SelectItem>
@@ -504,43 +729,103 @@ const MonthlyAttendance = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-body"> </Label>
+              <Button
+                onClick={() => setDateFilter(null)}
+                className="w-full bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={!dateFilter || locationFilter === "all" || locationsLoading}
+                aria-label="Reset date filter to show full month"
+              >
+                <RotateCcw className="h-5 w-5" />
+                Show Full Month
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-body"> </Label>
+              <Button
+                onClick={handleDownloadExcel}
+                className="w-full bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={isExporting || loading || empLoading || locationsLoading || !sortedEmployees.length || locationFilter === "all" || !attendance?.length}
+                aria-label="Download monthly attendance as Excel"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Download className="h-5 w-5" />
+                )}
+                Download Excel
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-body"> </Label>
+              <Button
+                onClick={handleDownloadPDF}
+                className="w-full bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={isExporting || loading || empLoading || locationsLoading || !sortedEmployees.length || locationFilter === "all" || !attendance?.length}
+                aria-label="Download monthly attendance as PDF"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Download className="h-5 w-5" />
+                )}
+                Download PDF
+              </Button>
+            </div>
           </div>
           {loading || empLoading || locationsLoading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-accent" />
             </div>
           ) : locationFilter === "all" ? (
-            <p className="text-body text-sm">Please select a specific location</p>
+            <p className="text-body text-sm text-center py-4">
+              Please select a specific location to view attendance records.
+            </p>
           ) : paginatedEmployees.length > 0 ? (
             <div className="space-y-4">
-              <div className="max-h-[400px] overflow-x-auto relative">
+              <div className="max-h-[400px] overflow-x-auto overflow-y-auto border border-complementary rounded-lg shadow-sm relative">
                 <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
                 <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
-                <Table className="border border-complementary">
+                <Table className="min-w-full">
                   <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
                     <TableRow>
-                      <TableHead className="text-body text-sm">ID</TableHead>
-                      <TableHead className="text-body text-sm">
+                      <TableHead className="text-body text-sm w-[100px] text-center px-2">
+                        ID
+                      </TableHead>
+                      <TableHead className="text-body text-sm w-[200px] text-center px-2">
                         <Button
                           variant="ghost"
-                          onClick={handleMarkSort}
-                          className="flex items-center space-x-1"
+                          onClick={handleSort}
+                          className="flex items-center justify-center space-x-1 p-0 text-body font-semibold hover:bg-accent-light w-full h-full"
+                          aria-label={`Sort employees by name ${sortOrder === "asc" ? "descending" : "ascending"}`}
                         >
                           Employee
-                          <ArrowUpDown className="h-5 w-5" />
+                          <ArrowUpDown className="h-4 w-4" />
                         </Button>
                       </TableHead>
                       {days.map((day) => (
-                        <TableHead key={day.formatted} className="text-body text-sm">
+                        <TableHead
+                          key={day.formatted}
+                          className={`text-body text-sm w-[60px] text-center px-2 ${day.isSunday ? "bg-error-light" : ""}`}
+                        >
                           {day.dayName}
                           <br />
-                          {day.formatted}
+                          {format(day.date, "MMM d")}
                         </TableHead>
                       ))}
-                      <TableHead className="text-body text-sm">Present</TableHead>
-                      <TableHead className="text-body text-sm">Absent</TableHead>
-                      <TableHead className="text-body text-sm">Leave</TableHead>
-                      <TableHead className="text-body text-sm">Half-Day</TableHead>
+                      <TableHead className="text-body text-sm w-[80px] text-center px-2">
+                        Present
+                      </TableHead>
+                      <TableHead className="text-body text-sm w-[80px] text-center px-2">
+                        Absent
+                      </TableHead>
+                      <TableHead className="text-body text-sm w-[80px] text-center px-2">
+                        Leave
+                      </TableHead>
+                      <TableHead className="text-body text-sm w-[80px] text-center px-2">
+                        HD
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -554,10 +839,17 @@ const MonthlyAttendance = () => {
                       return (
                         <TableRow
                           key={emp._id}
-                          className={index % 2 === 0 ? "bg-body" : "bg-complementary"}
+                          className={`${
+                            index % 2 === 0 ? "bg-body" : "bg-complementary-light"
+                          } animate-slide-in-row`}
+                          style={{ animationDelay: `${index * 0.05}s` }}
                         >
-                          <TableCell className="text-body text-sm">{emp.employeeId}</TableCell>
-                          <TableCell className="text-body text-sm">{emp.name}</TableCell>
+                          <TableCell className="text-body text-sm w-[100px] text-center px-2 whitespace-nowrap">
+                            {emp.employeeId}
+                          </TableCell>
+                          <TableCell className="text-body text-sm w-[200px] text-center px-2 max-w-[200px] truncate">
+                            {emp.name}
+                          </TableCell>
                           {days.map((day) => {
                             const record = attendance.find(
                               (att) =>
@@ -570,7 +862,9 @@ const MonthlyAttendance = () => {
                             return (
                               <TableCell
                                 key={day.formatted}
-                                className={`text-body text-sm ${record ? "cursor-pointer" : ""}`}
+                                className={`text-body text-sm w-[60px] text-center px-2 ${record ? "cursor-pointer hover:bg-accent-light" : ""} ${
+                                  day.isSunday ? "bg-error-light" : ""
+                                }`}
                                 onClick={() =>
                                   record &&
                                   handleEditAttendance(
@@ -585,12 +879,12 @@ const MonthlyAttendance = () => {
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <span className="flex items-center gap-1">
+                                        <span className="flex items-center justify-center gap-1">
                                           {getStatusIcon(record.status)}
                                           {record.status.charAt(0).toUpperCase()}
                                         </span>
                                       </TooltipTrigger>
-                                      <TooltipContent className="bg-body text-body border-complementary">
+                                      <TooltipContent className="bg-body text-body border-complementary text-sm">
                                         {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
                                       </TooltipContent>
                                     </Tooltip>
@@ -601,16 +895,26 @@ const MonthlyAttendance = () => {
                               </TableCell>
                             );
                           })}
-                          <TableCell className="text-body text-sm">{counts.present}</TableCell>
-                          <TableCell className="text-body text-sm">{counts.absent}</TableCell>
-                          <TableCell className="text-body text-sm">{counts.leave}</TableCell>
-                          <TableCell className="text-body text-sm">{counts["half-day"]}</TableCell>
+                          <TableCell className="text-body text-sm w-[80px] text-center px-2">
+                            {counts.present}
+                          </TableCell>
+                          <TableCell className="text-body text-sm w-[80px] text-center px-2">
+                            {counts.absent}
+                          </TableCell>
+                          <TableCell className="text-body text-sm w-[80px] text-center px-2">
+                            {counts.leave}
+                          </TableCell>
+                          <TableCell className="text-body text-sm w-[80px] text-center px-2">
+                            {counts["half-day"]}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
                     <TableRow className="bg-accent font-semibold border-t-2 border-complementary">
-                      <TableCell className="text-complementary text-sm"></TableCell>
-                      <TableCell className="text-complementary text-sm">Daily Totals</TableCell>
+                      <TableCell className="text-body text-sm w-[100px] text-center px-2"></TableCell>
+                      <TableCell className="text-body text-sm w-[200px] text-center px-2 font-semibold">
+                        Daily Totals
+                      </TableCell>
                       {days.map((day) => {
                         const records = attendance.filter(
                           (att) =>
@@ -625,7 +929,7 @@ const MonthlyAttendance = () => {
                         return (
                           <TableCell
                             key={day.formatted}
-                            className="text-complementary text-sm"
+                            className={`text-body text-sm w-[60px] text-center px-2 ${day.isSunday ? "bg-error-light" : ""}`}
                           >
                             <TooltipProvider>
                               <Tooltip>
@@ -634,8 +938,8 @@ const MonthlyAttendance = () => {
                                     {totals.present + totals.absent + totals.leave + totals["half-day"]}
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-body text-body border-complementary p-2">
-                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                <TooltipContent className="bg-body text-body border-complementary p-2 text-sm">
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                     <span>Present:</span>
                                     <span>{totals.present}</span>
                                     <span>Absent:</span>
@@ -651,7 +955,7 @@ const MonthlyAttendance = () => {
                           </TableCell>
                         );
                       })}
-                      <TableCell className="text-complementary text-sm">
+                      <TableCell className="text-body text-sm w-[80px] text-center px-2">
                         {paginatedEmployees.reduce((sum, emp) => {
                           const counts = {
                             present: 0,
@@ -672,7 +976,7 @@ const MonthlyAttendance = () => {
                           return sum + counts.present;
                         }, 0)}
                       </TableCell>
-                      <TableCell className="text-complementary text-sm">
+                      <TableCell className="text-body text-sm w-[80px] text-center px-2">
                         {paginatedEmployees.reduce((sum, emp) => {
                           const counts = {
                             present: 0,
@@ -693,7 +997,7 @@ const MonthlyAttendance = () => {
                           return sum + counts.absent;
                         }, 0)}
                       </TableCell>
-                      <TableCell className="text-complementary text-sm">
+                      <TableCell className="text-body text-sm w-[80px] text-center px-2">
                         {paginatedEmployees.reduce((sum, emp) => {
                           const counts = {
                             present: 0,
@@ -714,7 +1018,7 @@ const MonthlyAttendance = () => {
                           return sum + counts.leave;
                         }, 0)}
                       </TableCell>
-                      <TableCell className="text-complementary text-sm">
+                      <TableCell className="text-body text-sm w-[80px] text-center px-2">
                         {paginatedEmployees.reduce((sum, emp) => {
                           const counts = {
                             present: 0,
@@ -739,35 +1043,52 @@ const MonthlyAttendance = () => {
                   </TableBody>
                 </Table>
               </div>
-              <div className="flex justify-between items-center">
-                <Button
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="bg-accent text-complementary hover:bg-accent-hover text-sm py-2 px-4"
-                  aria-label="Previous page"
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-body">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="bg-accent text-complementary hover:bg-accent-hover text-sm py-2 px-4"
-                  aria-label="Next page"
-                >
-                  Next
-                </Button>
-              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {getPageNumbers().map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      onClick={() => setCurrentPage(page)}
+                      className={`${
+                        currentPage === page
+                          ? "bg-accent text-body hover:bg-accent-hover"
+                          : "border-complementary text-body hover:bg-complementary-light"
+                      } text-sm w-10 h-10 rounded-md`}
+                      aria-label={`Go to page ${page}`}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
-            <p className="text-body text-sm">No employees found</p>
+            <p className="text-body text-sm text-center py-4">
+              No employees found for the selected location or search criteria.
+            </p>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit Attendance Dialog */}
       <Dialog
         open={editDialog.open}
         onOpenChange={(open) =>
@@ -782,32 +1103,32 @@ const MonthlyAttendance = () => {
           })
         }
       >
-        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-md max-h-[80vh] overflow-hidden flex flex-col rounded-lg animate-scale-in">
-          <DialogHeader className="shrink-0 px-6 pt-6">
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-lg rounded-lg animate-scale-in">
+          <DialogHeader className="border-b border-complementary pb-4">
+            <DialogTitle className="text-xl font-bold text-body flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-accent" />
               Edit Attendance
             </DialogTitle>
-            <DialogDescription className="text-sm mt-2">
-              Update attendance status for {editDialog.employeeName} on{" "}
+            <DialogDescription className="text-sm text-body">
+              Update attendance for {editDialog.employeeName} on{" "}
               {editDialog.date ? format(editDialog.date, "PPP") : "N/A"}.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="currentStatus" className="text-sm font-medium text-body">
+              <Label htmlFor="currentStatus" className="text-sm font-semibold text-body">
                 Current Status
               </Label>
               <Input
                 id="currentStatus"
                 value={editDialog.currentStatus.charAt(0).toUpperCase() + editDialog.currentStatus.slice(1)}
                 disabled
-                className="bg-complementary text-body border-complementary h-12 text-sm"
+                className="bg-complementary-light text-body border-complementary h-10 rounded-md text-sm cursor-not-allowed"
                 aria-label="Current attendance status"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="newStatus" className="text-sm font-medium text-body">
+              <Label htmlFor="newStatus" className="text-sm font-semibold text-body">
                 New Status
               </Label>
               <Select
@@ -820,36 +1141,36 @@ const MonthlyAttendance = () => {
               >
                 <SelectTrigger
                   id="newStatus"
-                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
+                  className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                 >
                   <SelectValue placeholder="Select new status" />
                 </SelectTrigger>
-                <SelectContent className="bg-body text-body">
+                <SelectContent className="bg-body text-body border-complementary">
                   <SelectItem
                     value="present"
                     disabled={editDialog.currentStatus === "present"}
-                    className="text-sm"
+                    className="text-sm hover:bg-accent-light"
                   >
                     Present
                   </SelectItem>
                   <SelectItem
                     value="absent"
                     disabled={editDialog.currentStatus === "absent"}
-                    className="text-sm"
+                    className="text-sm hover:bg-accent-light"
                   >
                     Absent
                   </SelectItem>
                   <SelectItem
                     value="half-day"
                     disabled={editDialog.currentStatus === "half-day"}
-                    className="text-sm"
+                    className="text-sm hover:bg-accent-light"
                   >
                     Half Day
                   </SelectItem>
                   <SelectItem
                     value="leave"
                     disabled={editDialog.currentStatus === "leave"}
-                    className="text-sm"
+                    className="text-sm hover:bg-accent-light"
                   >
                     Paid Leave
                   </SelectItem>
@@ -857,9 +1178,8 @@ const MonthlyAttendance = () => {
               </Select>
             </div>
           </div>
-          <DialogFooter className="shrink-0 px-6 py-4 border-t border-complementary flex justify-end gap-3">
+          <DialogFooter className="border-t border-complementary pt-4 flex justify-end gap-3">
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setEditDialog({
@@ -871,21 +1191,20 @@ const MonthlyAttendance = () => {
                   newStatus: "",
                 })
               }
-              className="border-complementary text-body hover:bg-complementary text-sm py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+              className="border-complementary text-body hover:bg-complementary-light text-sm py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={loading}
               aria-label="Cancel edit"
             >
               Cancel
             </Button>
             <Button
-              type="button"
               onClick={() => {
                 if (!editDialog.attendanceId || !editDialog.newStatus) {
-                  toast.error("All fields are required", { duration: 5000 });
+                  toast.error("Please select a new status to update.", { duration: 5000 });
                   return;
                 }
                 if (editDialog.newStatus === editDialog.currentStatus) {
-                  toast.error("New status cannot be the same as current status", { duration: 5000 });
+                  toast.error("New status must be different from the current status.", { duration: 5000 });
                   return;
                 }
                 dispatch(
@@ -896,9 +1215,10 @@ const MonthlyAttendance = () => {
                 )
                   .unwrap()
                   .then(() => {
-                    toast.success("Attendance updated successfully", {
-                      duration: 10000,
-                    });
+                    toast.success(
+                      `Attendance updated to ${editDialog.newStatus} for ${editDialog.employeeName} on ${format(editDialog.date, "PPP")}.`,
+                      { duration: 5000 }
+                    );
                     setEditDialog({
                       open: false,
                       attendanceId: null,
@@ -907,7 +1227,6 @@ const MonthlyAttendance = () => {
                       currentStatus: "",
                       newStatus: "",
                     });
-                    // Refresh attendance data
                     dispatch(
                       fetchAttendance({
                         month: monthFilter,
@@ -917,12 +1236,11 @@ const MonthlyAttendance = () => {
                     );
                   })
                   .catch((err) => {
-                    toast.error(err || "Failed to update attendance", {
-                      duration: 10000,
-                    });
+                    const errorMessage = err?.message || "Failed to update attendance.";
+                    toast.error(errorMessage, { duration: 5000 });
                   });
               }}
-              className="bg-accent text-complementary hover:bg-accent-hover text-sm py-3 px-4 flex items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+              className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={loading || !editDialog.newStatus}
               aria-label="Update attendance"
             >
@@ -940,3 +1258,4 @@ const MonthlyAttendance = () => {
 };
 
 export default MonthlyAttendance;
+

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations, addLocation, editLocation, deleteLocation } from '../redux/locationsSlice';
 import Layout from '../../../components/layout/Layout';
@@ -9,21 +9,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Loader2, Eye, Search } from 'lucide-react';
+import { Loader2, Eye, Search, Plus, Edit, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { cn } from '@/lib/utils';
 
 const locationSchema = z.object({
-  name: z.string().nonempty('This field is required'),
-  address: z.string().nonempty('This field is required'),
-  city: z.string().nonempty('This field is required'),
-  state: z.string().nonempty('This field is required'),
+  name: z.string().min(1, 'Name is required'),
+  address: z.string().min(1, 'Address is required'),
+  city: z.string().min(1, 'City is required'),
+  state: z.string().min(1, 'State is required'),
 });
 
 const Locations = () => {
@@ -33,15 +33,15 @@ const Locations = () => {
   const { locations, loading, error } = useSelector((state) => state.adminLocations);
   const [sortOrder, setSortOrder] = useState('asc');
   const [locationSearch, setLocationSearch] = useState('');
-
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editLocationState, setEditLocationState] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLocationId, setDeleteLocationId] = useState(null);
   const [actionLoading, setActionLoading] = useState({ add: false, edit: false, delete: false });
-  const [newLocationId, setNewLocationId] = useState(null); // Track newly added location for animation
-  const [deletedLocationId, setDeletedLocationId] = useState(null); // Track deleted location for animation
+
+  const addFormRef = useRef(null);
+  const editFormRef = useRef(null);
 
   const addForm = useForm({
     resolver: zodResolver(locationSchema),
@@ -62,78 +62,159 @@ const Locations = () => {
 
   useEffect(() => {
     if (error) {
-      console.error('Locations error:', error);
-      toast.error(error);
+      toast.error(error, {
+        id: 'fetch-error',
+        duration: 6000,
+        position: 'top-center',
+      });
       dispatch({ type: 'adminLocations/reset' });
     }
   }, [error, dispatch]);
 
-  const handleAddSubmit = (data) => {
-    setActionLoading((prev) => ({ ...prev, add: true }));
-    dispatch(addLocation(data))
-      .unwrap()
-      .then((newLocation) => {
-        toast.success('Location added successfully');
-        setNewLocationId(newLocation._id); // Set the new location ID for animation
-        setAddOpen(false);
-        addForm.reset();
-      })
-      .catch((err) => {
-        console.error('Add location failed:', err);
-        toast.error(err || 'Failed to add location');
-      })
-      .finally(() => {
-        setActionLoading((prev) => ({ ...prev, add: false }));
+  const handleAddSubmit = async (data) => {
+    try {
+      setActionLoading((prev) => ({ ...prev, add: true }));
+      await dispatch(addLocation(data)).unwrap();
+      toast.success('Location added successfully', {
+        id: 'add-success',
+        duration: 4000,
+        position: 'top-center',
       });
+      setAddOpen(false);
+      addForm.reset();
+    } catch (err) {
+      toast.error(err || 'Failed to add location', {
+        id: 'add-error',
+        duration: 6000,
+        position: 'top-center',
+      });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, add: false }));
+    }
+  };
+
+  const handleAddSaveClick = async () => {
+    try {
+      const isValid = await addForm.trigger();
+      if (!isValid) {
+        const errors = addForm.formState.errors;
+        const firstErrorField = ['name', 'address', 'city', 'state'].find(
+          (field) => errors[field]
+        );
+        if (firstErrorField) {
+          toast.error(errors[firstErrorField].message, {
+            id: `add-validation-error-${firstErrorField}`,
+            duration: 6000,
+            position: 'top-center',
+          });
+          const firstErrorElement = addFormRef.current?.querySelector(
+            `[name="${firstErrorField}"]`
+          );
+          if (firstErrorElement) {
+            firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstErrorElement.focus();
+          }
+        }
+        return;
+      }
+      await addForm.handleSubmit(handleAddSubmit)();
+    } catch (error) {
+      toast.error('Error submitting form, please try again', {
+        id: 'add-submit-error',
+        duration: 6000,
+        position: 'top-center',
+      });
+    }
   };
 
   const handleEditOpen = (loc) => {
-    console.log('Opening edit for location:', loc);
     setEditLocationState(loc);
     editForm.reset({ name: loc.name, address: loc.address, city: loc.city || '', state: loc.state || '' });
     setEditOpen(true);
   };
 
-  const handleEditSubmit = (data) => {
-    setActionLoading((prev) => ({ ...prev, edit: true }));
-    dispatch(editLocation({ id: editLocationState._id, data }))
-      .unwrap()
-      .then(() => {
-        toast.success('Location updated successfully');
-        setEditOpen(false);
-        setEditLocationState(null);
-        editForm.reset();
-      })
-      .catch((err) => {
-        console.error('Edit location failed:', err);
-        toast.error(err || 'Failed to edit location');
-      })
-      .finally(() => {
-        setActionLoading((prev) => ({ ...prev, edit: false }));
+  const handleEditSubmit = async (data) => {
+    try {
+      setActionLoading((prev) => ({ ...prev, edit: true }));
+      await dispatch(editLocation({ id: editLocationState._id, data })).unwrap();
+      toast.success('Location updated successfully', {
+        id: 'edit-success',
+        duration: 4000,
+        position: 'top-center',
       });
+      setEditOpen(false);
+      setEditLocationState(null);
+      editForm.reset();
+    } catch (err) {
+      toast.error(err || 'Failed to update location', {
+        id: 'edit-error',
+        duration: 6000,
+        position: 'top-center',
+      });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, edit: false }));
+    }
   };
 
-  const handleDeleteConfirm = () => {
-    setActionLoading((prev) => ({ ...prev, delete: true }));
-    setDeletedLocationId(deleteLocationId); // Mark the location as being deleted for animation
-    setTimeout(() => {
-      dispatch(deleteLocation(deleteLocationId))
-        .unwrap()
-        .then(() => {
-          toast.success('Location deleted successfully');
-          setDeleteOpen(false);
-          setDeleteLocationId(null);
-          setDeletedLocationId(null);
-        })
-        .catch((err) => {
-          console.error('Delete location failed:', err);
-          toast.error(err || 'Failed to delete location');
-          setDeletedLocationId(null);
-        })
-        .finally(() => {
-          setActionLoading((prev) => ({ ...prev, delete: false }));
-        });
-    }, 300); // Delay the actual deletion to allow the fade-out animation to complete
+  const handleEditSaveClick = async () => {
+    try {
+      const isValid = await editForm.trigger();
+      if (!isValid) {
+        const errors = editForm.formState.errors;
+        const firstErrorField = ['name', 'address', 'city', 'state'].find(
+          (field) => errors[field]
+        );
+        if (firstErrorField) {
+          toast.error(errors[firstErrorField].message, {
+            id: `edit-validation-error-${firstErrorField}`,
+            duration: 6000,
+            position: 'top-center',
+          });
+          const firstErrorElement = editFormRef.current?.querySelector(
+            `[name="${firstErrorField}"]`
+          );
+          if (firstErrorElement) {
+            firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstErrorElement.focus();
+          }
+        }
+        return;
+      }
+      await editForm.handleSubmit(handleEditSubmit)();
+    } catch (error) {
+      toast.error('Error submitting form, please try again', {
+        id: 'edit-submit-error',
+        duration: 6000,
+        position: 'top-center',
+      });
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      setActionLoading((prev) => ({ ...prev, delete: true }));
+      await dispatch(deleteLocation(deleteLocationId)).unwrap();
+      toast.success('Location deleted successfully', {
+        id: 'delete-success',
+        duration: 4000,
+        position: 'top-center',
+      });
+      setDeleteOpen(false);
+      setDeleteLocationId(null);
+    } catch (err) {
+      toast.error(err || 'Failed to delete location', {
+        id: 'delete-error',
+        duration: 6000,
+        position: 'top-center',
+      });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, delete: false }));
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteOpen(false);
+    setDeleteLocationId(null);
   };
 
   const handleViewEmployees = (locationId) => {
@@ -155,145 +236,153 @@ const Locations = () => {
   const sortedLocations = [...filteredLocations].sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
-    return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameB);
+    return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
   });
 
   return (
     <Layout title="Locations">
       {error && (
-        <Alert variant="destructive" className="mb-4 sm:mb-5 md:mb-6 border-error text-error max-w-2xl mx-auto rounded-md animate-fade-in">
-          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">{error}</AlertDescription>
+        <Alert
+          variant="destructive"
+          className="mb-6 max-w-3xl mx-auto rounded-lg border-error bg-error/10 text-error p-4 animate-fade-in"
+          role="alert"
+        >
+          <AlertDescription className="text-sm md:text-base">{error}</AlertDescription>
         </Alert>
       )}
-      <Card className="bg-complementary text-body max-w-full mx-auto shadow-lg rounded-lg border border-accent/10 animate-fade-in">
-        <CardHeader>
-          <CardTitle className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-            <span className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Location List</span>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
-              <div className="relative w-full sm:w-52 md:w-64">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-4 w-4 sm:h-5 sm:w-5" />
+      <Card className="bg-complementary text-body max-w-7xl mx-auto shadow-xl rounded-xl border border-accent/20 animate-fade-in">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <span className="text-xl md:text-2xl font-bold">Location Management</span>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-5 w-5" />
                 <Input
-                  placeholder="Search locations"
-                  className="pl-9 sm:pl-10 h-9 sm:h-10 md:h-11 xl:h-12 w-full bg-body text-body rounded-md border border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all duration-300 text-[10px] sm:text-sm md:text-base xl:text-lg hover:shadow-md"
+                  placeholder="Search locations..."
+                  className="pl-10 h-10 bg-body text-body rounded-lg border border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all duration-300 text-sm md:text-base placeholder:text-body/50 hover:shadow-md"
                   value={locationSearch}
                   onChange={(e) => setLocationSearch(e.target.value)}
+                  aria-label="Search locations"
                 />
               </div>
               <Dialog open={addOpen} onOpenChange={setAddOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-lg">
+                  <Button
+                    className="bg-accent text-body hover:bg-accent-hover rounded-lg text-sm md:text-base py-2 px-4 transition-all duration-300 hover:shadow-lg flex items-center gap-2"
+                    aria-label="Add new location"
+                  >
+                    <Plus className="h-5 w-5" />
                     Add Location
                   </Button>
                 </DialogTrigger>
                 <DialogContent
                   className={cn(
-                    'bg-complementary text-body rounded-lg shadow-2xl max-w-[90vw] sm:max-w-[70vw] md:max-w-[500px] xl:max-w-[600px] max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 xl:p-8 z-[1400] transition-all duration-200',
-                    addOpen ? 'animate-scale-in' : 'animate-fade-out',
-                    'scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary scrollbar-rounded'
+                    'bg-complementary text-body rounded-xl shadow-2xl max-w-lg max-h-[90vh] overflow-y-auto p-6 z-[1400] animate-scale-in scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary'
                   )}
                 >
                   <DialogHeader>
-                    <DialogTitle className="text-sm sm:text-base md:text-lg xl:text-2xl font-bold text-body">
-                      Add Location
+                    <DialogTitle className="text-lg md:text-xl font-bold text-body">
+                      Add New Location
                     </DialogTitle>
+                    <DialogDescription className="text-sm text-body/80">
+                      Fill in the details to add a new location.
+                    </DialogDescription>
                   </DialogHeader>
                   <Form {...addForm}>
-                    <form onSubmit={addForm.handleSubmit(handleAddSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <FormField
-                        control={addForm.control}
-                        name="name"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                              Name *
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                disabled={actionLoading.add}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={addForm.control}
-                        name="city"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                              City *
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                disabled={actionLoading.add}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={addForm.control}
-                        name="address"
-                        render={({ field }) => (
-                          <FormItem className="sm:col-span-2">
-                            <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                              Address *
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                disabled={actionLoading.add}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={addForm.control}
-                        name="state"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                              State *
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                disabled={actionLoading.add}
-                              />
-                            </FormControl>
-                            <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="sm:col-span-2 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
+                    <form ref={addFormRef} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={addForm.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-body text-sm font-medium">Name *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                  disabled={actionLoading.add}
+                                  aria-label="Location name"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-error text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={addForm.control}
+                          name="city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-body text-sm font-medium">City *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                  disabled={actionLoading.add}
+                                  aria-label="City"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-error text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={addForm.control}
+                          name="state"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-body text-sm font-medium">State *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                  disabled={actionLoading.add}
+                                  aria-label="State"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-error text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={addForm.control}
+                          name="address"
+                          render={({ field }) => (
+                            <FormItem className="sm:col-span-2">
+                              <FormLabel className="text-body text-sm font-medium">Address *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                  disabled={actionLoading.add}
+                                  aria-label="Address"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-error text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-3">
                         <Button
                           type="button"
                           variant="outline"
                           onClick={() => setAddOpen(false)}
-                          className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md"
+                          className="border-complementary text-body hover:bg-complementary/20 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md"
                           disabled={actionLoading.add}
+                          aria-label="Cancel add location"
                         >
                           Cancel
                         </Button>
                         <Button
-                          type="submit"
-                          className={cn(
-                            'bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-lg',
-                            !actionLoading.add && 'animate-pulse' // Pulse effect after successful action
-                          )}
+                          type="button"
+                          onClick={handleAddSaveClick}
+                          className="bg-accent text-body hover:bg-accent-hover rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md flex items-center gap-2"
                           disabled={actionLoading.add}
+                          aria-label="Add location"
                         >
-                          {actionLoading.add ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : 'Add'}
+                          {actionLoading.add ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Add Location'}
                         </Button>
                       </div>
                     </form>
@@ -303,46 +392,35 @@ const Locations = () => {
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-4 sm:p-6">
           {loading ? (
-            <div className="p-3 sm:p-4 text-center">
-              <div className="space-y-3 sm:space-y-4">
-                {Array(3)
-                  .fill()
-                  .map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full rounded-md bg-complementary/20 animate-pulse" />
-                  ))}
-              </div>
+            <div className="space-y-4">
+              {Array(3)
+                .fill()
+                .map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-lg bg-complementary/20 animate-pulse" />
+                ))}
             </div>
           ) : sortedLocations.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table className="border border-accent/20 rounded-md min-w-[700px]">
+            <div className="overflow-x-auto rounded-lg border border-accent/20">
+              <Table className="min-w-[700px]">
                 <TableHeader>
-                  <TableRow className="bg-complementary hover:bg-accent/10 border-b border-body/20">
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
+                  <TableRow className="bg-complementary-light hover:bg-accent/10 border-b border-body/20">
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">
                       <Button
                         variant="ghost"
                         onClick={handleSort}
-                        className="text-body hover:text-accent font-semibold text-[10px] sm:text-sm md:text-base xl:text-lg transition-colors duration-300"
+                        className="text-body hover:text-accent font-semibold text-sm md:text-base transition-colors duration-300"
+                        aria-label={`Sort by name ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
                       >
                         Name {sortOrder === 'asc' ? '↑' : '↓'}
                       </Button>
                     </TableHead>
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
-                      Address
-                    </TableHead>
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
-                      City
-                    </TableHead>
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
-                      State
-                    </TableHead>
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
-                      Employees
-                    </TableHead>
-                    <TableHead className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg px-3 sm:px-4 whitespace-nowrap">
-                      Actions
-                    </TableHead>
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">Address</TableHead>
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">City</TableHead>
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">State</TableHead>
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">Employees</TableHead>
+                    <TableHead className="text-body text-sm md:text-base font-semibold px-4 py-3">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -350,172 +428,170 @@ const Locations = () => {
                     <TableRow
                       key={loc._id}
                       className={cn(
-                        'border-b border-accent/10 transition-all duration-300',
-                        deletedLocationId === loc._id ? 'animate-fade-out' : newLocationId === loc._id ? 'animate-slide-in-row' : 'hover:bg-black/5 dark:hover:bg-white/5'
+                        'border-b border-accent/10 transition-all duration-300 hover:bg-accent/5',
+                        actionLoading.delete && deleteLocationId === loc._id && 'opacity-50'
                       )}
                     >
-                      <TableCell className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body font-medium px-3 sm:px-4 whitespace-nowrap">
-                        {loc.name}
-                      </TableCell>
-                      <TableCell className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body px-3 sm:px-4">
-                        {loc.address}
-                      </TableCell>
-                      <TableCell className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body px-3 sm:px-4 whitespace-nowrap">
-                        {loc.city || '-'}
-                      </TableCell>
-                      <TableCell className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body px-3 sm:px-4 whitespace-nowrap">
-                        {loc.state || '-'}
-                      </TableCell>
-                      <TableCell className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body px-3 sm:px-4 whitespace-nowrap">
+                      <TableCell className="text-sm md:text-base text-body font-medium px-4 py-3">{loc.name}</TableCell>
+                      <TableCell className="text-sm md:text-base text-body px-4 py-3">{loc.address}</TableCell>
+                      <TableCell className="text-sm md:text-base text-body px-4 py-3">{loc.city || '-'}</TableCell>
+                      <TableCell className="text-sm md:text-base text-body px-4 py-3">{loc.state || '-'}</TableCell>
+                      <TableCell className="text-sm md:text-base text-body px-4 py-3">
                         {typeof loc.employeeCount === 'number' ? loc.employeeCount : '-'}
                       </TableCell>
-                      <TableCell className="px-3 sm:px-4">
-                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                      <TableCell className="px-4 py-3">
+                        <div className="flex gap-2">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleViewEmployees(loc._id)}
-                            className="bg-transparent border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-xs md:text-sm xl:text-base py-1 sm:py-1.5 px-2 sm:px-3 transition-all duration-300 hover:shadow-md"
+                            className="bg-transparent border-complementary text-body hover:bg-accent/20 rounded-lg text-sm py-1.5 px-3 transition-all duration-300 hover:shadow-md"
                             disabled={actionLoading.edit || actionLoading.delete}
+                            aria-label={`View employees for ${loc.name}`}
+                            title="View Employees"
                           >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
+                            <Eye className="h-4 w-4" />
                           </Button>
                           <Dialog
                             open={editOpen && editLocationState?._id === loc._id}
-                            onOpenChange={(open) => setEditOpen(open)}
+                            onOpenChange={(open) => {
+                              setEditOpen(open);
+                              if (!open) setEditLocationState(null);
+                            }}
                           >
                             <DialogTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleEditOpen(loc)}
-                                className="bg-transparent border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-xs md:text-sm xl:text-base py-1 sm:py-1.5 px-2 sm:px-3 transition-all duration-300 hover:shadow-md"
+                                className="bg-transparent border-complementary text-body hover:bg-accent/20 rounded-lg text-sm py-1.5 px-3 transition-all duration-300 hover:shadow-md"
                                 disabled={actionLoading.edit || actionLoading.delete}
+                                aria-label={`Edit ${loc.name}`}
+                                title="Edit Location"
                               >
-                                <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
-                                  />
-                                </svg>
-                                Edit
+                                <Edit className="h-4 w-4" />
                               </Button>
                             </DialogTrigger>
                             <DialogContent
                               className={cn(
-                                'bg-complementary text-body rounded-lg shadow-2xl max-w-[90vw] sm:max-w-[70vw] md:max-w-[500px] xl:max-w-[600px] max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 xl:p-8 z-[1400] transition-all duration-200',
-                                editOpen ? 'animate-scale-in' : 'animate-fade-out',
-                                'scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary scrollbar-rounded'
+                                'bg-complementary text-body rounded-xl shadow-2xl max-w-lg max-h-[90vh] overflow-y-auto p-6 z-[1400] animate-scale-in scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary'
                               )}
                             >
                               <DialogHeader>
-                                <DialogTitle className="text-sm sm:text-base md:text-lg xl:text-2xl font-bold text-body">
+                                <DialogTitle className="text-lg md:text-xl font-bold text-body">
                                   Edit Location
                                 </DialogTitle>
+                                <DialogDescription className="text-sm text-body/80">
+                                  Update the details for {loc.name}.
+                                </DialogDescription>
                               </DialogHeader>
                               <Form {...editForm}>
-                                <form
-                                  onSubmit={editForm.handleSubmit(handleEditSubmit)}
-                                  className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"
-                                >
-                                  <FormField
-                                    control={editForm.control}
-                                    name="name"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                                          Name *
-                                        </FormLabel>
-                                        <FormControl>
-                                          <Input
-                                            {...field}
-                                            className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                            disabled={actionLoading.edit}
-                                          />
-                                        </FormControl>
-                                        <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={editForm.control}
-                                    name="city"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                                          City *
-                                        </FormLabel>
-                                        <FormControl>
-                                          <Input
-                                            {...field}
-                                            className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                            disabled={actionLoading.edit}
-                                          />
-                                        </FormControl>
-                                        <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={editForm.control}
-                                    name="address"
-                                    render={({ field }) => (
-                                      <FormItem className="sm:col-span-2">
-                                        <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                                          Address *
-                                        </FormLabel>
-                                        <FormControl>
-                                          <Input
-                                            {...field}
-                                            className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                            disabled={actionLoading.edit}
-                                          />
-                                        </FormControl>
-                                        <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={editForm.control}
-                                    name="state"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel className="text-body text-[10px] sm:text-sm md:text-base xl:text-lg font-medium">
-                                          State *
-                                        </FormLabel>
-                                        <FormControl>
-                                          <Input
-                                            {...field}
-                                            className="h-9 sm:h-10 md:h-11 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg transition-all duration-300 hover:shadow-sm"
-                                            disabled={actionLoading.edit}
-                                          />
-                                        </FormControl>
-                                        <FormMessage className="text-error text-[9px] sm:text-xs md:text-sm xl:text-base" />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <div className="sm:col-span-2 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
+                                <form ref={editFormRef} className="space-y-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <FormField
+                                      control={editForm.control}
+                                      name="name"
+                                      render={({ field }) => (
+                                        <FormItem>
+                                          <FormLabel className="text-body text-sm font-medium">
+                                            Name *
+                                          </FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                              disabled={actionLoading.edit}
+                                              aria-label="Location name"
+                                            />
+                                          </FormControl>
+                                          <FormMessage className="text-error text-xs" />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={editForm.control}
+                                      name="city"
+                                      render={({ field }) => (
+                                        <FormItem>
+                                          <FormLabel className="text-body text-sm font-medium">
+                                            City *
+                                          </FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                              disabled={actionLoading.edit}
+                                              aria-label="City"
+                                            />
+                                          </FormControl>
+                                          <FormMessage className="text-error text-xs" />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={editForm.control}
+                                      name="state"
+                                      render={({ field }) => (
+                                        <FormItem>
+                                          <FormLabel className="text-body text-sm font-medium">
+                                            State *
+                                          </FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                              disabled={actionLoading.edit}
+                                              aria-label="State"
+                                            />
+                                          </FormControl>
+                                          <FormMessage className="text-error text-xs" />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={editForm.control}
+                                      name="address"
+                                      render={({ field }) => (
+                                        <FormItem className="sm:col-span-2">
+                                          <FormLabel className="text-body text-sm font-medium">
+                                            Address *
+                                          </FormLabel>
+                                          <FormControl>
+                                            <Input
+                                              {...field}
+                                              className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                                              disabled={actionLoading.edit}
+                                              aria-label="Address"
+                                            />
+                                          </FormControl>
+                                          <FormMessage className="text-error text-xs" />
+                                        </FormItem>
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="flex justify-end gap-3">
                                     <Button
                                       type="button"
                                       variant="outline"
                                       onClick={() => setEditOpen(false)}
-                                      className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md"
+                                      className="border-complementary text-body hover:bg-complementary/20 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md"
                                       disabled={actionLoading.edit}
+                                      aria-label="Cancel edit location"
                                     >
                                       Cancel
                                     </Button>
                                     <Button
-                                      type="submit"
-                                      className={cn(
-                                        'bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-lg',
-                                        !actionLoading.edit && 'animate-pulse'
-                                      )}
+                                      type="button"
+                                      onClick={handleEditSaveClick}
+                                      className="bg-accent text-body hover:bg-accent-hover rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md flex items-center gap-2"
                                       disabled={actionLoading.edit}
+                                      aria-label="Save location"
                                     >
-                                      {actionLoading.edit ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : 'Save'}
+                                      {actionLoading.edit ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                      ) : (
+                                        'Save Changes'
+                                      )}
                                     </Button>
                                   </div>
                                 </form>
@@ -524,58 +600,60 @@ const Locations = () => {
                           </Dialog>
                           <AlertDialog
                             open={deleteOpen && deleteLocationId === loc._id}
-                            onOpenChange={(open) => setDeleteOpen(open)}
+                            onOpenChange={(open) => {
+                              setDeleteOpen(open);
+                              if (!open) setDeleteLocationId(null);
+                            }}
                           >
                             <AlertDialogTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setDeleteLocationId(loc._id)}
-                                className="bg-transparent border-complementary text-red-500 hover:bg-complementary/10 rounded-md text-[10px] sm:text-xs md:text-sm xl:text-base py-1 sm:py-1.5 px-2 sm:px-3 transition-all duration-300 hover:shadow-md"
+                                onClick={() => {
+                                  setDeleteLocationId(loc._id);
+                                  setDeleteOpen(true);
+                                }}
+                                className="bg-transparent border-complementary text-error hover:bg-error/10 rounded-lg text-sm py-1.5 px-3 transition-all duration-300 hover:shadow-md"
                                 disabled={actionLoading.edit || actionLoading.delete}
+                                aria-label={`Delete ${loc.name}`}
+                                title="Delete Location"
                               >
-                                <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4M3 7h18"
-                                  />
-                                </svg>
-                                Delete
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent
                               className={cn(
-                                'bg-complementary text-body rounded-lg shadow-2xl max-w-[90vw] sm:max-w-[70vw] md:max-w-[500px] xl:max-w-[600px] max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 xl:p-8 z-[1400] transition-all duration-200',
-                                deleteOpen ? 'animate-scale-in' : 'animate-fade-out',
-                                'scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary scrollbar-rounded'
+                                'bg-complementary text-body rounded-xl shadow-2xl max-w-lg p-6 z-[1400] animate-scale-in scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary'
                               )}
                             >
                               <AlertDialogHeader>
-                                <AlertDialogTitle className="text-sm sm:text-base md:text-lg xl:text-2xl font-bold text-body">
-                                  Are you sure?
+                                <AlertDialogTitle className="text-lg md:text-xl font-bold text-body">
+                                  Confirm Deletion
                                 </AlertDialogTitle>
-                                <AlertDialogDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body/80">
-                                  This action cannot be undone. This will permanently delete the location "{loc.name}".
+                                <AlertDialogDescription className="text-sm text-body/80">
+                                  Are you sure you want to delete "{loc.name}"? This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
-                              <AlertDialogFooter className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
+                              <AlertDialogFooter className="flex justify-end gap-3">
                                 <AlertDialogCancel
-                                  className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md"
+                                  onClick={handleDeleteCancel}
+                                  className="border-complementary text-body hover:bg-complementary/20 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md"
                                   disabled={actionLoading.delete}
+                                  aria-label="Cancel delete"
                                 >
                                   Cancel
                                 </AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={handleDeleteConfirm}
-                                  className={cn(
-                                    'bg-red-500 text-white hover:bg-red-600 rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-lg',
-                                    !actionLoading.delete && 'animate-pulse'
-                                  )}
+                                  className="bg-error text-white hover:bg-error/80 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md flex items-center gap-2"
                                   disabled={actionLoading.delete}
+                                  aria-label="Confirm delete"
                                 >
-                                  {actionLoading.delete ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : 'Delete'}
+                                  {actionLoading.delete ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                  ) : (
+                                    'Delete'
+                                  )}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -588,9 +666,9 @@ const Locations = () => {
               </Table>
             </div>
           ) : (
-            <div className="p-3 sm:p-4 text-center">
-              <p className="text-[10px] sm:text-sm md:text-base xl:text-lg text-body animate-fade-in">
-                No locations found. Add a location to get started.
+            <div className="p-6 text-center">
+              <p className="text-sm md:text-base text-body/80 animate-fade-in">
+                No locations found. Click "Add Location" to get started.
               </p>
             </div>
           )}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { signup } from '../../redux/slices/authSlice';
-import { fetchLocations } from '../../features/admin/redux/locationsSlice'; // Updated import
+import { fetchLocations } from '../../features/admin/redux/locationsSlice';
 import SignupForm from './SignupForm';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +35,7 @@ const Signup = () => {
   }, [error]);
 
   const handleSignup = (data) => {
-    dispatch(signup(data));
+    dispatch(signup({ ...data, role }));
   };
 
   return (
@@ -77,7 +77,3 @@ const Signup = () => {
 };
 
 export default Signup;
-
-
-
-

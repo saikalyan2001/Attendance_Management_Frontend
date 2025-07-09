@@ -8,7 +8,7 @@ export const fetchProfile = createAsyncThunk(
       const response = await api.get('/siteincharge/profile');
       return response.data;
     } catch (error) {
-      console.error('Fetch profile error:', error.response?.data || error.message);
+      ('Fetch profile error:', error.response?.data || error.message);
       if (error.response?.status === 401) {
         return rejectWithValue('Unauthorized: Please log in again');
       }
@@ -21,7 +21,6 @@ const profileSlice = createSlice({
   name: 'siteInchargeProfile',
   initialState: {
     profile: null,
-    recentAttendance: [],
     loading: false,
     error: null,
   },
@@ -39,7 +38,6 @@ const profileSlice = createSlice({
       .addCase(fetchProfile.fulfilled, (state, action) => {
         state.loading = false;
         state.profile = action.payload.user || null;
-        state.recentAttendance = action.payload.recentAttendance || [];
       })
       .addCase(fetchProfile.rejected, (state, action) => {
         state.loading = false;

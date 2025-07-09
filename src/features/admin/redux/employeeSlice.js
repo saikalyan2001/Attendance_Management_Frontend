@@ -1,58 +1,66 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api';
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import api from "../../../utils/api";
 
 export const fetchEmployees = createAsyncThunk(
   'employees/fetchEmployees',
-  async ({ location, status }, { rejectWithValue }) => {
+  async ({ location, status, month, year, page = 1, limit = 10 }, { rejectWithValue }) => {
     try {
       const params = {};
       if (location && location !== 'all') params.location = location;
       if (status && status !== 'all') params.status = status;
+      if (month) params.month = month;
+      if (year) params.year = year;
+      if (page) params.page = page;
+      if (limit) params.limit = limit;
       const response = await api.get('/admin/employees', { params });
       return response.data;
     } catch (error) {
-      console.error('Fetch employees error:', error.response?.data || error.message);
+      ('Fetch employees error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employees');
     }
   }
 );
 
 export const fetchMonthlyLeaves = createAsyncThunk(
-  'employees/fetchMonthlyLeaves',
+  "employees/fetchMonthlyLeaves",
   async ({ month, year, location, status }, { rejectWithValue }) => {
     try {
       const params = { month, year };
-      if (location && location !== 'all') params.location = location;
-      if (status && status !== 'all') params.status = status;
-      const response = await api.get('/admin/employees/leaves', { params });
+      if (location && location !== "all") params.location = location;
+      if (status && status !== "all") params.status = status;
+      const response = await api.get("/admin/employees/leaves", { params });
       return response.data;
     } catch (error) {
-      console.error('Fetch monthly leaves error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch monthly leaves');
+      "Fetch monthly leaves error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch monthly leaves"
+      );
     }
   }
 );
 
 export const fetchEmployeeById = createAsyncThunk(
-  'employees/fetchEmployeeById',
+  "employees/fetchEmployeeById",
   async (id, { rejectWithValue }) => {
     try {
       const response = await api.get(`/admin/employees/${id}`);
       return response.data;
     } catch (error) {
-      console.error('Fetch employee by ID error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee');
+      "Fetch employee by ID error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employee"
+      );
     }
   }
 );
 
 export const registerEmployee = createAsyncThunk(
-  'employees/registerEmployee',
+  "employees/registerEmployee",
   async ({ employeeData, documents }, { rejectWithValue }) => {
     try {
       const formData = new FormData();
       Object.entries(employeeData).forEach(([key, value]) => {
-        if (key === 'paidLeaves' || key === 'bankDetails') {
+        if (key === "paidLeaves" || key === "bankDetails") {
           formData.append(key, JSON.stringify(value));
         } else if (value !== undefined) {
           formData.append(key, value);
@@ -60,61 +68,73 @@ export const registerEmployee = createAsyncThunk(
       });
       documents.forEach((doc) => {
         if (doc.file instanceof File) {
-          formData.append('documents', doc.file, doc.file.name);
+          formData.append("documents", doc.file, doc.file.name);
         }
       });
-      const response = await api.post('/admin/employees', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await api.post("/admin/employees", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
       return response.data;
     } catch (error) {
-      console.error('Register employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to register employee');
+      "Register employee error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to register employee"
+      );
     }
   }
 );
 
 export const updateEmployee = createAsyncThunk(
-  'employees/updateEmployee',
+  "employees/updateEmployee",
   async ({ id, data }, { rejectWithValue }) => {
     try {
       const response = await api.put(`/admin/employees/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Update employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to update employee');
+      "Update employee error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to update employee"
+      );
     }
   }
 );
 
 export const updateEmployeeAdvance = createAsyncThunk(
-  'employees/updateEmployeeAdvance',
+  "employees/updateEmployeeAdvance",
   async ({ id, advance, year, month }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/admin/employees/${id}/advance`, { advance, year, month });
+      const response = await api.put(`/admin/employees/${id}/advance`, {
+        advance,
+        year,
+        month,
+      });
       return response.data;
     } catch (error) {
-      console.error('Update employee advance error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to update employee advance');
+      "Update employee advance error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to update employee advance"
+      );
     }
   }
 );
 
 export const deactivateEmployee = createAsyncThunk(
-  'employees/deactivateEmployee',
+  "employees/deactivateEmployee",
   async (id, { rejectWithValue }) => {
     try {
       const response = await api.put(`/admin/employees/${id}/deactivate`);
       return { id, message: response.data.message };
     } catch (error) {
-      console.error('Deactivate employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to deactivate employee');
+      "Deactivate employee error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to deactivate employee"
+      );
     }
   }
 );
 
 export const transferEmployee = createAsyncThunk(
-  'employees/transferEmployee',
+  "employees/transferEmployee",
   async ({ id, locationId, transferTimestamp }, { rejectWithValue }) => {
     try {
       const response = await api.put(`/admin/employees/${id}/transfer`, {
@@ -123,89 +143,110 @@ export const transferEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Transfer employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to transfer employee');
+      "Transfer employee error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to transfer employee"
+      );
     }
   }
 );
 
 export const rejoinEmployee = createAsyncThunk(
-  'employees/rejoinEmployee',
+  "employees/rejoinEmployee",
   async ({ id, rejoinDate }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/admin/employees/${id}/rejoin`, { rejoinDate });
+      const response = await api.put(`/admin/employees/${id}/rejoin`, {
+        rejoinDate,
+      });
       return response.data;
     } catch (error) {
-      console.error('Rejoin employee error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to rejoin employee');
+      "Rejoin employee error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to rejoin employee"
+      );
     }
   }
 );
 
 export const getEmployeeHistory = createAsyncThunk(
-  'employees/getEmployeeHistory',
+  "employees/getEmployeeHistory",
   async (id, { rejectWithValue }) => {
     try {
       const response = await api.get(`/admin/employees/${id}/history`);
       return response.data;
     } catch (error) {
-      console.error('Get employee history error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee history');
+      "Get employee history error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employee history"
+      );
     }
   }
 );
 
 export const addEmployeeDocuments = createAsyncThunk(
-  'employees/addEmployeeDocuments',
+  "employees/addEmployeeDocuments",
   async ({ id, documents }, { rejectWithValue }) => {
     try {
       const formData = new FormData();
       documents.forEach((doc) => {
         if (doc.file instanceof File) {
-          formData.append('documents', doc.file, doc.file.name);
+          formData.append("documents", doc.file, doc.file.name);
         }
       });
-      const response = await api.post(`/admin/employees/${id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post(
+        `/admin/employees/${id}/documents`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
       return response.data;
     } catch (error) {
-      console.error('Add employee documents error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to add employee documents');
+      "Add employee documents error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to add employee documents"
+      );
     }
   }
 );
 
 export const fetchEmployeeAttendance = createAsyncThunk(
-  'employees/fetchEmployeeAttendance',
+  "employees/fetchEmployeeAttendance",
   async ({ employeeId, month, year }, { rejectWithValue }) => {
     try {
-      const response = await api.get(`/admin/employees/${employeeId}/attendance`, {
-        params: { month, year },
-      });
+      const response = await api.get(
+        `/admin/employees/${employeeId}/attendance`,
+        {
+          params: { month, year },
+        }
+      );
       return response.data;
     } catch (error) {
-      console.error('Fetch employee attendance error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee attendance');
+      "Fetch employee attendance error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employee attendance"
+      );
     }
   }
 );
 
 export const fetchSettings = createAsyncThunk(
-  'employees/fetchSettings',
+  "employees/fetchSettings",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get('/admin/employees/settings');
+      const response = await api.get("/admin/employees/settings");
       return response.data;
     } catch (error) {
-      console.error('Fetch settings error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch settings');
+      "Fetch settings error:", error.response?.data || error.message;
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch settings"
+      );
     }
   }
 );
 
 const employeesSlice = createSlice({
-  name: 'employees',
+  name: "employees",
   initialState: {
     employees: [],
     monthlyLeaves: [], // Added for monthly leave data
@@ -217,6 +258,13 @@ const employeesSlice = createSlice({
     error: null,
     success: false,
     successMessage: null,
+    pagination: {
+      // Added pagination state
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      itemsPerPage: 10,
+    },
   },
   reducers: {
     reset: (state) => {
@@ -240,12 +288,24 @@ const employeesSlice = createSlice({
       })
       .addCase(fetchEmployees.fulfilled, (state, action) => {
         state.loading = false;
-        state.employees = action.payload || [];
+        state.employees = action.payload.employees || [];
+        state.pagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+        };
       })
       .addCase(fetchEmployees.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.employees = [];
+        state.pagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+        };
       })
       // Fetch Monthly Leaves
       .addCase(fetchMonthlyLeaves.pending, (state) => {
@@ -287,7 +347,7 @@ const employeesSlice = createSlice({
         state.loading = false;
         state.employees.push(action.payload);
         state.success = true;
-        state.successMessage = 'Employee registered successfully';
+        state.successMessage = "Employee registered successfully";
       })
       .addCase(registerEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -304,10 +364,13 @@ const employeesSlice = createSlice({
       .addCase(updateEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = 'Employee updated successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        state.successMessage = "Employee updated successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload._id
+        );
         if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
+        if (state.currentEmployee?._id === action.payload._id)
+          state.currentEmployee = action.payload;
       })
       .addCase(updateEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -324,10 +387,13 @@ const employeesSlice = createSlice({
       .addCase(updateEmployeeAdvance.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = 'Employee advance updated successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        state.successMessage = "Employee advance updated successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload._id
+        );
         if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
+        if (state.currentEmployee?._id === action.payload._id)
+          state.currentEmployee = action.payload;
       })
       .addCase(updateEmployeeAdvance.rejected, (state, action) => {
         state.loading = false;
@@ -344,10 +410,14 @@ const employeesSlice = createSlice({
       .addCase(deactivateEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = action.payload.message || 'Employee deactivated successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload.id);
-        if (index !== -1) state.employees[index].status = 'inactive';
-        if (state.currentEmployee?._id === action.payload.id) state.currentEmployee = null;
+        state.successMessage =
+          action.payload.message || "Employee deactivated successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload.id
+        );
+        if (index !== -1) state.employees[index].status = "inactive";
+        if (state.currentEmployee?._id === action.payload.id)
+          state.currentEmployee = null;
       })
       .addCase(deactivateEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -364,10 +434,13 @@ const employeesSlice = createSlice({
       .addCase(transferEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = 'Employee transferred successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        state.successMessage = "Employee transferred successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload._id
+        );
         if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
+        if (state.currentEmployee?._id === action.payload._id)
+          state.currentEmployee = action.payload;
       })
       .addCase(transferEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -384,11 +457,14 @@ const employeesSlice = createSlice({
       .addCase(rejoinEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = 'Employee rejoined successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        state.successMessage = "Employee rejoined successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload._id
+        );
         if (index !== -1) state.employees[index] = action.payload;
         else state.employees.push(action.payload);
-        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
+        if (state.currentEmployee?._id === action.payload._id)
+          state.currentEmployee = action.payload;
       })
       .addCase(rejoinEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -419,10 +495,13 @@ const employeesSlice = createSlice({
       .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.successMessage = 'Documents added successfully';
-        const index = state.employees.findIndex((emp) => emp._id === action.payload._id);
+        state.successMessage = "Documents added successfully";
+        const index = state.employees.findIndex(
+          (emp) => emp._id === action.payload._id
+        );
         if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id) state.currentEmployee = action.payload;
+        if (state.currentEmployee?._id === action.payload._id)
+          state.currentEmployee = action.payload;
       })
       .addCase(addEmployeeDocuments.rejected, (state, action) => {
         state.loading = false;

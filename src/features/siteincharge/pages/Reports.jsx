@@ -33,8 +33,7 @@ const Reports = () => {
     (state) => state.siteInchargeReports
   );
 
-  console.log("attendanceReports", attendanceReports);
-  
+    
 
   const [month, setMonth] = useState('5'); // May 2025
   const [department, setDepartment] = useState('all');
@@ -63,7 +62,7 @@ const Reports = () => {
     dispatch(fetchMe())
       .unwrap()
       .catch((err) => {
-        console.error('fetchMe error:', err);
+        ('fetchMe error:', err);
         toast.error('Failed to fetch user data', { duration: 5000 });
         navigate('/login');
       });
@@ -78,9 +77,7 @@ const Reports = () => {
       setServerError('No location assigned. Please contact an admin.');
       toast.error('No location assigned. Please contact an admin.', { duration: 10000 });
     } else if (!authLoading && locationId) {
-      console.log('User locations:', user.locations);
-      console.log('Fetching reports for locationId:', locationId);
-    }
+                }
   }, [user, authLoading, locationId, navigate]);
 
   useEffect(() => {

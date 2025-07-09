@@ -1,16 +1,27 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../../utils/api'; 
+import { format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+import api from '../../../utils/api';
 
 export const fetchDashboard = createAsyncThunk(
   'dashboard/fetchDashboard',
   async ({ date } = {}, { rejectWithValue }) => {
     try {
+      const timeZone = 'Asia/Kolkata';
+      const dateString = date ? format(toZonedTime(date, timeZone), 'yyyy-MM-dd') : format(toZonedTime(new Date(), timeZone), 'yyyy-MM-dd');
+      ('Making API call for date:', dateString); // Debug
       const response = await api.get('/admin/dashboard', {
-        params: date ? { date: date.toISOString().split('T')[0] } : undefined,
+        params: { date: dateString },
       });
+      ('API response:', response.data); // Debug
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch dashboard data');
+      ('Fetch dashboard error:', error.response?.data || error.message); // Debug
+      const message =
+        error.response?.status === 400
+          ? 'Invalid date format'
+          : error.response?.data?.message || 'Failed to fetch dashboard data';
+      return rejectWithValue(message);
     }
   }
 );

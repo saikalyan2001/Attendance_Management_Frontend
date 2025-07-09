@@ -3,13 +3,20 @@ import api from '../../../utils/api';
 
 export const fetchEmployees = createAsyncThunk(
   'siteInchargeEmployee/fetchEmployees',
-  async ({ location, status }, { rejectWithValue }) => {
+  async ({ location, status, month, year, cache = true }, { rejectWithValue }) => {
     try {
       const params = { location };
       if (status) params.status = status;
-      const response = await api.get('/siteincharge/employees', { params });
-      return response.data.employees;
+      if (month) params.month = month;
+      if (year) params.year = year;
+      ('fetchEmployees params:', { location, status, month, year, cache }); // Debug cache usage
+      const response = await api.get('/siteincharge/employees', {
+        params,
+        headers: { 'Cache-Control': cache ? 'max-age=300' : 'no-cache' },
+      });
+            return response.data.employees || [];
     } catch (error) {
+      ('Fetch employees error:', error);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employees');
     }
   }
@@ -33,10 +40,9 @@ export const fetchAllLocations = createAsyncThunk(
     try {
       const response = await api.get('/auth/locations');
       const locations = response.data || [];
-      console.log('Fetched allLocations:', locations);
-      const invalidLocations = locations.filter(loc => !loc._id || !/^[0-9a-fA-F]{24}$/.test(loc._id));
+            const invalidLocations = locations.filter(loc => !loc._id || !/^[0-9a-fA-F]{24}$/.test(loc._id));
       if (invalidLocations.length > 0) {
-        console.error('Invalid location IDs found:', invalidLocations);
+        ('Invalid location IDs found:', invalidLocations);
       }
       return locations;
     } catch (error) {
@@ -111,11 +117,10 @@ export const transferEmployee = createAsyncThunk(
   'siteInchargeEmployee/transferEmployee',
   async ({ id, location }, { rejectWithValue }) => {
     try {
-      console.log('Transfer employee request:', { id, location });
-      const response = await api.put(`/siteincharge/employees/${id}/transfer`, { location });
+            const response = await api.put(`/siteincharge/employees/${id}/transfer`, { location });
       return response.data;
     } catch (error) {
-      console.error('Transfer employee error:', error.response?.data);
+      ('Transfer employee error:', error.response?.data);
       return rejectWithValue(error.response?.data?.message || 'Failed to transfer employee');
     }
   }
@@ -123,8 +128,13 @@ export const transferEmployee = createAsyncThunk(
 
 export const uploadDocument = createAsyncThunk(
   'siteInchargeEmployee/addEmployeeDocuments',
-  async ({ id, formData }, { rejectWithValue }) => {
+  async ({ id, documents }, { rejectWithValue }) => {
     try {
+      const formData = new FormData();
+      documents.forEach((doc) => {
+        formData.append('documents', doc.file);
+      });
+
       const response = await api.post(`/siteincharge/employees/${id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -142,10 +152,9 @@ export const fetchEmployeeAttendance = createAsyncThunk(
       const response = await api.get(`/siteincharge/attendance/employee/${employeeId}`, {
         params: { month, year },
       });
-      console.log('Fetched attendance:', response.data); // Debug log
-      return response.data.attendance || []; // Fallback to empty array
+            return response.data.attendance || [];
     } catch (error) {
-      console.error('Fetch attendance error:', error);
+      ('Fetch attendance error:', error);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee attendance');
     }
   }
@@ -196,7 +205,7 @@ export const updateEmployeeAdvance = createAsyncThunk(
       const response = await api.put(`/siteincharge/employees/${id}/advance`, { advance, month, year });
       return response.data;
     } catch (error) {
-      console.error('Update employee advance error:', error.response?.data || error.message);
+      ('Update employee advance error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to update employee advance');
     }
   }
@@ -227,7 +236,10 @@ const employeeSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchEmployees.pending, (state) => { state.loading = true; state.error = null; })
-      .addCase(fetchEmployees.fulfilled, (state, action) => { state.loading = false; state.employees = (action.payload || []).filter(emp => emp && typeof emp === 'object' && emp._id); })
+      .addCase(fetchEmployees.fulfilled, (state, action) => { 
+        state.loading = false; 
+        state.employees = (action.payload || []).filter(emp => emp && typeof emp === 'object' && emp._id); 
+      })
       .addCase(fetchEmployees.rejected, (state, action) => { state.loading = false; state.error = action.payload; })
       .addCase(fetchLocations.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(fetchLocations.fulfilled, (state, action) => { state.loading = false; state.locations = (action.payload || []).filter(loc => loc && typeof loc === 'object' && loc._id); })

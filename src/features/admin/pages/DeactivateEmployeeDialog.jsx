@@ -1,37 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { deactivateEmployee, reset as resetEmployees } from '../redux/employeeSlice';
 import { DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
+import { parseServerError } from '@/utils/errorUtils';
 
-const DeactivateEmployeeDialog = ({
-  open,
-  onOpenChange,
-  employeeId,
-  setSuccessMessage,
-  setShowSuccessAlert,
-}) => {
+const DeactivateEmployeeDialog = ({ open, onOpenChange, employeeId, setSuccessMessage }) => {
   const dispatch = useDispatch();
   const { loading: employeesLoading } = useSelector((state) => state.adminEmployees);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleConfirm = () => {
-    dispatch(deactivateEmployee(employeeId)).then((result) => {
-      if (result.meta.requestStatus === 'fulfilled') {
-        onOpenChange(false);
-        setSuccessMessage('Employee deactivated successfully');
-        setShowSuccessAlert(true);
-        toast.success('Employee deactivated successfully', { duration: 3000 });
-        setTimeout(() => {
-          setShowSuccessAlert(false);
-          setSuccessMessage(null);
-          dispatch(resetEmployees());
-        }, 3000);
-      } else {
-        toast.error(result.payload || 'Failed to deactivate employee', { duration: 5000 });
-      }
-    });
+  const handleConfirm = async () => {
+    try {
+      setIsSubmitting(true);
+      await dispatch(deactivateEmployee(employeeId)).unwrap();
+      setSuccessMessage('Employee deactivated successfully');
+      onOpenChange(false);
+      dispatch(resetEmployees());
+    } catch (error) {
+      const parsedError = parseServerError(error);
+      toast.error(parsedError.message, { position: 'top-center', duration: 5000 });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -47,7 +40,7 @@ const DeactivateEmployeeDialog = ({
           variant="outline"
           onClick={() => onOpenChange(false)}
           className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md"
-          disabled={employeesLoading}
+          disabled={employeesLoading || isSubmitting}
           aria-label="Cancel deactivation"
         >
           Cancel
@@ -55,10 +48,10 @@ const DeactivateEmployeeDialog = ({
         <Button
           onClick={handleConfirm}
           className="bg-error text-body hover:bg-error-hover rounded-md text-[11px] sm:text-sm xl:text-lg py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] transition-all duration-300 hover:shadow-md hover:scale-105 animate-pulse"
-          disabled={employeesLoading}
+          disabled={employeesLoading || isSubmitting}
           aria-label="Confirm deactivation"
         >
-          {employeesLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Deactivate'}
+          {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Deactivate'}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -4,57 +4,30 @@ import { fetchEmployeeById, fetchEmployeeAttendance, addEmployeeDocuments, updat
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Edit, Upload, Loader2, Eye, ArrowUpDown, X, AlertCircle, Trash, Copy, ArrowLeft, Search, FileText, Image as ImageIcon } from 'lucide-react';
-import { format } from 'date-fns';
-import { toast } from 'sonner';
+import { Loader2, X, AlertCircle, Copy, ArrowLeft } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 import { z } from 'zod';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useNavigate, useParams } from 'react-router-dom';
-
-// File icon component
-const FileIcon = () => <svg className="h-5 w-5 text-body" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
-
-// Get file icon based on extension
-const getFileIcon = (fileName) => {
-  if (!fileName) return <FileIcon className="h-5 w-5 text-body" />;
-  const extension = fileName.toLowerCase().split('.').pop();
-  if (['jpg', 'jpeg', 'png'].includes(extension)) {
-    return <ImageIcon className="h-5 w-5 text-body" />;
-  }
-  if (['pdf'].includes(extension)) {
-    return <FileText className="h-5 w-5 text-body" />;
-  }
-  if (['doc', 'docx'].includes(extension)) {
-    return <FileText className="h-5 w-5 text-body" />;
-  }
-  return <FileIcon className="h-5 w-5 text-body" />;
-};
-
-// Check if file is an image for preview
-const isImageFile = (fileName) => {
-  if (!fileName) return false;
-  const extension = fileName.toLowerCase().split('.').pop();
-  return ['jpg', 'jpeg', 'png'].includes(extension);
-};
+import EmployeeProfileSection from './EmployeeProfileSection';
+import EmployeeAttendanceSection from './EmployeeAttendanceSection';
+import EmployeeDocumentsSection from './EmployeeDocumentsSection';
+import EmployeeAdvancesSection from './EmployeeAdvancesSection';
+import { Input } from '@/components/ui/input';
+import { format } from 'date-fns';
 
 // Define validation schemas
 const bankDetailsSchema = z.object({
-  accountNo: z.string().min(1, 'This field is required').optional(),
-  ifscCode: z.string().min(1, 'This field is required').optional(),
-  bankName: z.string().min(1, 'This field is required').optional(),
-  accountHolder: z.string().min(1, 'This field is required').optional(),
+  accountNo: z.string().min(1, 'Account number is required').optional(),
+  ifscCode: z.string().min(1, 'IFSC code is required').optional(),
+  bankName: z.string().min(1, 'Bank name is required').optional(),
+  accountHolder: z.string().min(1, 'Account holder is required').optional(),
 }).refine(
   (data) => {
     const hasAnyBankDetail = data.accountNo || data.ifscCode || data.bankName || data.accountHolder;
@@ -70,37 +43,17 @@ const bankDetailsSchema = z.object({
 );
 
 const editEmployeeSchema = z.object({
-  name: z.string().min(3, 'This field is required').max(50, 'Name must be 50 characters or less'),
+  name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
-  designation: z.string().min(2, 'This field is required').max(50, 'Designation must be 50 characters or less'),
-  department: z.string().min(2, 'This field is required').max(50, 'Department must be 50 characters or less'),
-  salary: z.string().min(1, 'This field is required').refine((val) => {
+  designation: z.string().min(1, 'Designation is required'),
+  department: z.string().min(1, 'Department is required'),
+  salary: z.string().min(1, 'Salary is required').refine((val) => {
     const num = Number(val);
     return !isNaN(num) && num >= 1000;
   }, { message: 'Invalid salary' }),
   phone: z.string().optional().refine((val) => !val || /^\d{10}$/.test(val), { message: 'Invalid phone number' }),
   dob: z.string().optional().refine((val) => !val || (new Date(val) <= new Date() && !isNaN(new Date(val))), { message: 'Invalid date of birth' }),
   bankDetails: bankDetailsSchema,
-});
-
-const uploadDocumentSchema = z.object({
-  documents: z.array(
-    z.object({
-      file: z.any()
-        .refine((file) => file instanceof File, 'Please upload a file')
-        .refine((file) => {
-          if (!(file instanceof File)) return false;
-          const filetypes = /pdf|doc|docx|jpg|jpeg|png/;
-          const extname = filetypes.test(file.name.toLowerCase().split('.').pop());
-          const mimetype = filetypes.test(file.type.toLowerCase().split('/')[1] || '');
-          return extname && mimetype;
-        }, 'File must be PDF, DOC, DOCX, JPG, JPEG, or PNG')
-        .refine((file) => {
-          if (!(file instanceof File)) return false;
-          return file.size <= 5 * 1024 * 1024;
-        }, 'File size must be less than 5MB'),
-    })
-  ).min(1, 'At least one valid document is required'),
 });
 
 const parseServerError = (error) => {
@@ -115,6 +68,37 @@ const parseServerError = (error) => {
   return { message, fields };
 };
 
+// Reusable CopyButton component
+const CopyButton = ({ text, fieldId }) => {
+  const [copiedField, setCopiedField] = useState(null);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(fieldId);
+      toast.dismiss();
+      toast.success('Copied to clipboard!', { id: `copy-${fieldId}`, duration: 2000, position: 'top-center' });
+      setTimeout(() => setCopiedField(null), 2000);
+    }).catch(() => {
+      toast.dismiss();
+      toast.error('Failed to copy to clipboard', { id: `copy-error-${fieldId}`, duration: 2000, position: 'top-center' });
+    });
+  };
+
+  return (
+    <div className="relative inline-block">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleCopy}
+        className="ml-2 sm:ml-3 text-accent hover:text-accent-hover relative focus:ring-2 focus:ring-accent focus:ring-offset-2"
+        aria-label={`Copy ${fieldId}`}
+      >
+        <Copy className="h-4 w-4 sm:h-5 sm:w-5" />
+      </Button>
+    </div>
+  );
+};
+
 const EmployeeProfile = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -124,9 +108,6 @@ const EmployeeProfile = () => {
   const { settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.adminSettings);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewDocument, setPreviewDocument] = useState(null);
   const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [sortField, setSortField] = useState('date');
@@ -136,11 +117,10 @@ const EmployeeProfile = () => {
   const [showErrorAlert, setShowErrorAlert] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isHighlighted, setIsHighlighted] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dragStates, setDragStates] = useState({});
-  const [previewUrls, setPreviewUrls] = useState({});
-  const [removingIndices, setRemovingIndices] = useState([]);
-  const ITEMS_PER_PAGE = 10;
+  const [advancesSortField, setAdvancesSortField] = useState('year');
+  const [advancesSortOrder, setAdvancesSortOrder] = useState('desc');
+  const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('profile');
   const autoDismissDuration = 5000;
 
   const editForm = useForm({
@@ -162,19 +142,7 @@ const EmployeeProfile = () => {
     },
   });
 
-  const uploadForm = useForm({
-    resolver: zodResolver(uploadDocumentSchema),
-    defaultValues: {
-      documents: [],
-    },
-  });
-
-  const { fields: documentFields, append: appendDocument, remove: removeDocument } = useFieldArray({
-    control: uploadForm.control,
-    name: 'documents',
-  });
-
-  const totalYearlyPaidLeaves = useMemo(() => {
+  const totalYearblyPaidLeaves = useMemo(() => {
     if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
       return settings?.paidLeavesPerYear || 0;
     }
@@ -203,34 +171,21 @@ const EmployeeProfile = () => {
   }, [dispatch, id, user, navigate, monthFilter, yearFilter]);
 
   useEffect(() => {
-    console.log('Attendance data:', attendance); // Debug attendance data
-    return () => {
-      Object.values(previewUrls).forEach((url) => {
-        if (url) URL.revokeObjectURL(url);
-      });
-    };
-  }, [attendance, previewUrls]);
-
-  useEffect(() => {
     if (settingsError) {
+      toast.dismiss();
       setServerError({ message: settingsError, fields: {} });
       setShowErrorAlert(true);
       toast.error(settingsError, {
-        action: {
-          label: 'Retry',
-          onClick: () => {
-            dispatch(fetchSettings());
-            setShowErrorAlert(false);
-            setServerError(null);
-          },
-        },
+        id: 'settings-error',
         duration: autoDismissDuration,
+        position: 'top-center',
       });
 
       const errorTimer = setTimeout(() => {
         setShowErrorAlert(false);
         setServerError(null);
         dispatch(resetEmployees());
+        toast.dismiss();
       }, autoDismissDuration);
 
       return () => clearTimeout(errorTimer);
@@ -267,23 +222,14 @@ const EmployeeProfile = () => {
 
   useEffect(() => {
     if (error || formErrors.length > 0) {
+      toast.dismiss();
       const parsedError = error ? parseServerError(error) : { message: 'Form validation failed', fields: {} };
       setServerError(parsedError);
       setShowErrorAlert(true);
       toast.error(parsedError.message, {
-        action: {
-          label: 'Retry',
-          onClick: () => {
-            if (error) {
-              dispatch(fetchEmployeeById(id));
-              dispatch(fetchEmployeeAttendance({ employeeId: id, month: monthFilter, year: yearFilter }));
-            }
-            setShowErrorAlert(false);
-            setServerError(null);
-            setFormErrors([]);
-          },
-        },
+        id: 'form-error',
         duration: autoDismissDuration,
+        position: 'top-center',
       });
 
       const errorTimer = setTimeout(() => {
@@ -291,19 +237,18 @@ const EmployeeProfile = () => {
         setServerError(null);
         setFormErrors([]);
         if (error) dispatch(resetEmployees());
+        toast.dismiss();
       }, autoDismissDuration);
 
       return () => clearTimeout(errorTimer);
     }
-  }, [error, formErrors, dispatch, id, monthFilter, yearFilter]);
+  }, [error, formErrors, dispatch]);
 
   const sortedAttendance = useMemo(() => {
-    // Filter attendance records for the current employee, skipping null/undefined records
     const filteredAttendance = attendance.filter(
       (record) => record && record.employee && record.employee._id && record.employee._id.toString() === id
     );
 
-    // Deduplicate by date and employee
     const uniqueAttendance = [];
     const seenKeys = new Set();
     filteredAttendance.forEach((record) => {
@@ -326,22 +271,15 @@ const EmployeeProfile = () => {
     });
   }, [attendance, sortField, sortOrder, id]);
 
-  const totalPages = Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE);
-  const paginatedAttendance = sortedAttendance.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  const handleMonthChange = (value) => {
+    setMonthFilter(parseInt(value));
+    setCurrentPage(1);
+  };
 
-  console.log("paginatedAttendance", paginatedAttendance);
-  console.log("sortedAttendance", sortedAttendance);
-
-  const filteredDocuments = useMemo(() => {
-    if (!currentEmployee?.documents) return [];
-    if (!searchQuery) return currentEmployee.documents;
-    return currentEmployee.documents.filter((doc) =>
-      doc.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [currentEmployee?.documents, searchQuery]);
+  const handleYearChange = (value) => {
+    setYearFilter(parseInt(value));
+    setCurrentPage(1);
+  };
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -357,15 +295,10 @@ const EmployeeProfile = () => {
       setFormErrors([]);
       setServerError(null);
       setShowErrorAlert(false);
+      toast.dismiss();
 
       const isValid = await editForm.trigger();
       if (!isValid) {
-        const errors = Object.entries(editForm.formState.errors).map(([field, error]) => ({
-          field,
-          message: error.message || 'Invalid input',
-        }));
-        setFormErrors(errors);
-        toast.error('Please fix the form errors before submitting', { duration: autoDismissDuration });
         return;
       }
 
@@ -381,123 +314,115 @@ const EmployeeProfile = () => {
       };
 
       await dispatch(updateEmployee({ id, data: employeeData })).unwrap();
-      toast.success('Employee updated successfully', { duration: autoDismissDuration });
+      toast.dismiss();
+      toast.success('Employee updated successfully', { id: 'edit-success', duration: autoDismissDuration, position: 'top-center' });
       setEditDialogOpen(false);
+      setTimeout(() => {
+        dispatch(resetEmployees());
+        toast.dismiss();
+      }, autoDismissDuration);
     } catch (err) {
+      console.error('Submit error:', err);
+      toast.dismiss();
       const parsedError = parseServerError(err);
       setServerError(parsedError);
       setShowErrorAlert(true);
-      toast.error(parsedError.message, { duration: autoDismissDuration });
+      toast.error(parsedError.message, { id: 'form-submit-error', duration: autoDismissDuration, position: 'top-center' });
+      Object.entries(parsedError.fields).forEach(([field, message], index) => {
+        setTimeout(() => {
+          toast.error(message, { id: `server-error-${field}-${index}`, duration: autoDismissDuration, position: 'top-center' });
+        }, (index + 1) * 500);
+      });
+      const firstErrorFieldName = Object.keys(parsedError.fields)[0];
+      if (firstErrorFieldName) {
+        const fieldElement = document.querySelector(`[name="${firstErrorFieldName}"]`);
+        if (fieldElement) {
+          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          fieldElement.focus();
+        }
+      }
     }
   };
 
-  const handleDocumentSubmit = async (data) => {
+  const handleEditSaveClick = async () => {
     try {
-      setFormErrors([]);
-      setServerError(null);
-      setShowErrorAlert(false);
-
-      const isValid = await uploadForm.trigger();
-      const errors = Object.entries(uploadForm.formState.errors).map(([field, error]) => ({
-        field,
-        message: error.message || 'Invalid input',
-      }));
-      setFormErrors(errors);
-
+      toast.dismiss();
+      const isValid = await editForm.trigger();
       if (!isValid) {
-        toast.error('Please fix the form errors before submitting', { duration: autoDismissDuration });
-        return;
+        const errors = [];
+        const fieldLabels = {
+          name: 'Name',
+          email: 'Email',
+          designation: 'Designation',
+          department: 'Department',
+          salary: 'Salary',
+          phone: 'Phone number',
+          dob: 'Date of birth',
+          'bankDetails.accountNo': 'Account number',
+          'bankDetails.ifscCode': 'IFSC code',
+          'bankDetails.bankName': 'Bank name',
+          'bankDetails.accountHolder': 'Account holder',
+          bankDetails: 'Bank details',
+        };
+
+        const addError = (field, message) => {
+          if (message && !errors.some((e) => e.field === field)) {
+            const fieldLabel = fieldLabels[field] || field;
+            const displayMessage = message.includes('is required') ? `${fieldLabel} is required` : message;
+            errors.push({ field, message: displayMessage });
+          }
+        };
+
+        const fieldOrder = [
+          'name',
+          'email',
+          'designation',
+          'department',
+          'salary',
+          'phone',
+          'dob',
+          'bankDetails.accountNo',
+          'bankDetails.ifscCode',
+          'bankDetails.bankName',
+          'bankDetails.accountHolder',
+          'bankDetails',
+        ];
+
+        for (const field of fieldOrder) {
+          const error = editForm.formState.errors[field.split('.')[0]]?.[field.split('.')[1]] || editForm.formState.errors[field];
+          addError(field, error?.message);
+        }
+
+        if (editForm.formState.errors.bankDetails && editForm.formState.errors.bankDetails.message) {
+          addError('bankDetails', editForm.formState.errors.bankDetails.message);
+        }
+
+        if (errors.length > 0) {
+          const firstError = errors[0];
+          toast.error(firstError.message, {
+            id: `validation-error-${firstError.field.replace('.', '-')}`,
+            duration: autoDismissDuration,
+            position: 'top-center',
+          });
+          const firstErrorField = document.querySelector(`[name="${firstError.field}"]`);
+          if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstErrorField.focus();
+          }
+          return;
+        }
       }
 
-      await dispatch(addEmployeeDocuments({ id, documents: data.documents })).unwrap();
-      toast.success('Documents uploaded successfully', { duration: autoDismissDuration });
-      setUploadDialogOpen(false);
-      setPreviewOpen(false);
-      setPreviewDocument(null);
-      setDragStates({});
-      setPreviewUrls({});
-      setRemovingIndices([]);
-    } catch (err) {
-      const parsedError = parseServerError(err);
-      setServerError(parsedError);
-      setShowErrorAlert(true);
-      toast.error(parsedError.message, { duration: autoDismissDuration });
-    }
-  };
-
-  const handlePreviewDocument = (file) => {
-    if (file && ['image/jpeg', 'image/png'].includes(file.type)) {
-      setPreviewDocument(file);
-      setPreviewOpen(true);
-    } else {
-      toast.info('Preview available only for JPEG and PNG files', { duration: autoDismissDuration });
-    }
-  };
-
-  const fetchDocumentForPreview = async (docPath, docName) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`http://localhost:5000${docPath}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      await editForm.handleSubmit(handleEditSubmit)();
+    } catch (error) {
+      console.error('handleEditSaveClick error:', error);
+      toast.dismiss();
+      toast.error('Error submitting form, please try again', {
+        id: 'form-submit-error',
+        duration: autoDismissDuration,
+        position: 'top-center',
       });
-
-      if (!response.ok) throw new Error('Failed to fetch document');
-
-      const blob = await response.blob();
-      const file = new File([blob], docName, { type: blob.type });
-      handlePreviewDocument(file);
-    } catch (err) {
-      toast.error('Failed to fetch document for preview: ' + err.message, { duration: autoDismissDuration });
     }
-  };
-
-  const handleDownloadDocument = async (docPath, docName) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`http://localhost:5000${docPath}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to download document');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = docName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error('Failed to download document: ' + err.message, { duration: autoDismissDuration });
-    }
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text).then(() => {
-      toast.success('Copied to clipboard!', { duration: autoDismissDuration });
-    }).catch(() => {
-      toast.error('Failed to copy to clipboard', { duration: autoDismissDuration });
-    });
-  };
-
-  const handleMonthChange = (value) => {
-    setMonthFilter(parseInt(value));
-    setCurrentPage(1);
-  };
-
-  const handleYearChange = (value) => {
-    setYearFilter(parseInt(value));
-    setCurrentPage(1);
   };
 
   const handleDismissErrors = () => {
@@ -512,6 +437,7 @@ const EmployeeProfile = () => {
     setFormErrors([]);
     setServerError(null);
     setShowErrorAlert(false);
+    toast.dismiss();
 
     editForm.reset({
       name: emp.name,
@@ -531,88 +457,30 @@ const EmployeeProfile = () => {
     setEditDialogOpen(true);
   };
 
-  const openUploadDialog = () => {
-    setFormErrors([]);
-    setServerError(null);
-    setShowErrorAlert(false);
-
-    uploadForm.reset({
-      documents: [],
-    });
-    setUploadDialogOpen(true);
-  };
-
-  const handleRemoveDocument = (index) => {
-    setRemovingIndices((prev) => [...prev, index]);
-    setTimeout(() => {
-      setPreviewUrls((prev) => {
-        const newUrls = { ...prev };
-        if (newUrls[index]) {
-          URL.revokeObjectURL(newUrls[index]);
-          delete newUrls[index];
-        }
-        return newUrls;
-      });
-      removeDocument(index);
-      setRemovingIndices((prev) => prev.filter((i) => i !== index));
-      setDragStates((prev) => {
-        const newState = { ...prev };
-        delete newState[index];
-        return newState;
-      });
-    }, 300);
-  };
-
-  const handleDragOver = (e, index) => {
-    e.preventDefault();
-    setDragStates((prev) => ({ ...prev, [index]: true }));
-  };
-
-  const handleDragLeave = (index) => {
-    setDragStates((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const handleDrop = (e, index, onChange) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      const previewUrl = URL.createObjectURL(file);
-      setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
-      onChange(file);
-    }
-    setDragStates((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const handleFileChange = (index, file, onChange) => {
-    if (file) {
-      const previewUrl = URL.createObjectURL(file);
-      setPreviewUrls((prev) => ({ ...prev, [index]: previewUrl }));
-      onChange(file);
-    }
-  };
-
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i + 1,
     label: new Date(0, i).toLocaleString('default', { month: 'long' }),
   }));
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+  const ITEMS_PER_PAGE = 10;
+
+  const tabs = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'attendance', label: 'Attendance' },
+    { id: 'advances', label: 'Advances' },
+    { id: 'documents', label: 'Documents' },
+  ];
 
   if (loading || !currentEmployee || loadingSettings) {
     return (
       <Layout title="Employee Profile">
-        <div className="max-w-4xl mx-auto p-4 sm:p-6">
-          <Card className="bg-complementary text-body shadow-md">
-            <CardHeader>
-              <Skeleton className="h-8 w-1/3" />
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Array(5).fill().map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="max-w-5xl mx-auto p-4 sm:p-6">
+          <Skeleton className="h-8 w-1/3" />
+          <div className="mt-4 sm:mt-6 grid grid-cols-1 gap-4 sm:gap-6">
+            {Array(5).fill().map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
+            ))}
+          </div>
         </div>
       </Layout>
     );
@@ -620,21 +488,22 @@ const EmployeeProfile = () => {
 
   return (
     <Layout title="Employee Profile">
+      <Toaster position="top-center" />
       {serverError && showErrorAlert && (
         <Alert
           variant="destructive"
           className={cn(
-            'fixed top-4 right-4 w-80 sm:w-96 z-[100] border-error text-error rounded-md shadow-lg bg-error-light',
+            'fixed top-2 right-2 w-[calc(100%-1rem)] sm:w-80 md:w-96 z-[100] border-error text-error rounded-lg shadow-md bg-complementary-light',
             showErrorAlert ? 'animate-fade-in' : 'animate-fade-out'
           )}
         >
           <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
-          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
+          <AlertTitle className="text-xs sm:text-sm md:text-base font-bold">Error</AlertTitle>
+          <AlertDescription className="text-xs sm:text-sm md:text-base">
             <p>{serverError.message}</p>
             {Object.keys(serverError.fields).length > 0 && (
-              <div className="mt-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
-                <ul className="list-disc pl-5 space-y-1">
+              <div className="mt-1 sm:mt-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
+                <ul className="list-disc pl-4 sm:pl-5 space-y-1">
                   {Object.entries(serverError.fields).map(([field, message], index) => (
                     <li key={index}>{message} (Field: {field})</li>
                   ))}
@@ -646,7 +515,7 @@ const EmployeeProfile = () => {
             variant="ghost"
             size="sm"
             onClick={handleDismissErrors}
-            className="absolute top-2 right-2 text-error hover:text-error-hover"
+            className="absolute top-1 right-1 sm:top-2 sm:right-2 text-error hover:text-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2"
             aria-label="Dismiss error alert"
           >
             <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -654,332 +523,126 @@ const EmployeeProfile = () => {
         </Alert>
       )}
 
-      <div className="max-w-4xl mx-auto p-4 sm:p-6">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Button
           variant="outline"
           onClick={() => navigate('/admin/employees')}
-          className="mb-4 border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md"
+          className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
           aria-label="Go back to employee list"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
+          <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
+          Back to Employees
         </Button>
 
-        <Card className={cn(
-          'bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in',
-          isHighlighted && 'border-accent/50 bg-accent/5'
-        )}>
-          <CardHeader>
-            <CardTitle className="text-xl md:text-2xl font-bold flex items-center justify-between">
-              <span>{currentEmployee.name}'s Profile</span>
-              <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openEditDialog(currentEmployee)}
-                  className="border-accent text-accent rounded-md"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openUploadDialog}
-                  className="border-accent text-accent rounded-md"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Documents
-                </Button>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-sm font-medium">Employee ID</Label>
-                <div className="flex items-center mt-1">
-                  <p className="text-body">{currentEmployee.employeeId}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(currentEmployee.employeeId)}
-                    className="ml-2"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Email</Label>
-                <div className="flex items-center mt-1">
-                  <p className="text-body">{currentEmployee.email}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(currentEmployee.email)}
-                    className="ml-2"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Designation</Label>
-                <p className="text-body mt-1">{currentEmployee.designation}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Department</Label>
-                <p className="text-body mt-1">{currentEmployee.department}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Salary</Label>
-                <p className="text-body mt-1">₹{currentEmployee.salary.toLocaleString()}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Phone</Label>
-                <p className="text-body mt-1">{currentEmployee.phone || 'N/A'}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Date of Birth</Label>
-                <p className="text-body mt-1">
-                  {currentEmployee.dob ? format(new Date(currentEmployee.dob), 'MMM dd, yyyy') : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Join Date</Label>
-                <p className="text-body mt-1">
-                  {currentEmployee.joinDate ? format(new Date(currentEmployee.joinDate), 'MMM dd, yyyy') : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Location</Label>
-                <p className="text-body mt-1">{currentEmployee.location?.city || 'N/A'}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Paid Leaves</Label>
-                <p className="text-body mt-1">
-                  {currentEmployee.paidLeaves?.available || 0} / {totalYearlyPaidLeaves} available
-                </p>
-              </div>
-            </div>
-
-            {currentEmployee.bankDetails && (
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold">Bank Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                  <div>
-                    <Label className="text-sm font-medium">Account Number</Label>
-                    <p className="text-body mt-1">{currentEmployee.bankDetails.accountNo || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">IFSC Code</Label>
-                    <p className="text-body mt-1">{currentEmployee.bankDetails.ifscCode || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Bank Name</Label>
-                    <p className="text-body mt-1">{currentEmployee.bankDetails.bankName || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Account Holder</Label>
-                    <p className="text-body mt-1">{currentEmployee.bankDetails.accountHolder || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold">Attendance History</h3>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-2">
-                <div className="flex space-x-2">
-                  <Select value={monthFilter.toString()} onValueChange={handleMonthChange}>
-                    <SelectTrigger className="w-[140px] bg-body text-body border-complementary">
-                      <SelectValue placeholder="Month" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={yearFilter.toString()} onValueChange={handleYearChange}>
-                    <SelectTrigger className="w-[100px] bg-body text-body border-complementary">
-                      <SelectValue placeholder="Year" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-complementary text-body">
-                      {years.map((year) => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Table className="mt-4">
-                <TableHeader>
-                  <TableRow className="bg-accent/10">
-                    <TableHead
-                      onClick={() => handleSort('date')}
-                      className="cursor-pointer flex items-center"
-                    >
-                      Date
-                      {sortField === 'date' && (
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      )}
-                    </TableHead>
-                    <TableHead
-                      onClick={() => handleSort('status')}
-                      className="cursor-pointer flex items-center"
-                    >
-                      Status
-                      {sortField === 'status' && (
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      )}
-                    </TableHead>
-                    <TableHead>Location</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedAttendance.length > 0 ? (
-                    paginatedAttendance.map((record) => (
-                      <TableRow key={record._id || Math.random()}>
-                        <TableCell>{format(new Date(record.date), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              record.status === 'present'
-                                ? 'success'
-                                : record.status === 'absent'
-                                ? 'destructive'
-                                : 'default'
-                            }
-                          >
-                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{record.location?.name || 'N/A'}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center">
-                        No attendance records found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-              {totalPages > 1 && (
-                <div className="flex justify-between items-center mt-4">
-                  <Button
-                    variant="outline"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(currentPage - 1)}
-                    className="border-accent text-accent rounded-md"
-                  >
-                    Previous
-                  </Button>
-                  <span>
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(currentPage + 1)}
-                    className="border-accent text-accent rounded-md"
-                  >
-                    Next
-                  </Button>
-                </div>
+        {/* Tab Navigation */}
+        <div className="block sm:hidden">
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+            className="w-full p-2 border border-accent rounded-lg bg-body text-body focus:ring-2 focus:ring-accent focus:ring-offset-2 text-sm"
+            aria-label="Select employee profile section"
+          >
+            {tabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="hidden sm:flex border-b border-accent/20">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'px-4 py-2 text-sm font-medium',
+                activeTab === tab.id
+                  ? 'border-b-2 border-accent text-accent'
+                  : 'text-body hover:text-accent',
+                'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2'
               )}
-            </div>
+              aria-label={`View ${tab.label} tab`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold">Documents</h3>
-              <div className="flex items-center mt-2">
-                <Input
-                  placeholder="Search documents..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="max-w-sm bg-body text-body border-complementary focus:border-accent rounded-md"
-                />
-                <Search className="h-5 w-5 ml-2 text-body" />
-              </div>
-              <Table className="mt-4">
-                <TableHeader>
-                  <TableRow className="bg-accent/10">
-                    <TableHead>Name</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredDocuments.length > 0 ? (
-                    filteredDocuments.map((doc) => (
-                      <TableRow key={doc._id}>
-                        <TableCell className="flex items-center">
-                          {getFileIcon(doc.name)}
-                          <span className="ml-2">{doc.name}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            {isImageFile(doc.name) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchDocumentForPreview(doc.path, doc.name)}
-                                className="border-accent text-accent rounded-md"
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                Preview
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownloadDocument(doc.path, doc.name)}
-                              className="border-accent text-accent rounded-md"
-                            >
-                              Download
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={2} className="text-center">
-                        No documents found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tab Content */}
+        <div className="mt-4">
+          {activeTab === 'profile' && (
+            <EmployeeProfileSection
+              currentEmployee={currentEmployee}
+              isHighlighted={isHighlighted}
+              totalYearlyPaidLeaves={totalYearblyPaidLeaves}
+              openEditDialog={openEditDialog}
+              CopyButton={CopyButton}
+            />
+          )}
+          {activeTab === 'attendance' && (
+            <EmployeeAttendanceSection
+              attendance={sortedAttendance}
+              monthFilter={monthFilter}
+              yearFilter={yearFilter}
+              months={months}
+              years={years}
+              currentPage={currentPage}
+              totalPages={Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE)}
+              paginatedAttendance={sortedAttendance.slice(
+                (currentPage - 1) * ITEMS_PER_PAGE,
+                currentPage * ITEMS_PER_PAGE
+              )}
+              sortField={sortField}
+              sortOrder={sortOrder}
+              handleMonthChange={handleMonthChange}
+              handleYearChange={handleYearChange}
+              handleSort={handleSort}
+              setCurrentPage={setCurrentPage}
+              employeeName={currentEmployee.name}
+            />
+          )}
+          {activeTab === 'advances' && (
+            <EmployeeAdvancesSection
+              advances={currentEmployee?.advances || []}
+              currentPage={advancesCurrentPage}
+              setCurrentPage={setAdvancesCurrentPage}
+              sortField={advancesSortField}
+              setSortField={setAdvancesSortField}
+              sortOrder={advancesSortOrder}
+              setSortOrder={setAdvancesSortOrder}
+              employeeName={currentEmployee.name}
+            />
+          )}
+          {activeTab === 'documents' && (
+            <EmployeeDocumentsSection
+              currentEmployee={currentEmployee}
+              dispatch={dispatch}
+              id={id}
+              employeeName={currentEmployee.name}
+            />
+          )}
+        </div>
 
+        {/* Edit Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="bg-complementary text-body rounded-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
+          <DialogContent className="bg-complementary text-body rounded-lg max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle>Edit Employee</DialogTitle>
+              <DialogTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-body">Edit Employee</DialogTitle>
             </DialogHeader>
             <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <form className="space-y-4 sm:space-y-6">
+                <div className="grid grid-cols-1 gap-4 sm:gap-6">
                   <FormField
                     control={editForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Name *</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.name && <p className="text-error text-xs">{serverError.fields.name}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.name && <p className="text-error text-xs sm:text-sm">{serverError.fields.name}</p>}
                       </FormItem>
                     )}
                   />
@@ -988,12 +651,12 @@ const EmployeeProfile = () => {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email *</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Email *</FormLabel>
                         <FormControl>
-                          <Input {...field} type="email" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} type="email" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.email && <p className="text-error text-xs">{serverError.fields.email}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.email && <p className="text-error text-xs sm:text-sm">{serverError.fields.email}</p>}
                       </FormItem>
                     )}
                   />
@@ -1002,12 +665,12 @@ const EmployeeProfile = () => {
                     name="designation"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Designation *</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Designation *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.designation && <p className="text-error text-xs">{serverError.fields.designation}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.designation && <p className="text-error text-xs sm:text-sm">{serverError.fields.designation}</p>}
                       </FormItem>
                     )}
                   />
@@ -1016,12 +679,12 @@ const EmployeeProfile = () => {
                     name="department"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Department *</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Department *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.department && <p className="text-error text-xs">{serverError.fields.department}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.department && <p className="text-error text-xs sm:text-sm">{serverError.fields.department}</p>}
                       </FormItem>
                     )}
                   />
@@ -1030,12 +693,12 @@ const EmployeeProfile = () => {
                     name="salary"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Salary *</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Salary *</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} type="number" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.salary && <p className="text-error text-xs">{serverError.fields.salary}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.salary && <p className="text-error text-xs sm:text-sm">{serverError.fields.salary}</p>}
                       </FormItem>
                     )}
                   />
@@ -1044,12 +707,12 @@ const EmployeeProfile = () => {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Phone</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Phone</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.phone && <p className="text-error text-xs">{serverError.fields.phone}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.phone && <p className="text-error text-xs sm:text-sm">{serverError.fields.phone}</p>}
                       </FormItem>
                     )}
                   />
@@ -1058,30 +721,30 @@ const EmployeeProfile = () => {
                     name="dob"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date of Birth</FormLabel>
+                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Date of Birth</FormLabel>
                         <FormControl>
-                          <Input {...field} type="date" className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                          <Input {...field} type="date" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                         </FormControl>
-                        <FormMessage />
-                        {serverError?.fields?.dob && <p className="text-error text-xs">{serverError.fields.dob}</p>}
+                        <FormMessage className="text-error text-xs sm:text-sm" />
+                        {serverError?.fields?.dob && <p className="text-error text-xs sm:text-sm">{serverError.fields.dob}</p>}
                       </FormItem>
                     )}
                   />
                 </div>
-                <div className="space-y-2">
-                  <FormLabel>Bank Details</FormLabel>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-3 sm:space-y-4">
+                  <FormLabel className="text-sm sm:text-base md:text-lg font-semibold text-body">Bank Details</FormLabel>
+                  <div className="grid grid-cols-1 gap-4 sm:gap-6">
                     <FormField
                       control={editForm.control}
                       name="bankDetails.accountNo"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Account Number</FormLabel>
+                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Account Number</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                           </FormControl>
-                          <FormMessage />
-                          {serverError?.fields?.['bankDetails.accountNo'] && <p className="text-error text-xs">{serverError.fields['bankDetails.accountNo']}</p>}
+                          <FormMessage className="text-error text-xs sm:text-sm" />
+                          {serverError?.fields?.['bankDetails.accountNo'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.accountNo']}</p>}
                         </FormItem>
                       )}
                     />
@@ -1090,12 +753,12 @@ const EmployeeProfile = () => {
                       name="bankDetails.ifscCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>IFSC Code</FormLabel>
+                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">IFSC Code</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                           </FormControl>
-                          <FormMessage />
-                          {serverError?.fields?.['bankDetails.ifscCode'] && <p className="text-error text-xs">{serverError.fields['bankDetails.ifscCode']}</p>}
+                          <FormMessage className="text-error text-xs sm:text-sm" />
+                          {serverError?.fields?.['bankDetails.ifscCode'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.ifscCode']}</p>}
                         </FormItem>
                       )}
                     />
@@ -1104,12 +767,12 @@ const EmployeeProfile = () => {
                       name="bankDetails.bankName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Bank Name</FormLabel>
+                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Bank Name</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                           </FormControl>
-                          <FormMessage />
-                          {serverError?.fields?.['bankDetails.bankName'] && <p className="text-error text-xs">{serverError.fields['bankDetails.bankName']}</p>}
+                          <FormMessage className="text-error text-xs sm:text-sm" />
+                          {serverError?.fields?.['bankDetails.bankName'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.bankName']}</p>}
                         </FormItem>
                       )}
                     />
@@ -1118,32 +781,35 @@ const EmployeeProfile = () => {
                       name="bankDetails.accountHolder"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Account Holder</FormLabel>
+                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Account Holder</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-md" />
+                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
                           </FormControl>
-                          <FormMessage />
-                          {serverError?.fields?.['bankDetails.accountHolder'] && <p className="text-error text-xs">{serverError.fields['bankDetails.accountHolder']}</p>}
+                          <FormMessage className="text-error text-xs sm:text-sm" />
+                          {serverError?.fields?.['bankDetails.accountHolder'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.accountHolder']}</p>}
                         </FormItem>
                       )}
                     />
                   </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="mt-4 sm:mt-6">
                   <Button
                     variant="outline"
                     onClick={() => setEditDialogOpen(false)}
-                    className="border-accent text-accent rounded-md"
+                    className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    aria-label="Cancel edit"
                   >
                     Cancel
                   </Button>
                   <Button
-                    type="submit"
+                    type="button"
+                    onClick={handleEditSaveClick}
                     disabled={editForm.formState.isSubmitting}
-                    className="bg-accent text-white hover:bg-accent-hover rounded-md"
+                    className="bg-accent text-body hover:bg-accent-hover rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    aria-label="Save employee"
                   >
                     {editForm.formState.isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
                     ) : (
                       'Save'
                     )}
@@ -1151,135 +817,6 @@ const EmployeeProfile = () => {
                 </DialogFooter>
               </form>
             </Form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-          <DialogContent className="bg-complementary text-body rounded-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
-            <DialogHeader>
-              <DialogTitle>Upload Documents</DialogTitle>
-            </DialogHeader>
-            <Form {...uploadForm}>
-              <form onSubmit={uploadForm.handleSubmit(handleDocumentSubmit)} className="space-y-4">
-                <div className="space-y-2">
-                  <FormLabel>Documents *</FormLabel>
-                  <div className="space-y-2">
-                    {documentFields.map((field, index) => (
-                      <div
-                        key={field.id}
-                        className={cn(
-                          'flex items-center space-x-2 p-2 border rounded-md transition-all duration-300',
-                          dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
-                          removingIndices.includes(index) ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-                        )}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragLeave={() => handleDragLeave(index)}
-                        onDrop={(e) => handleDrop(e, index, uploadForm.setValue(`documents.${index}.file`))}
-                      >
-                        <FormField
-                          control={uploadForm.control}
-                          name={`documents.${index}.file`}
-                          render={({ field: { onChange, value, ...field } }) => (
-                            <FormItem className="flex-1">
-                              <FormControl>
-                                <div className="flex items-center space-x-2">
-                                  <Input
-                                    type="file"
-                                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                                    onChange={(e) => handleFileChange(index, e.target.files[0], onChange)}
-                                    className="bg-body text-body border-complementary focus:border-accent rounded-md text-sm"
-                                    {...field}
-                                  />
-                                  {previewUrls[index] && (
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      type="button"
-                                      onClick={() => handlePreviewDocument({ url: previewUrls[index], type: value?.type })}
-                                      className="border-accent text-accent rounded-md"
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    type="button"
-                                    onClick={() => handleRemoveDocument(index)}
-                                    className="border-error text-error rounded-md"
-                                  >
-                                    <Trash className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </FormControl>
-                              <FormMessage />
-                              {serverError?.fields?.[`documents.${index}.file`] && (
-                                <p className="text-error text-xs">{serverError.fields[`documents.${index}.file`]}</p>
-                              )}
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => appendDocument({ file: null })}
-                      className="border-accent text-accent rounded-md"
-                    >
-                      Add Document
-                    </Button>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setUploadDialogOpen(false)}
-                    className="border-accent text-accent rounded-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={uploadForm.formState.isSubmitting}
-                    className="bg-accent text-white hover:bg-accent-hover rounded-md"
-                  >
-                    {uploadForm.formState.isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Upload'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent className="bg-complementary text-body rounded-md max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Document Preview</DialogTitle>
-            </DialogHeader>
-            {previewDocument && (
-              <img
-                src={previewDocument.url || URL.createObjectURL(previewDocument)}
-                alt="Document Preview"
-                className="w-full h-auto max-h-[60vh] object-contain"
-              />
-            )}
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPreviewOpen(false);
-                  setPreviewDocument(null);
-                }}
-                className="border-accent text-accent rounded-md"
-              >
-                Close
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

@@ -1,64 +1,21 @@
-// components/Employees.js
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  fetchEmployees,
-  reset as resetEmployees,
-} from "../redux/employeeSlice";
+import { fetchEmployees, reset as resetEmployees } from "../redux/employeeSlice";
 import { fetchSettings } from "../redux/settingsSlice";
-import {
-  fetchLocations,
-  reset as resetLocations,
-} from "../redux/locationsSlice";
+import { fetchLocations, reset as resetLocations } from "../redux/locationsSlice";
 import Layout from "../../../components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Loader2,
-  Search,
-  ArrowUpDown,
-  AlertCircle,
-  X,
-  CheckCircle,
-  PlusCircle,
-  Users,
-  ChevronLeft,
-  ChevronRight,
-  Truck,
-  Eye,
-  History,
-  UserPlus,
-  LogOut,
-  FilePlus,
-  IndianRupee,
-} from "lucide-react";
-import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, Search, ArrowUpDown, PlusCircle, Users, ChevronLeft, ChevronRight, Truck, Eye, History, UserPlus, LogOut, FilePlus, IndianRupee, Pencil, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import EditEmployeeDialog from "./EditEmployeeDialog";
 import TransferEmployeeDialog from "./TransferEmployeeDialog";
 import RejoinEmployeeDialog from "./RejoinEmployeeDialog";
@@ -71,27 +28,16 @@ const Employees = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useSelector((state) => state.auth);
-  const {
-    employees = [],
-    loading: employeesLoading,
-    error: employeesError,
-    success,
-  } = useSelector((state) => state.adminEmployees || {});
-  const {
-    settings = {},
-    loading: settingsLoading,
-    error: settingsError,
-  } = useSelector((state) => state.adminSettings || {});
-  const {
-    locations = [],
-    loading: locationsLoading,
-    error: locationsError,
-  } = useSelector((state) => state.adminLocations || {});
+  const { employees = [], loading: employeesLoading, pagination = {} } = useSelector((state) => state.adminEmployees || {});
+  const { settings = {}, loading: settingsLoading } = useSelector((state) => state.adminSettings || {});
+  const { locations = [], loading: locationsLoading } = useSelector((state) => state.adminLocations || {});
 
   const initialLocation = searchParams.get("location") || "all";
   const initialStatus = searchParams.get("status") || "all";
+  const initialDepartment = searchParams.get("department") || "all";
   const [filterLocation, setFilterLocation] = useState(initialLocation);
   const [filterStatus, setFilterStatus] = useState(initialStatus);
+  const [filterDepartment, setFilterDepartment] = useState(initialDepartment);
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState("employeeId");
   const [sortOrder, setSortOrder] = useState("asc");
@@ -107,78 +53,97 @@ const Employees = () => {
   const [addDocumentsEmployeeId, setAddDocumentsEmployeeId] = useState(null);
   const [deactivateEmployeeId, setDeactivateEmployeeId] = useState(null);
   const [employeeToUpdateAdvance, setEmployeeToUpdateAdvance] = useState(null);
-  const [showErrorAlert, setShowErrorAlert] = useState(false);
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(null);
+  const [currentPage, setCurrentPage] = useState(pagination.currentPage || 1);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
-  const autoDismissDuration = 5000;
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const itemsPerPage = pagination.itemsPerPage || 10;
 
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
-  // Helper function to get the current month's advance
+  const departments = useMemo(() => {
+    return [...new Set(employees.map((emp) => emp.department))].sort();
+  }, [employees]);
+
   const getCurrentAdvance = (employee) => {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1; // 1-based
-    const advanceEntry = employee.advances?.find(
-      (adv) => adv.year === currentYear && adv.month === currentMonth
-    );
-    return advanceEntry ? advanceEntry.amount : 0;
+    if (!employee?.advances || !Array.isArray(employee.advances)) return 0;
+    const sortedAdvances = [...employee.advances].sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.month - a.month;
+    });
+    return sortedAdvances[0]?.amount || 0;
   };
 
   const shouldHighlightEmployee = (employee) => {
     if (!employee.transferTimestamp) return false;
     const transferTime = new Date(employee.transferTimestamp).getTime();
-    const currentTime = new Date().getTime();
+    const currentTime = new Date("2025-07-03T17:20:00+05:30").getTime();
     return currentTime - transferTime <= HIGHLIGHT_DURATION;
   };
 
-  const filteredEmployees = Array.isArray(employees)
-    ? employees.filter(
-        (emp) =>
-          (emp.name || "").toLowerCase().includes(search.toLowerCase()) ||
-          (emp.employeeId || "").toLowerCase().includes(search.toLowerCase())
-      )
-    : [];
+  const filteredEmployees = useMemo(() => {
+    setIsFiltering(true);
+    const result = Array.isArray(employees)
+      ? employees.filter((emp) => {
+          const searchLower = search.toLowerCase();
+          const matchesSearch =
+            (emp.name || "").toLowerCase().includes(searchLower) ||
+            (emp.employeeId || "").toLowerCase().includes(searchLower);
+          return matchesSearch;
+        })
+      : [];
+    setTimeout(() => setIsFiltering(false), 100);
+    return result;
+  }, [employees, search]);
 
-  const sortedEmployees = [...filteredEmployees].sort((a, b) => {
-    let aValue, bValue;
+  const sortedEmployees = useMemo(() => {
+    return [...filteredEmployees].sort((a, b) => {
+      let aValue, bValue;
+      if (sortField === "salary") {
+        aValue = a[sortField] || 0;
+        bValue = b[sortField] || 0;
+      } else if (sortField === "advance") {
+        aValue = getCurrentAdvance(a);
+        bValue = getCurrentAdvance(b);
+      } else if (sortField === "location") {
+        aValue = (typeof a.location === "object" ? a.location?.name : a.location) || "N/A";
+        bValue = (typeof b.location === "object" ? b.location?.name : b.location) || "N/A";
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      } else if (sortField === "leaves") {
+        aValue = a.paidLeaves?.available || 0;
+        bValue = b.paidLeaves?.available || 0;
+      } else if (sortField === "status") {
+        aValue = a.status || "";
+        bValue = b.status || "";
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      } else {
+        aValue = (a[sortField] || "").toLowerCase();
+        bValue = (b[sortField] || "").toLowerCase();
+      }
+      if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredEmployees, sortField, sortOrder]);
 
-    if (sortField === "salary") {
-      aValue = a[sortField] || 0;
-      bValue = b[sortField] || 0;
-    } else if (sortField === "advance") {
-      aValue = getCurrentAdvance(a); // Use current month's advance
-      bValue = getCurrentAdvance(b);
-    } else if (sortField === "location") {
-      aValue = a.location?.name || a.location?.city || "";
-      bValue = b.location?.name || b.location?.city || "";
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    } else if (sortField === "leaves") {
-      aValue = a.paidLeaves.available || 0;
-      bValue = b.paidLeaves.available || 0;
-    } else if (sortField === "status") {
-      aValue = a.status || "";
-      bValue = b.status || "";
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    } else {
-      aValue = (a[sortField] || "").toLowerCase();
-      bValue = (b[sortField] || "").toLowerCase();
-    }
+  const totalItems = pagination.totalItems || 0;
+  const totalPages = pagination.totalPages || 1;
+  const paginatedEmployees = sortedEmployees;
 
-    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
-    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
-    return 0;
-  });
+  const getLocationName = (id) => {
+    if (id === "all") return "All Locations";
+    const location = locations.find((loc) => loc._id === id);
+    return location ? location.name || location.city || "Unknown" : id;
+  };
 
-  const totalItems = sortedEmployees.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedEmployees = sortedEmployees.slice(startIndex, endIndex);
+  const getDepartmentName = (dept) => dept === "all" ? "All Departments" : dept;
+
+  const getStatusName = (status) => {
+    if (status === "all") return "All Statuses";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
@@ -189,88 +154,72 @@ const Employees = () => {
   useEffect(() => {
     dispatch(fetchLocations());
     dispatch(fetchSettings());
-  }, [dispatch]);
-
-  useEffect(() => {
     dispatch(
       fetchEmployees({
         location: filterLocation === "all" ? undefined : filterLocation,
+        department: filterDepartment === "all" ? undefined : filterDepartment,
         status: filterStatus === "all" ? undefined : filterStatus,
+        page: currentPage,
+        limit: itemsPerPage,
       })
     );
-  }, [dispatch, filterLocation, filterStatus]);
+  }, [dispatch, filterLocation, filterDepartment, filterStatus, currentPage]);
 
   useEffect(() => {
-    if (employeesError || locationsError || settingsError) {
-      setErrorMessage(employeesError || locationsError || settingsError);
-      setShowErrorAlert(true);
-      const errorTimer = setTimeout(() => {
-        setShowErrorAlert(false);
-        setErrorMessage(null);
-        dispatch(resetEmployees());
-        dispatch(resetLocations());
-      }, autoDismissDuration);
-      return () => clearTimeout(errorTimer);
+    if (successMessage) {
+      toast.success(successMessage, { duration: 4000 });
+      setSuccessMessage(null);
     }
-  }, [employeesError, locationsError, settingsError, dispatch]);
-
-  useEffect(() => {
-    if (success && successMessage) {
-      setShowSuccessAlert(true);
-      toast.success(successMessage, { duration: autoDismissDuration });
-      const successTimer = setTimeout(() => {
-        setShowSuccessAlert(false);
-        setSuccessMessage(null);
-        dispatch(resetEmployees());
-      }, autoDismissDuration);
-      return () => clearTimeout(successTimer);
-    }
-  }, [success, successMessage, dispatch]);
+  }, [successMessage]);
 
   const handleEditClick = (employee) => {
     setEditEmployee(employee);
     setOpenEditDialog(true);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleTransferClick = (employee) => {
     setTransferEmployeeId(employee._id);
     setOpenTransferDialog(true);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleRejoinClick = (employee) => {
     setEmployeeToRejoin(employee);
     setOpenRejoinDialog(true);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleHistoryClick = (employee) => {
     navigate(`/admin/employees/${employee._id}/history`);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleAddDocumentsClick = (employee) => {
     setAddDocumentsEmployeeId(employee._id);
     setOpenAddDocumentsDialog(true);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleDeactivateClick = (id) => {
     setDeactivateEmployeeId(id);
     setOpenDeactivateDialog(true);
+    setSelectedEmployeeId(id);
   };
 
   const handleUpdateAdvanceClick = (employee) => {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const currentAdvance = employee.advances?.find(
-      (adv) => adv.year === currentYear && adv.month === currentMonth
-    );
-    setEmployeeToUpdateAdvance({
-      ...employee,
-      advance: currentAdvance ? currentAdvance.amount : 0,
-    });
+    setEmployeeToUpdateAdvance(employee);
     setOpenUpdateAdvanceDialog(true);
+    setSelectedEmployeeId(employee._id);
   };
 
   const handleViewClick = (employeeId) => {
     navigate(`/admin/employees/${employeeId}`);
+    setSelectedEmployeeId(employeeId);
+  };
+
+  const handleRowClick = (employeeId) => {
+    setSelectedEmployeeId(employeeId);
   };
 
   const handleSort = (field) => {
@@ -287,6 +236,17 @@ const Employees = () => {
     setFilterLocation(value);
     const params = {};
     if (value !== "all") params.location = value;
+    if (filterDepartment !== "all") params.department = filterDepartment;
+    if (filterStatus !== "all") params.status = filterStatus;
+    setSearchParams(params);
+    setCurrentPage(1);
+  };
+
+  const handleFilterDepartmentChange = (value) => {
+    setFilterDepartment(value);
+    const params = {};
+    if (filterLocation !== "all") params.location = filterLocation;
+    if (value !== "all") params.department = value;
     if (filterStatus !== "all") params.status = filterStatus;
     setSearchParams(params);
     setCurrentPage(1);
@@ -296,494 +256,631 @@ const Employees = () => {
     setFilterStatus(value);
     const params = {};
     if (filterLocation !== "all") params.location = filterLocation;
+    if (filterDepartment !== "all") params.department = filterDepartment;
     if (value !== "all") params.status = value;
     setSearchParams(params);
     setCurrentPage(1);
   };
 
+  const handleClearFilters = () => {
+    setFilterLocation("all");
+    setFilterDepartment("all");
+    setFilterStatus("all");
+    setSearch("");
+    setSearchParams({});
+    setCurrentPage(1);
+    setSelectedEmployeeId(null);
+  };
+
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
+      setSelectedEmployeeId(null);
     }
-  };
-
-  const handleDismissErrors = () => {
-    setShowErrorAlert(false);
-    setErrorMessage(null);
-    dispatch(resetEmployees());
-    dispatch(resetLocations());
-  };
-
-  const handleDismissSuccess = () => {
-    setShowSuccessAlert(false);
-    setSuccessMessage(null);
-    dispatch(resetEmployees());
   };
 
   return (
     <Layout title="Employees">
-      {(errorMessage || employeesError || locationsError || settingsError) &&
-        showErrorAlert && (
-          <Alert
-            variant="destructive"
-            className={cn(
-              "fixed top-4 right-4 w-80 sm:w-96 z-[100] border-error text-error rounded-md shadow-lg bg-error-light",
-              showErrorAlert ? "animate-fade-in" : "animate-fade-out"
-            )}
-          >
-            <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-            <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">
-              Error
-            </AlertTitle>
-            <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
-              {errorMessage ||
-                employeesError ||
-                locationsError ||
-                settingsError}
-            </AlertDescription>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleDismissErrors}
-              className="absolute top-2 right-2 text-error hover:text-error-hover"
-              aria-label="Dismiss error alert"
-            >
-              <X className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
-          </Alert>
-        )}
-      {success && showSuccessAlert && (
-        <Alert
-          className={cn(
-            "fixed top-4 right-4 w-80 sm:w-96 z-[100] border-accent text-accent rounded-md shadow-lg bg-accent-light",
-            showSuccessAlert ? "animate-fade-in" : "animate-fade-out"
-          )}
-        >
-          <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">
-            Success
-          </AlertTitle>
-          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
-            {successMessage}
-          </AlertDescription>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDismissSuccess}
-            className="absolute top-2 right-2 text-accent hover:text-accent-hover"
-            aria-label="Dismiss success alert"
-          >
-            <X className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
-        </Alert>
-      )}
-      <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in max-w-full mx-auto w-full overflow-x-hidden">
-        <CardHeader>
-          <CardTitle className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full max-w-full">
-            <span className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">
+      <Card className="bg-gradient-to-br from-complementary to-complementary-dark text-body shadow-lg rounded-md border border-accent/10 animate-fade-in max-w-full mx-auto w-full">
+        <CardHeader className="px-4 sm:px-6">
+          <CardTitle className="flex flex-row flex-wrap gap-2 sm:gap-3 items-center w-full max-w-full">
+            <span className="text-base sm:text-lg md:text-xl font-semibold shrink-0">
               Employee List
             </span>
-            <div className="flex flex-col lg:flex-row gap-3 items-center w-full lg:w-auto">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-5 w-5" />
+            <Button
+              variant="outline"
+              onClick={() => navigate("/admin/register-employee")}
+              className="h-9 sm:h-10 text-body border-complementary hover:bg-accent/10 rounded-md text-sm sm:text-base py-1 px-2 sm:py-2 sm:px-3 flex items-center transition-all duration-300 hover:shadow-sm hover:scale-105 shrink-0 md:ml-auto max-sm:w-full cursor-pointer"
+              aria-label="Register new employee"
+            >
+              <PlusCircle className="h-4 w-4 mr-1 sm:mr-2" />
+              Add
+            </Button>
+            <div className="flex flex-row flex-wrap gap-2 sm:gap-3 items-center max-sm:flex-col max-sm:gap-3 max-sm:w-full">
+              <div className="relative min-w-[140px] sm:min-w-[180px] sm:max-w-[240px] max-sm:w-full">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-4 w-4" />
+                {isFiltering && (
+                  <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-body h-4 w-4 animate-spin" />
+                )}
                 <Input
                   placeholder="Search by name or ID"
-                  className="pl-10 h-9 xl:h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base transition-all duration-300 hover:shadow-sm w-full lg:w-64 truncate"
+                  className="pl-10 pr-10 h-9 sm:h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm sm:text-base transition-all duration-300 hover:shadow-sm max-sm:w-full cursor-text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search employees"
+                  aria-label="Search employees by name or ID"
+                  aria-busy={isFiltering}
                 />
               </div>
-              <Select
-                value={filterLocation}
-                onValueChange={handleFilterLocationChange}
-              >
-                <SelectTrigger className="w-full h-9 xl:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base lg:w-48 truncate">
-                  <SelectValue placeholder="Filter by location" />
-                </SelectTrigger>
-                <SelectContent className="bg-complementary text-body">
-                  <SelectItem
-                    value="all"
-                    className="text-xs sm:text-sm xl:text-base"
-                  >
-                    All Locations
-                  </SelectItem>
-                  {locations.map((loc) => (
-                    <SelectItem
-                      key={loc._id}
-                      value={loc._id}
-                      className="text-xs sm:text-sm xl:text-base"
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Select
+                      value={filterLocation}
+                      onValueChange={handleFilterLocationChange}
+                      disabled={locationsLoading || locations.length === 0}
+                      aria-label={`Location filter set to ${getLocationName(filterLocation)}`}
                     >
-                      {loc.name || loc.city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={filterStatus}
-                onValueChange={handleFilterStatusChange}
-              >
-                <SelectTrigger className="w-full h-9 xl:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-xs sm:text-sm xl:text-base lg:w-48 truncate">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent className="bg-complementary text-body">
-                  <SelectItem
-                    value="all"
-                    className="text-xs sm:text-sm xl:text-base"
+                      <SelectTrigger className="min-w-[140px] sm:min-w-[180px] sm:max-w-[240px] h-9 sm:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm sm:text-base truncate max-sm:w-full cursor-pointer disabled:cursor-not-allowed">
+                        <SelectValue placeholder="Filter by location" className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-complementary text-body">
+                        <SelectItem value="all" className="text-sm">
+                          All Locations
+                        </SelectItem>
+                        {locations.length > 0 ? (
+                          locations.map((loc) => (
+                            <SelectItem key={loc._id} value={loc._id} className="text-sm">
+                              {loc.name || loc.city || "Unknown"}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="none" disabled className="text-sm">
+                            No locations available
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-complementary text-body">
+                    {getLocationName(filterLocation)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 sm:h-10 text-body border-complementary hover:bg-accent/10 rounded-md text-sm sm:text-base py-1 px-2 sm:py-2 sm:px-3 flex items-center gap-1 sm:gap-2 transition-all duration-300 hover:shadow-sm hover:scale-105 min-w-[100px] sm:min-w-[120px] max-sm:w-full cursor-pointer"
+                    aria-label="Open additional filters"
                   >
-                    All Statuses
-                  </SelectItem>
-                  <SelectItem
-                    value="active"
-                    className="text-xs sm:text-sm xl:text-base"
-                  >
-                    Active
-                  </SelectItem>
-                  <SelectItem
-                    value="inactive"
-                    className="text-xs sm:text-sm xl:text-base"
-                  >
-                    Inactive
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    <Filter className="h-4 w-4" />
+                    Filters
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="bg-complementary text-body w-56">
+                  <DropdownMenuLabel>Additional Filters</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="px-4 py-2">
+                    <label className="text-xs font-semibold block mb-1">Department</label>
+                    <Select
+                      value={filterDepartment}
+                      onValueChange={handleFilterDepartmentChange}
+                      aria-label={`Department filter set to ${getDepartmentName(filterDepartment)}`}
+                    >
+                      <SelectTrigger className="w-full h-9 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm cursor-pointer">
+                        <SelectValue placeholder="Filter by department" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-complementary text-body">
+                        <SelectItem value="all" className="text-sm">
+                          All Departments
+                        </SelectItem>
+                        {departments.length > 0 ? (
+                          departments.map((dept) => (
+                            <SelectItem key={dept} value={dept} className="text-sm">
+                              {dept}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="none" disabled className="text-sm">
+                            No departments available
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="px-4 py-2">
+                    <label className="text-xs font-semibold block mb-1">Status</label>
+                    <Select
+                      value={filterStatus}
+                      onValueChange={handleFilterStatusChange}
+                      aria-label={`Status filter set to ${getStatusName(filterStatus)}`}
+                    >
+                      <SelectTrigger className="w-full h-9 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm cursor-pointer">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-complementary text-body">
+                        <SelectItem value="all" className="text-sm">
+                          All Statuses
+                        </SelectItem>
+                        <SelectItem value="active" className="text-sm">
+                          Active
+                        </SelectItem>
+                        <SelectItem value="inactive" className="text-sm">
+                          Inactive
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
-                onClick={() => navigate("/admin/register-employee")}
-                className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs sm:text-sm xl:text-base py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md w-full lg:w-auto"
-                aria-label="Register new employee"
+                variant="outline"
+                className="h-9 sm:h-10 text-body border-complementary hover:bg-accent/10 rounded-md text-sm sm:text-base py-1 px-2 sm:py-2 sm:px-3 transition-all duration-300 hover:shadow-sm hover:scale-105 min-w-[100px] sm:min-w-[120px] max-sm:w-full cursor-pointer"
+                onClick={handleClearFilters}
+                aria-label="Clear all filters"
               >
-                <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                Add Employee
+                Clear
               </Button>
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {employeesLoading || locationsLoading || settingsLoading ? (
-            <div className="flex justify-center items-center h-32">
-              <Loader2 className="h-8 w-8 animate-spin text-accent" />
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="animate-pulse flex space-x-4">
+                  <div className="h-4 bg-complementary/20 rounded w-full"></div>
+                </div>
+              ))}
             </div>
-          ) : sortedEmployees.length > 0 ? (
+          ) : paginatedEmployees.length > 0 ? (
             <>
-              <div className="overflow-x-auto">
-                <Table className="w-full border-collapse">
-                  <TableHeader>
-                    <TableRow className="bg-complementary hover:bg-accent/10">
-                      {[
-                        "employeeId",
-                        "name",
-                        "designation",
-                        "department",
-                        "location",
-                        "salary",
-                        "advance",
-                        "leaves",
-                        "status",
-                      ].map((field) => (
-                        <TableHead key={field} className="text-body">
-                          <Button
-                            variant="ghost"
-                            onClick={() => handleSort(field)}
-                            className="text-body hover:text-accent w-full text-left flex items-center gap-1 text-xs sm:text-sm xl:text-base"
-                            aria-label={`Sort by ${field}`}
-                          >
-                            {field === "leaves"
-                              ? "Leaves (O/C)"
-                              : field.charAt(0).toUpperCase() + field.slice(1)}
-                            <ArrowUpDown
-                              className={cn(
-                                "h-4 w-4 transition-transform",
-                                sortField === field &&
-                                  sortOrder === "desc" &&
-                                  "rotate-180"
-                              )}
-                            />
-                          </Button>
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-body px-4 py-2 text-xs sm:text-sm xl:text-base">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedEmployees.map((employee) => {
-                      const openingLeaves = Math.max(
-                        employee.paidLeaves.available || 0,
-                        0
-                      );
-                      const leavesAccrued = Math.max(
-                        employee.paidLeaves.carriedForward || 0,
-                        0
-                      );
-                      const leavesTaken = Math.max(
-                        employee.paidLeaves.used || 0,
-                        0
-                      );
-                      const closingLeaves = Math.max(
-                        openingLeaves + leavesAccrued - leavesTaken,
-                        0
-                      );
-                      console.log("closingLeaves", closingLeaves);
-
-                      const isHighlighted = shouldHighlightEmployee(employee);
-                      if (employee.paidLeaves.carriedForward < 0) {
-                        console.warn(
-                          `Negative carriedForward for employee ${employee.employeeId}: ${employee.paidLeaves.carriedForward}`
-                        );
-                      }
-
-                      return (
-                        <TableRow
-                          key={employee._id}
+              <Table className="w-full border-collapse">
+                <TableHeader className="sticky top-0 z-10 bg-complementary shadow-sm">
+                  <TableRow className="hover:bg-accent/10">
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold sticky left-0 bg-complementary shadow-sm z-20"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("employeeId")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by employee ID"
+                      >
+                        ID
+                        <ArrowUpDown
                           className={cn(
-                            "transition-colors duration-200",
-                            isHighlighted ? "bg-accent-light animate-pulse" : ""
+                            "h-4 w-4 transition-transform",
+                            sortField === "employeeId" && sortOrder === "desc" && "rotate-180"
                           )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[120px] text-center font-semibold sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-20"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("name")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by name"
+                      >
+                        Name
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "name" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("designation")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by designation"
+                      >
+                        Designation
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "designation" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("department")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by department"
+                      >
+                        Department
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "department" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[140px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("location")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by location"
+                      >
+                        Location
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "location" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("salary")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by salary"
+                      >
+                        Salary
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "salary" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("advance")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by advance"
+                      >
+                        Advance
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "advance" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold hidden sm:table-cell"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("leaves")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by leaves"
+                      >
+                        Leaves (O/C)
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "leaves" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleSort("status")}
+                        className="text-body hover:text-accent w-full flex justify-center items-center gap-1 text-sm sm:text-base cursor-pointer"
+                        aria-label="Sort by status"
+                      >
+                        Status
+                        <ArrowUpDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            sortField === "status" && sortOrder === "desc" && "rotate-180"
+                          )}
+                        />
+                      </Button>
+                    </TableHead>
+                    <TableHead
+                      className="text-body px-1 sm:px-3 py-2 min-w-[120px] sm:min-w-[160px] text-center font-semibold"
+                    >
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedEmployees.map((employee) => {
+                    const openingLeaves = Math.max(employee.paidLeaves?.available || 0, 0);
+                    const leavesAccrued = Math.max(employee.paidLeaves?.carriedForward || 0, 0);
+                    const leavesTaken = Math.max(employee.paidLeaves?.used || 0, 0);
+                    const closingLeaves = Math.max(openingLeaves + leavesAccrued - leavesTaken, 0);
+
+                    const isHighlighted = shouldHighlightEmployee(employee);
+                    if (employee.paidLeaves?.carriedForward < 0) {
+                      console.warn(`Negative carriedForward for employee ${employee.employeeId}: ${employee.paidLeaves.carriedForward}`);
+                    }
+
+                    return (
+                      <TableRow
+                        key={employee._id}
+                        className={cn(
+                          "transition-colors duration-200 hover:bg-accent/10 cursor-pointer",
+                          isHighlighted && "bg-accent-light animate-pulse",
+                          selectedEmployeeId === employee._id && "bg-accent/20"
+                        )}
+                        onClick={() => handleRowClick(employee._id)}
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === "Enter" && handleViewClick(employee._id)}
+                      >
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-0 bg-complementary shadow-sm z-10"
                         >
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.employeeId}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.name}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.designation}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.department}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.location?.name ||
-                              employee.location?.city ||
-                              "N/A"}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            ₹{employee.salary}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            ₹{getCurrentAdvance(employee)} {/* Display current month's advance */}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {openingLeaves}/{closingLeaves}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-xs sm:text-sm xl:text-base">
-                            {employee.status}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 space-x-2">
-                            <TooltipProvider>
+                          {employee.employeeId}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-10"
+                        >
+                          {employee.name}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
+                        >
+                          {employee.designation}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
+                        >
+                          {employee.department}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
+                        >
+                          {employee.location?.name || "N/A"}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
+                        >
+                          ₹{employee.salary?.toFixed(2)}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
+                        >
+                          ₹{getCurrentAdvance(employee).toFixed(2)}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center hidden sm:table-cell"
+                        >
+                          {openingLeaves}/{closingLeaves}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
+                        >
+                          {employee.status}
+                        </TableCell>
+                        <TableCell
+                          className="px-1 sm:px-3 py-2 text-sm sm:text-base flex justify-center items-center space-x-1 sm:space-x-2"
+                        >
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewClick(employee._id)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                  aria-label={`View employee ${employee.name}`}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View Employee</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditClick(employee)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                  aria-label={`Edit employee ${employee.name}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit Employee</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleTransferClick(employee)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
+                                  disabled={employee.status !== "active"}
+                                  aria-label={`Transfer employee ${employee.name}`}
+                                >
+                                  <Truck className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Transfer Employee</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleHistoryClick(employee)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                  aria-label={`View history for employee ${employee.name}`}
+                                >
+                                  <History className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View History</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleAddDocumentsClick(employee)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                  aria-label={`Add documents for employee ${employee.name}`}
+                                >
+                                  <FilePlus className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Add Documents</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleUpdateAdvanceClick(employee)}
+                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                  aria-label={`Update advance for employee ${employee.name}`}
+                                >
+                                  <IndianRupee className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Update Advance</TooltipContent>
+                            </Tooltip>
+                            {employee.status === "active" ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() =>
-                                      handleViewClick(employee._id)
-                                    }
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`View employee ${employee.name}`}
+                                    onClick={() => handleDeactivateClick(employee._id)}
+                                    className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
+                                    aria-label={`Deactivate employee ${employee.name}`}
                                   >
-                                    <Eye className="h-5 w-5" />
+                                    <LogOut className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>View Employee</TooltipContent>
+                                <TooltipContent>Deactivate Employee</TooltipContent>
                               </Tooltip>
+                            ) : (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditClick(employee)}
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Edit employee ${employee.name}`}
+                                    onClick={() => handleRejoinClick(employee)}
+                                    className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                    aria-label={`Rejoin employee ${employee.name}`}
                                   >
-                                    <svg
-                                      className="h-5 w-5"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
-                                      />
-                                    </svg>
+                                    <UserPlus className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Edit Employee</TooltipContent>
+                                <TooltipContent>Rejoin Employee</TooltipContent>
                               </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleTransferClick(employee)
-                                    }
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    disabled={employee.status !== "active"}
-                                    aria-label={`Transfer employee ${employee.name}`}
-                                  >
-                                    <Truck className="h-5 w-5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Transfer Employee
-                                </TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleHistoryClick(employee)}
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`View history for employee ${employee.name}`}
-                                  >
-                                    <History className="h-5 w-5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>View History</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleAddDocumentsClick(employee)
-                                    }
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Add documents for employee ${employee.name}`}
-                                  >
-                                    <FilePlus className="h-5 w-5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Add Documents</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleUpdateAdvanceClick(employee)
-                                    }
-                                    className="text-accent hover:text-accent-hover transition-colors"
-                                    aria-label={`Update advance for employee ${employee.name}`}
-                                  >
-                                    <IndianRupee className="h-5 w-5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Update Advance</TooltipContent>
-                              </Tooltip>
-                              {employee.status === "active" ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleDeactivateClick(employee._id)
-                                      }
-                                      className="text-error hover:text-error-hover transition-colors"
-                                      aria-label={`Deactivate employee ${employee.name}`}
-                                    >
-                                      <LogOut className="h-5 w-5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Deactivate Employee
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleRejoinClick(employee)
-                                      }
-                                      className="text-accent hover:text-accent-hover transition-colors"
-                                      aria-label={`Rejoin employee ${employee.name}`}
-                                    >
-                                      <UserPlus className="h-5 w-5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Rejoin Employee
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                            </TooltipProvider>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                            )}
+                          </TooltipProvider>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
               {totalPages > 1 && (
-                <div className="flex flex-wrap justify-center items-center gap-2 mt-4">
+                <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-2 mt-4">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs sm:text-sm py-1 px-2 transition-all duration-300"
+                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
                     aria-label="Previous page"
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(page)}
-                        className={cn(
-                          currentPage === page
-                            ? "bg-accent text-body"
-                            : "border-complementary text-body hover:bg-complementary/10",
-                          "rounded-md text-xs sm:text-sm py-1 px-2 transition-all duration-300"
-                        )}
-                        aria-label={`Go to page ${page}`}
-                      >
-                        {page}
-                      </Button>
-                    )
-                  )}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(page)}
+                      className={cn(
+                        currentPage === page
+                          ? "bg-accent text-body"
+                          : "border-complementary text-body hover:bg-complementary/10",
+                        "rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer"
+                      )}
+                      aria-label={`Go to page ${page}`}
+                    >
+                      {page}
+                    </Button>
+                  ))}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs sm:text-sm py-1 px-2 transition-all duration-300"
+                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-sm py-1 sm:py-2 px-2 sm:px dietro3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
                     aria-label="Next page"
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
                 </div>
               )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-32 text-body">
-              <Users className="h-12 w-12 text-accent/50 mb-2" />
-              <p className="text-xs sm:text-sm xl:text-base">
-                No employees found
+              <Users className="h-10 w-10 sm:h-12 sm:w-12 text-accent/50 mb-2 animate-pulse" />
+              <p className="text-sm">
+                {filterLocation !== "all" && locations.length > 0
+                  ? `No employees found for ${getLocationName(filterLocation)}`
+                  : "No employees found"}
               </p>
-              <Button
-                onClick={() => navigate("/admin/register-employee")}
-                className="mt-2 bg-accent text-body hover:bg-accent-hover rounded-md text-xs sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
-                aria-label="Register new employee"
-              >
-                <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                Add Employee
-              </Button>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  onClick={() => navigate("/admin/register-employee")}
+                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-sm py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md hover:scale-105 cursor-pointer"
+                  aria-label="Register new employee"
+                >
+                  <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  Add Employee
+                </Button>
+                <Button
+                  variant="outline"
+                  className="text-body hover:bg-accent/10 rounded-md text-sm py-1 sm:py-2 px-3 sm:px-4 transition-all hover:scale-105 cursor-pointer"
+                  onClick={() =>
+                    dispatch(
+                      fetchEmployees({
+                        location: filterLocation === "all" ? undefined : filterLocation,
+                        department: filterDepartment === "all" ? undefined : filterDepartment,
+                        status: filterStatus === "all" ? undefined : filterStatus,
+                        page: currentPage,
+                        limit: itemsPerPage,
+                      })
+                    )
+                  }
+                  aria-label="Refresh employee data"
+                >
+                  Refresh
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -795,7 +892,6 @@ const Employees = () => {
           onOpenChange={setOpenEditDialog}
           employee={editEmployee}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
 
@@ -805,7 +901,6 @@ const Employees = () => {
           onOpenChange={setOpenTransferDialog}
           employeeId={transferEmployeeId}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
 
@@ -815,46 +910,33 @@ const Employees = () => {
           onOpenChange={setOpenRejoinDialog}
           employee={employeeToRejoin}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
 
-      <Dialog
-        open={openAddDocumentsDialog}
-        onOpenChange={setOpenAddDocumentsDialog}
-      >
+      <Dialog open={openAddDocumentsDialog} onOpenChange={setOpenAddDocumentsDialog}>
         <AddDocumentsDialog
           open={openAddDocumentsDialog}
           onOpenChange={setOpenAddDocumentsDialog}
           employeeId={addDocumentsEmployeeId}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
 
-      <Dialog
-        open={openDeactivateDialog}
-        onOpenChange={setOpenDeactivateDialog}
-      >
+      <Dialog open={openDeactivateDialog} onOpenChange={setOpenDeactivateDialog}>
         <DeactivateEmployeeDialog
           open={openDeactivateDialog}
           onOpenChange={setOpenDeactivateDialog}
           employeeId={deactivateEmployeeId}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
 
-      <Dialog
-        open={openUpdateAdvanceDialog}
-        onOpenChange={setOpenUpdateAdvanceDialog}
-      >
+      <Dialog open={openUpdateAdvanceDialog} onOpenChange={setOpenUpdateAdvanceDialog}>
         <UpdateAdvanceDialog
           open={openUpdateAdvanceDialog}
           onOpenChange={setOpenUpdateAdvanceDialog}
           employee={employeeToUpdateAdvance}
           setSuccessMessage={setSuccessMessage}
-          setShowSuccessAlert={setShowSuccessAlert}
         />
       </Dialog>
     </Layout>

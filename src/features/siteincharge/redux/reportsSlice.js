@@ -10,7 +10,7 @@ export const fetchAttendanceReports = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch attendance reports error:', error.response?.data || error.message);
+      ('Fetch attendance reports error:', error.response?.data || error.message);
       if (error.response?.status === 401) {
         return rejectWithValue('Unauthorized: Please log in again');
       }
@@ -28,7 +28,7 @@ export const fetchLeaveReports = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch leave reports error:', error.response?.data || error.message);
+      ('Fetch leave reports error:', error.response?.data || error.message);
       if (error.response?.status === 401) {
         return rejectWithValue('Unauthorized: Please log in again');
       }

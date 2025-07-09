@@ -1,4 +1,3 @@
-// src/features/admin/pages/AttendanceRequests.jsx
 import { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -16,6 +15,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableFooter,
 } from "@/components/ui/table";
 import {
   Select,
@@ -24,6 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +39,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Tooltip,
@@ -40,19 +47,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
-import {
-  Loader2,
-  Search,
-  ArrowUpDown,
-  Check,
-  X,
-  Eye,
-  Clock4,
-  CheckCircle2,
-} from "lucide-react";
+import { CalendarIcon, Loader2, Search, ArrowUpDown, Check, X, Eye, Clock4, CheckCircle2, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 
 const getStatusIcon = (status) => {
   switch (status) {
@@ -93,9 +90,12 @@ const AttendanceRequests = ({ locationId }) => {
   const [locationFilter, setLocationFilter] = useState(locationId || "all");
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [filterDate, setFilterDate] = useState(null);
+  const [displayMonth, setDisplayMonth] = useState(new Date().getMonth());
+  const [displayYear, setDisplayYear] = useState(new Date().getFullYear());
   const [sortConfig, setSortConfig] = useState({
-    column: "employee",
-    direction: "asc",
+    column: "date",
+    direction: "desc",
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [reasonDialog, setReasonDialog] = useState({
@@ -111,71 +111,29 @@ const AttendanceRequests = ({ locationId }) => {
     employeeName: "",
     date: "",
     requestedStatus: "",
+    isoDate: "",
   });
-  const requestsPerPage = 10;
+  const recordsPerPage = 5; // Fixed page size of 5
 
   // Handle errors
   useEffect(() => {
     if (attError || empError) {
-      toast.error(attError || empError || "Failed to load data", {
-        action: {
-          label: "Retry",
-          onClick: () => {
-            dispatch(fetchAttendanceRequests());
-            if (locationFilter !== "all") {
-              dispatch(fetchEmployees({ location: locationFilter }));
-            }
-          },
-        },
-      });
+      toast.error(attError || empError || "Failed to load data", { duration: 5000 });
       dispatch(resetAttendance());
     }
-  }, [attError, empError, dispatch, locationFilter]);
+  }, [attError, empError, dispatch]);
 
   // Fetch data
   useEffect(() => {
-    dispatch(fetchAttendanceRequests());
+    const filters = {};
+    if (locationFilter !== "all") filters.location = locationFilter;
+    if (filterDate) filters.date = format(filterDate, "yyyy-MM-dd");
+    if (statusFilter !== "all") filters.status = statusFilter;
+    dispatch(fetchAttendanceRequests(filters));
     if (locationFilter !== "all") {
       dispatch(fetchEmployees({ location: locationFilter }));
     }
-  }, [dispatch, locationFilter]);
-
-  // Polling for attendance requests every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      dispatch(fetchAttendanceRequests())
-        .unwrap()
-        .then((newRequests) => {
-          (newRequests || []).forEach((newReq) => {
-            const prevReq = attendanceRequests.find(
-              (req) => req._id === newReq._id
-            );
-            if (!prevReq && newReq.status === "pending") {
-              toast.info(
-                `New attendance edit request from ${
-                  newReq.employee?.name || "Unknown"
-                } for ${format(new Date(newReq.date), "PPP")}`,
-                { duration: 5000 }
-              );
-            } else if (
-              prevReq &&
-              prevReq.status !== newReq.status &&
-              newReq.status !== "pending"
-            ) {
-              toast.info(
-                `Request for ${newReq.employee?.name || "Unknown"} on ${format(
-                  new Date(newReq.date),
-                  "PPP"
-                )} has been ${newReq.status}`,
-                { duration: 5000 }
-              );
-            }
-          });
-        })
-        .catch((err) => console.error("Polling error:", err));
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [dispatch, attendanceRequests]);
+  }, [dispatch, locationFilter, filterDate, statusFilter]);
 
   // Sorting logic
   const sortedRequests = useMemo(() => {
@@ -188,17 +146,19 @@ const AttendanceRequests = ({ locationId }) => {
       } else if (sortConfig.column === "date") {
         aValue = new Date(a.date);
         bValue = new Date(b.date);
-      } else if (sortConfig.column === "requestedStatus") {
-        aValue = a.requestedStatus || "";
-        bValue = b.requestedStatus || "";
       } else if (sortConfig.column === "currentStatus") {
         aValue = a.currentStatus || "";
         bValue = b.currentStatus || "";
+      } else if (sortConfig.column === "requestedStatus") {
+        aValue = a.requestedStatus || "";
+        bValue = b.requestedStatus || "";
       } else {
         aValue = a.status || "";
         bValue = b.status || "";
       }
       if (sortConfig.column === "date") {
+        if (isNaN(aValue)) return 1;
+        if (isNaN(bValue)) return -1;
         return sortConfig.direction === "asc"
           ? aValue - bValue
           : bValue - aValue;
@@ -226,17 +186,47 @@ const AttendanceRequests = ({ locationId }) => {
       const matchesStatus =
         statusFilter === "all" ||
         request.status?.toLowerCase() === statusFilter.toLowerCase();
-      return matchesLocation && matchesEmployee && matchesStatus;
+      const matchesDate =
+        !filterDate ||
+        format(new Date(request.date), "yyyy-MM-dd") === format(filterDate, "yyyy-MM-dd");
+      return matchesLocation && matchesEmployee && matchesStatus && matchesDate;
     });
-  }, [sortedRequests, locationFilter, employeeFilter, statusFilter]);
+  }, [sortedRequests, locationFilter, employeeFilter, statusFilter, filterDate]);
 
   // Pagination
   const paginatedRequests = useMemo(() => {
-    const startIndex = (currentPage - 1) * requestsPerPage;
-    return filteredRequests.slice(startIndex, startIndex + requestsPerPage);
+    const startIndex = (currentPage - 1) * recordsPerPage;
+    return filteredRequests.slice(startIndex, startIndex + recordsPerPage);
   }, [filteredRequests, currentPage]);
 
-  const totalPages = Math.ceil(filteredRequests.length / requestsPerPage);
+  const totalPages = Math.ceil(filteredRequests.length / recordsPerPage);
+
+  const getPageNumbers = () => {
+    const maxPagesToShow = 5;
+    const pages = [];
+    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
+  // Status totals
+  const statusTotals = useMemo(() => {
+    return filteredRequests.reduce(
+      (totals, request) => ({
+        ...totals,
+        [request.status]: (totals[request.status] || 0) + 1,
+      }),
+      { pending: 0, approved: 0, rejected: 0 }
+    );
+  }, [filteredRequests]);
 
   const handleSort = (column) => {
     setSortConfig((prev) => ({
@@ -244,6 +234,16 @@ const AttendanceRequests = ({ locationId }) => {
       direction:
         prev.column === column && prev.direction === "asc" ? "desc" : "asc",
     }));
+    setCurrentPage(1);
+  };
+
+  const handleDateSelect = (date) => {
+    if (date > new Date()) {
+      toast.error("Cannot select a future date", { duration: 5000 });
+      return;
+    }
+    setFilterDate(date);
+    setCurrentPage(1);
   };
 
   const handleRequestAction = (
@@ -251,57 +251,41 @@ const AttendanceRequests = ({ locationId }) => {
     action,
     employeeName,
     date,
-    requestedStatus
+    requestedStatus,
+    isoDate
   ) => {
     setActionDialog({
       open: true,
       requestId,
       action,
       employeeName,
-      date: date, // Store the raw ISO date string (e.g., "2025-06-16T18:30:00.000Z")
+      date,
       requestedStatus,
+      isoDate,
     });
   };
 
   const confirmRequestAction = () => {
-    const { requestId, action, date, employeeName, requestedStatus } =
-      actionDialog;
-    dispatch(handleAttendanceRequest({ id: requestId, status: action }))
+    const { requestId, action, isoDate } = actionDialog;
+    if (!isoDate) {
+      toast.error("Date not found for this request", { duration: 5000 });
+      return;
+    }
+    dispatch(
+      handleAttendanceRequest({ id: requestId, status: action, date: isoDate })
+    )
       .unwrap()
       .then(() => {
-        toast.success(`Request ${action} successfully`, {
-          action: {
-            label: "Undo",
-            onClick: () =>
-              toast.info("Undo functionality not implemented yet."),
-          },
-        });
-        dispatch(fetchAttendanceRequests());
-        // Parse the request date correctly
-        const requestDate = new Date(actionDialog.date); // Ensure date is the ISO string from req.date
-        if (isNaN(requestDate)) {
-          console.error("Invalid date in actionDialog:", actionDialog.date);
-          return;
-        }
-        const month = requestDate.getMonth() + 1;
-        const year = requestDate.getFullYear();
-        const location = locationFilter === "all" ? locationId : locationFilter;
-        console.log("Dispatching fetchAttendance with:", {
-          month,
-          year,
-          location,
-          employeeName,
-          requestedStatus,
-        });
-        dispatch(
-          fetchAttendance({
-            month,
-            year,
-            location: location || undefined,
-          })
-        );
+        toast.success(`Request ${action} successfully`, { duration: 5000 });
+        dispatch(fetchAttendanceRequests({
+          location: locationFilter !== "all" ? locationFilter : undefined,
+          date: filterDate ? format(filterDate, "yyyy-MM-dd") : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+        }));
       })
-      .catch((err) => toast.error(err || "Failed to handle request"))
+      .catch((err) => {
+        toast.error(err || "Failed to handle request", { duration: 5000 });
+      })
       .finally(() =>
         setActionDialog({
           open: false,
@@ -310,357 +294,459 @@ const AttendanceRequests = ({ locationId }) => {
           employeeName: "",
           date: "",
           requestedStatus: "",
+          isoDate: "",
         })
       );
   };
 
   return (
-    <Card className="bg-complementary text-body shadow-lg rounded-lg">
-      <CardHeader className="border-b border-accent">
-        <CardTitle className="text-2xl font-bold">
-          Attendance Edit Requests
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6 space-y-6">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <Label
-              htmlFor="locationFilter"
-              className="block text-sm font-medium text-body"
-            >
-              Filter by Location
-            </Label>
-            <Select
-              value={locationFilter}
-              onValueChange={setLocationFilter}
-              disabled={locLoading}
-            >
-              <SelectTrigger
-                id="locationFilter"
-                className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
-                aria-label="Filter requests by location"
+    <div className="space-y-8 p-4 animate-fade-in">
+      {reqLoading && (
+        <div className="fixed inset-0 bg-overlay flex justify-center items-center z-50">
+          <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        </div>
+      )}
+      <Card className="bg-body text-body border border-complementary max-w-4xl mx-auto rounded-lg shadow-md">
+        <CardHeader className="border-b border-complementary">
+          <CardTitle className="text-2xl font-bold text-body">
+            Filter Attendance Requests
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2 min-w-[160px] flex-1">
+              <Label htmlFor="locationFilter" className="text-sm font-semibold text-body">
+                Location
+              </Label>
+              <Select
+                value={locationFilter}
+                onValueChange={(value) => {
+                  setLocationFilter(value);
+                  setFilterDate(null);
+                  setCurrentPage(1);
+                }}
+                disabled={locLoading}
               >
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent className="bg-body text-body">
-                <SelectItem value="all" className="text-sm">
-                  All Locations
-                </SelectItem>
-                {locations.map((loc) => (
-                  <SelectItem key={loc._id} value={loc._id} className="text-sm">
-                    {loc.name}
+                <SelectTrigger
+                  id="locationFilter"
+                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
+                  aria-label="Filter requests by location"
+                >
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent className="bg-body text-body border-complementary">
+                  <SelectItem value="all" className="text-sm hover:bg-accent-light">
+                    All Locations
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <Label
-              htmlFor="employeeFilter"
-              className="block text-sm font-medium text-body"
-            >
-              Filter by Employee
-            </Label>
-            <div className="relative">
-              <Input
-                id="employeeFilter"
-                placeholder="Search by name or ID..."
-                value={employeeFilter}
-                onChange={(e) => setEmployeeFilter(e.target.value)}
-                className="pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
-                aria-label="Filter requests by employee name or ID"
-              />
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-complementary" />
+                  {locations.map((loc) => (
+                    <SelectItem key={loc._id} value={loc._id} className="text-sm hover:bg-accent-light">
+                      {loc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 min-w-[160px] flex-1">
+              <Label htmlFor="employeeFilter" className="text-sm font-semibold text-body">
+                Employee
+              </Label>
+              <div className="relative">
+                <Input
+                  id="employeeFilter"
+                  placeholder="Search by name or ID..."
+                  value={employeeFilter}
+                  onChange={(e) => {
+                    setEmployeeFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full sm:w-64 pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
+                  aria-label="Filter requests by employee name or ID"
+                />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-complementary" />
+              </div>
+            </div>
+            <div className="space-y-2 min-w-[120px] flex-1">
+              <Label htmlFor="statusFilter" className="text-sm font-semibold text-body">
+                Status
+              </Label>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  setCurrentPage(1);
+                }}
+                disabled={locLoading}
+              >
+                <SelectTrigger
+                  id="statusFilter"
+                  className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm"
+                  aria-label="Filter requests by status"
+                >
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent className="bg-body text-body border-complementary">
+                  <SelectItem value="all" className="text-sm hover:bg-accent-light">
+                    All Statuses
+                  </SelectItem>
+                  <SelectItem value="pending" className="text-sm hover:bg-accent-light">
+                    Pending
+                  </SelectItem>
+                  <SelectItem value="approved" className="text-sm hover:bg-accent-light">
+                    Approved
+                  </SelectItem>
+                  <SelectItem value="rejected" className="text-sm hover:bg-accent-light">
+                    Rejected
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 min-w-[160px] flex-1">
+              <Label htmlFor="filterDate" className="text-sm font-semibold text-body">
+                Date
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-semibold bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 text-sm truncate"
+                    disabled={locLoading}
+                    aria-label="Select date to filter attendance requests"
+                  >
+                    <CalendarIcon className="mr-2 h-5 w-5 text-complementary flex-shrink-0" />
+                    <span className="truncate">
+                      {filterDate ? format(filterDate, "PPP") : "Pick a date or view all dates"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-body text-body">
+                  <div className="p-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setFilterDate(null);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full mb-2 border-accent text-accent hover:bg-accent-light text-sm py-2 px-4"
+                      disabled={!filterDate}
+                      aria-label="Show all dates"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Show All Dates
+                    </Button>
+                    <Calendar
+                      mode="single"
+                      selected={filterDate}
+                      onSelect={handleDateSelect}
+                      month={new Date(displayYear, displayMonth)}
+                      onMonthChange={(newMonth) => {
+                        setDisplayMonth(newMonth.getMonth());
+                        setDisplayYear(newMonth.getFullYear());
+                        setCurrentPage(1);
+                      }}
+                      initialFocus
+                      disabled={(date) => date > new Date()}
+                      className="border border-complementary rounded-md text-sm"
+                      modifiers={{
+                        selected: filterDate,
+                      }}
+                      modifiersClassNames={{
+                        selected: "bg-accent text-body font-bold border-2 border-accent rounded-full",
+                        today: "bg-complementary-light text-body border border-complementary rounded-full",
+                      }}
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
-          <div className="flex-1 min-w-[150px]">
-            <Label
-              htmlFor="statusFilter"
-              className="block text-sm font-medium text-body"
-            >
-              Filter by Status
-            </Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger
-                id="statusFilter"
-                className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-12 text-sm"
-                aria-label="Filter requests by status"
-              >
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent className="bg-body text-body">
-                <SelectItem value="all" className="text-sm">
-                  All
-                </SelectItem>
-                <SelectItem value="pending" className="text-sm">
-                  Pending
-                </SelectItem>
-                <SelectItem value="approved" className="text-sm">
-                  Approved
-                </SelectItem>
-                <SelectItem value="rejected" className="text-sm">
-                  Rejected
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {reqLoading || empLoading || locLoading ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-6 w-6 animate-spin text-accent" />
-          </div>
-        ) : filteredRequests.length > 0 ? (
-          <div className="space-y-4">
-            <div className="max-h-[400px] overflow-x-auto relative">
-              <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
-              <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from bg-complementary to-transparent pointer-events-none" />
-              <Table className="border border-gray-200 min-w-[1000px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-body text-sm">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSort("employee")}
-                        className="flex items-center space-x-1"
-                        aria-label="Sort by employee name"
-                      >
-                        Employee
-                        <ArrowUpDown className="h-5 w-5" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-body text-sm">
-                      Location
-                    </TableHead>
-                    <TableHead className="text-body text-sm">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSort("date")}
-                        className="flex items-center space-x-1"
-                        aria-label="Sort by date"
-                      >
-                        Date
-                        <ArrowUpDown className="h-5 w-5" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-body text-sm">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSort("currentStatus")}
-                        className="flex items-center space-x-1"
-                        aria-label="Sort by current status"
-                      >
-                        Current Status
-                        <ArrowUpDown className="h-5 w-5" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-body text-sm">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSort("requestedStatus")}
-                        className="flex items-center space-x-1"
-                        aria-label="Sort by requested status"
-                      >
-                        Requested Status
-                        <ArrowUpDown className="h-5 w-5" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-body text-sm">Reason</TableHead>
-                    <TableHead className="text-body text-sm">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSort("status")}
-                        className="flex items-center space-x-1"
-                        aria-label="Sort by status"
-                      >
-                        Status
-                        <ArrowUpDown className="h-5 w-5" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-body text-sm">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedRequests.map((req, index) => (
-                    <TableRow
-                      key={req._id}
-                      className={
-                        index % 2 === 0 ? "bg-complementary" : "bg-body"
-                      }
-                    >
-                      <TableCell className="text-body text-sm truncate max-w-[150px]">
-                        {req.employee?.name || "Unknown"} (
-                        {req.employee?.employeeId || "N/A"})
-                      </TableCell>
-                      <TableCell className="text-body text-sm truncate max-w-[150px]">
-                        {req.location?.name || "N/A"}
-                      </TableCell>
-                      <TableCell className="text-body text-sm">
-                        {format(new Date(req.date), "PPP")}
-                      </TableCell>
-                      <TableCell className="text-body text-sm">
-                        <Badge
-                          variant={
-                            req.currentStatus === "present"
-                              ? "success"
-                              : req.currentStatus === "absent"
-                              ? "destructive"
-                              : req.currentStatus === "N/A"
-                              ? "secondary"
-                              : "warning"
-                          }
-                          className="text-xs"
+        </CardContent>
+      </Card>
+      <Card className="bg-body text-body border border-complementary rounded-lg shadow-md">
+        <CardHeader className="border-b border-complementary">
+          <CardTitle className="text-2xl font-bold text-body">
+            Attendance Edit Requests
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          {reqLoading || empLoading || locLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+            </div>
+          ) : filteredRequests.length > 0 ? (
+            <div className="space-y-4">
+              <div className="max-h-[400px] overflow-x-auto relative">
+                <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
+                <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-complementary to-transparent pointer-events-none" />
+                <Table className="border border-complementary min-w-[1000px]">
+                  <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
+                    <TableRow>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("employee")}
+                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
+                          aria-label={`Sort by employee name ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
                         >
-                          <span className="flex items-center gap-1">
-                            {getStatusIcon(req.currentStatus)}
-                            {req.currentStatus === "N/A"
-                              ? "N/A"
-                              : req.currentStatus.charAt(0).toUpperCase() +
-                                req.currentStatus.slice(1)}
-                          </span>
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-body text-sm">
-                        <Badge
-                          variant={
-                            req.requestedStatus === "present"
-                              ? "success"
-                              : req.requestedStatus === "absent"
-                              ? "destructive"
-                              : "warning"
-                          }
-                          className="text-xs"
+                          Employee
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        Location
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("date")}
+                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
+                          aria-label={`Sort by date ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
                         >
-                          <span className="flex items-center gap-1">
-                            {getStatusIcon(req.requestedStatus)}
-                            {req.requestedStatus.charAt(0).toUpperCase() +
-                              req.requestedStatus.slice(1)}
-                          </span>
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-body text-sm max-w-[200px]">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="link"
-                                size="sm"
-                                onClick={() =>
-                                  setReasonDialog({
-                                    open: true,
-                                    reason: req.reason,
-                                    employeeName:
-                                      req.employee?.name || "Unknown",
-                                    date: format(new Date(req.date), "PPP"),
-                                  })
-                                }
-                                className="text-accent hover:underline p-0"
-                                aria-label={`View reason for ${req.employee?.name}'s request`}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-complementary text-body border-accent max-w-xs">
-                              <p className="text-sm">{req.reason}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </TableCell>
-                      <TableCell className="text-body text-sm">
-                        <Badge
-                          variant={
-                            req.status === "pending"
-                              ? "secondary"
-                              : req.status === "approved"
-                              ? "success"
-                              : "destructive"
-                          }
-                          className="text-xs"
+                          Date
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("currentStatus")}
+                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
+                          aria-label={`Sort by current status ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
                         >
-                          <span className="flex items-center gap-1">
-                            {getStatusIcon(req.status)}
-                            {req.status.charAt(0).toUpperCase() +
-                              req.status.slice(1)}
-                          </span>
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-body text-sm">
-                        {req.status === "pending" ? (
-                          <div className="flex space-x-2">
+                          Current Status
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("requestedStatus")}
+                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
+                          aria-label={`Sort by requested status ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
+                        >
+                          Requested Status
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        Reason
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("status")}
+                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
+                          aria-label={`Sort by status ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
+                        >
+                          Status
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedRequests.map((req, index) => (
+                      <TableRow
+                        key={req._id}
+                        className={`${
+                          index % 2 === 0 ? "bg-body" : "bg-complementary-light"
+                        } hover:bg-accent-light cursor-pointer animate-slide-in-row`}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                        onClick={() =>
+                          setReasonDialog({
+                            open: true,
+                            reason: req.reason,
+                            employeeName: req.employee?.name || "Unknown",
+                            date: format(new Date(req.date), "PPP"),
+                          })
+                        }
+                      >
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap max-w-[200px] truncate">
+                          {req.employee?.name || "Unknown"} ({req.employee?.employeeId || "N/A"})
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          {req.location?.name || "N/A"}
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          {format(new Date(req.date), "PPP")}
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-center gap-1">
+                                  {getStatusIcon(req.currentStatus)}
+                                  {req.currentStatus ? req.currentStatus.charAt(0).toUpperCase() : "N/A"}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-body text-body border-complementary text-sm">
+                                {req.currentStatus ? req.currentStatus.charAt(0).toUpperCase() + req.currentStatus.slice(1) : "N/A"}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-center gap-1">
+                                  {getStatusIcon(req.requestedStatus)}
+                                  {req.requestedStatus.charAt(0).toUpperCase()}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-body text-body border-complementary text-sm">
+                                {req.requestedStatus.charAt(0).toUpperCase() + req.requestedStatus.slice(1)}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2">
+                          <div className="flex justify-center">
                             <Button
+                              variant="link"
+                              size="sm"
                               onClick={() =>
-                                handleRequestAction(
-                                  req._id,
-                                  "approved",
-                                  req.employee?.name || "Unknown",
-                                  req.date, // Pass the raw ISO date string
-                                  req.requestedStatus
-                                )
+                                setReasonDialog({
+                                  open: true,
+                                  reason: req.reason,
+                                  employeeName: req.employee?.name || "Unknown",
+                                  date: format(new Date(req.date), "PPP"),
+                                })
                               }
-                              className="bg-green-500 text-body hover:bg-green-600 text-sm py-2 px-3 flex items-center gap-1"
-                              disabled={reqLoading}
-                              aria-label={`Approve request for ${req.employee?.name}`}
+                              className="text-accent hover:underline p-0"
+                              aria-label={`View reason for ${req.employee?.name}'s request`}
                             >
-                              <Check className="h-4 w-4" />
-                              Approve
-                            </Button>
-                            <Button
-                              onClick={() =>
-                                handleRequestAction(
-                                  req._id,
-                                  "rejected",
-                                  req.employee?.name || "Unknown",
-                                  req.date, // Pass the raw ISO date string
-                                  req.requestedStatus
-                                )
-                              }
-                              className="bg-red-500 text-body hover:bg-red-600 text-sm py-2 px-3 flex items-center gap-1"
-                              disabled={reqLoading}
-                              aria-label={`Reject request for ${req.employee?.name}`}
-                            >
-                              <X className="h-4 w-4" />
-                              Reject
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
                             </Button>
                           </div>
-                        ) : (
-                          "-"
-                        )}
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-center gap-1">
+                                  {getStatusIcon(req.status)}
+                                  {req.status.charAt(0).toUpperCase()}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-body text-body border-complementary text-sm">
+                                {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                          {req.status === "pending" ? (
+                            <div className="flex justify-center space-x-2">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRequestAction(
+                                    req._id,
+                                    "approved",
+                                    req.employee?.name || "Unknown",
+                                    format(new Date(req.date), "PPP"),
+                                    req.requestedStatus,
+                                    req.date
+                                  );
+                                }}
+                                className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-3 flex items-center gap-1 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                                disabled={reqLoading}
+                                aria-label={`Approve request for ${req.employee?.name}`}
+                              >
+                                <Check className="h-4 w-4" />
+                                Approve
+                              </Button>
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRequestAction(
+                                    req._id,
+                                    "rejected",
+                                    req.employee?.name || "Unknown",
+                                    format(new Date(req.date), "PPP"),
+                                    req.requestedStatus,
+                                    req.date
+                                  );
+                                }}
+                                className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-3 flex items-center gap-1 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                                disabled={reqLoading}
+                                aria-label={`Reject request for ${req.employee?.name}`}
+                              >
+                                <X className="h-4 w-4" />
+                                Reject
+                              </Button>
+                            </div>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter className="bg-complementary sticky bottom-0">
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-body text-sm font-semibold text-center px-2">
+                        Totals
                       </TableCell>
+                      <TableCell className="text-body text-sm text-center px-2">
+                        Pending: {statusTotals.pending} <br />
+                        Approved: {statusTotals.approved} <br />
+                        Rejected: {statusTotals.rejected}
+                      </TableCell>
+                      <TableCell colSpan={3} className="text-body text-sm text-center px-2"></TableCell>
                     </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {getPageNumbers().map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      onClick={() => setCurrentPage(page)}
+                      className={`${
+                        currentPage === page
+                          ? "bg-accent text-body hover:bg-accent-hover"
+                          : "border-complementary text-body hover:bg-complementary-light"
+                      } text-sm w-10 h-10 rounded-md`}
+                      aria-label={`Go to page ${page}`}
+                    >
+                      {page}
+                    </Button>
                   ))}
-                </TableBody>
-              </Table>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="flex justify-between items-center">
-              <Button
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="bg-accent text-complementary hover:bg-accent-hover text-sm py-2 px-4"
-                aria-label="Previous page"
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-body">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                onClick={() =>
-                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                }
-                disabled={currentPage === totalPages}
-                className="bg-accent text-complementary hover:bg-accent-hover text-sm py-2 px-4"
-                aria-label="Next page"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-body text-center py-2">
-            No attendance edit requests available
-          </p>
-        )}
-      </CardContent>
+          ) : (
+            <p className="text-body text-sm text-center py-4">
+              No attendance edit requests available
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Reason Dialog */}
       <Dialog
@@ -675,22 +761,26 @@ const AttendanceRequests = ({ locationId }) => {
           })
         }
       >
-        <DialogContent className="bg-complementary text-body border-accent max-w-[90vw] sm:max-w-md max-h-[70vh] overflow-hidden flex flex-col rounded-lg">
-          <DialogHeader className="shrink-0 px-4 pt-4">
-            <DialogTitle className="text-lg flex items-center gap-2">
+        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-md max-h-[70vh] overflow-hidden flex flex-col rounded-lg animate-scale-in">
+          <DialogHeader className="shrink-0 px-6 pt-6">
+            <DialogTitle className="text-xl font-bold text-body flex items-center gap-2">
               <Eye className="h-5 w-5 text-accent" />
               Reason for Request
             </DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogDescription className="text-sm mt-2 text-body">
               Request by {reasonDialog.employeeName} on {reasonDialog.date}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-4 py-2">
-            <p className="text-sm text-body">{reasonDialog.reason}</p>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <Textarea
+              value={reasonDialog.reason}
+              readOnly
+              className="w-full bg-complementary-light text-body border-complementary h-32 text-sm resize-none cursor-not-allowed"
+              aria-label="Reason for attendance request"
+            />
           </div>
-          <DialogFooter className="shrink-0 px-4 py-4 border-t border-accent flex justify-end">
+          <DialogFooter className="shrink-0 px-6 py-4 border-t border-complementary flex justify-end">
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setReasonDialog({
@@ -700,7 +790,7 @@ const AttendanceRequests = ({ locationId }) => {
                   date: "",
                 })
               }
-              className="border-accent text-body hover:bg-accent-hover text-sm py-3 px-4"
+              className="border-accent text-accent hover:bg-accent-light text-sm py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               aria-label="Close reason dialog"
             >
               Close
@@ -721,33 +811,33 @@ const AttendanceRequests = ({ locationId }) => {
             employeeName: "",
             date: "",
             requestedStatus: "",
+            isoDate: "",
           })
         }
       >
-        <DialogContent className="bg-complementary text-body border-accent max-w-[90vw] sm:max-w-md max-h-[70vh] overflow-hidden flex flex-col rounded-lg">
-          <DialogHeader className="shrink-0 px-4 pt-4">
-            <DialogTitle className="text-lg flex items-center gap-2">
+        <DialogContent className="bg-body text-body border-complementary max-w-[90vw] sm:max-w-md max-h-[70vh] overflow-hidden flex flex-col rounded-lg animate-scale-in">
+          <DialogHeader className="shrink-0 px-6 pt-6">
+            <DialogTitle className="text-xl font-bold text-body flex items-center gap-2">
               {actionDialog.action === "approved" ? (
                 <>
-                  <Check className="h-5 w-5 text-green-500" />
+                  <Check className="h-5 w-5 text-accent" />
                   Approve Request
                 </>
               ) : (
                 <>
-                  <X className="h-5 w-5 text-red-500" />
+                  <X className="h-5 w-5 text-accent" />
                   Reject Request
                 </>
               )}
             </DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogDescription className="text-sm mt-2 text-body">
               Are you sure you want to {actionDialog.action} the request for{" "}
               {actionDialog.employeeName} on {actionDialog.date} to mark as{" "}
               {actionDialog.requestedStatus}?
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="shrink-0 px-4 py-4 border-t border-accent flex justify-end gap-2">
+          <DialogFooter className="shrink-0 px-6 py-4 border-t border-complementary flex justify-end gap-3">
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setActionDialog({
@@ -757,22 +847,20 @@ const AttendanceRequests = ({ locationId }) => {
                   employeeName: "",
                   date: "",
                   requestedStatus: "",
+                  isoDate: "",
                 })
               }
-              className="border-accent text-body hover:bg-accent-hover text-sm py-2 px-4"
+              className="border-accent text-accent hover:bg-accent-light text-sm py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={reqLoading}
+              aria-label="Cancel action"
             >
               Cancel
             </Button>
             <Button
-              type="button"
               onClick={confirmRequestAction}
-              className={`${
-                actionDialog.action === "approved"
-                  ? "bg-green-500 hover:bg-green-600"
-                  : "bg-red-500 hover:bg-red-600"
-              } text-body text-sm py-2 px-4 flex items-center gap-2`}
+              className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={reqLoading}
+              aria-label={`${actionDialog.action} request`}
             >
               {reqLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -785,7 +873,7 @@ const AttendanceRequests = ({ locationId }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 };
 

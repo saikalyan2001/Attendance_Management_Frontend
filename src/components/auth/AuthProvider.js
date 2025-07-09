@@ -1,11 +1,11 @@
-// AuthProvider.jsx
+// src/components/auth/AuthProvider.jsx
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchMe, setLoading } from '../../redux/slices/authSlice';
+import { fetchMe, setLoading, resetError } from '../../redux/slices/authSlice';
 
 const AuthProvider = ({ children }) => {
   const dispatch = useDispatch();
-  const { user, isLoading } = useSelector((state) => state.auth);
+  const { user } = useSelector((state) => state.auth);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -13,8 +13,8 @@ const AuthProvider = ({ children }) => {
       dispatch(setLoading());
       dispatch(fetchMe());
     } else if (!token && !user) {
-      dispatch(setLoading());
-      dispatch({ type: 'auth/fetchMe/rejected', payload: 'No token found' });
+      dispatch(resetError());
+      dispatch({ type: 'auth/fetchMe/rejected', payload: null });
     }
   }, [dispatch, user]);
 

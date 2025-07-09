@@ -1,290 +1,560 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useMemo, Component } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchDashboardData, reset } from '../redux/dashboardSlice';
 import { logout } from '../../../redux/slices/authSlice';
 import Layout from '../../../components/layout/Layout';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Users, CheckCircle, XCircle, AlertCircle, X, ArrowUpDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Loader2, LogOut, MapPin, Users, CheckCircle, XCircle, Sun, Clock, Download, CalendarIcon, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { Bar } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+import { toZonedTime } from 'date-fns-tz';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { CSVLink } from 'react-csv';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+// Simple Error Boundary Component
+class ErrorBoundary extends Component {
+  state = { hasError: false };
 
-const parseServerError = (error) => {
-  if (!error) return 'An unknown error occurred';
-  if (typeof error === 'string') return error;
-  return error.message || 'Operation failed';
-};
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    ('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="text-error text-center p-4">
+          Something went wrong. Please try again.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const Dashboard = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { metrics, loading, error } = useSelector((state) => state.siteInchargeDashboard);
   const { user } = useSelector((state) => state.auth);
+  const { metrics, loading, error } = useSelector((state) => state.siteInchargeDashboard);
 
-  const [serverError, setServerError] = useState(null);
-  const [sortOrder, setSortOrder] = useState('asc');
+  const [selectedDate, setSelectedDate] = useState(toZonedTime(new Date(), 'Asia/Kolkata'));
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
+  // Detect current theme
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
 
   useEffect(() => {
+    ('useEffect triggered with selectedDate:', selectedDate);
     if (!user || user.role !== 'siteincharge') {
+      ('Unauthorized access attempt:', { user });
       navigate('/login');
       return;
     }
-    if (user?.locations?.length > 0) {
-      dispatch(fetchDashboardData({ location: user.locations[0]._id }));
-    } else {
-      setServerError('No location assigned to this user. Please contact an admin.');
+    if (!user?.locations?.length) {
+      ('No location assigned to user:', user?.email);
       toast.error('No location assigned to this user', { duration: 10000 });
       navigate('/login');
+      return;
     }
-  }, [dispatch, user, navigate]);
+
+    const timeZone = 'Asia/Kolkata';
+    const zonedDate = toZonedTime(selectedDate, timeZone);
+    const dateString = format(zonedDate, 'yyyy-MM-dd');
+    const locationId = user.locations[0]._id.toString();
+
+    ('Fetching dashboard data for date:', dateString, 'location:', locationId);
+    dispatch(fetchDashboardData({ location: locationId, date: zonedDate }))
+      .unwrap()
+      .then((data) => {
+        ('Received dashboardData:', data);
+      })
+      .catch((err) => {
+        ('Fetch dashboard error:', err);
+        toast.error(err);
+      });
+  }, [dispatch, navigate, selectedDate]); // Removed user from dependencies
 
   useEffect(() => {
     if (error) {
-      const parsedError = parseServerError(error);
-      setServerError(parsedError);
-      toast.error(parsedError, {
+      ('Error state triggered:', error);
+      toast.error(error, {
         action: {
-          label: 'Dismiss',
+          label: 'Retry',
           onClick: () => {
-            dispatch(reset());
-            setServerError(null);
+            if (user?.locations?.length > 0) {
+              const timeZone = 'Asia/Kolkata';
+              const zonedDate = toZonedTime(selectedDate, timeZone);
+              ('Retrying fetch for date:', format(zonedDate, 'yyyy-MM-dd'), 'location:', user.locations[0]._id);
+              dispatch(fetchDashboardData({ location: user.locations[0]._id, date: zonedDate }))
+                .unwrap()
+                .catch((err) => toast.error(err));
+              dispatch(reset());
+            }
           },
         },
-        duration: 10000,
       });
     }
-  }, [error, dispatch]);
+  }, [error, dispatch, user, selectedDate]);
 
-  const handleSort = () => {
-    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+  const handleLogout = () => {
+    ('Initiating logout for user:', user?.email);
+    dispatch(logout())
+      .unwrap()
+      .then(() => {
+        toast.success('Logged out successfully');
+        navigate('/login');
+      })
+      .catch((err) => toast.error(err));
   };
 
-  const sortedRecentAttendance = useMemo(() => {
-    if (!metrics?.recentAttendance) return [];
-    return [...metrics.recentAttendance].sort((a, b) => {
-      const aValue = a.employee?.name?.toLowerCase() || '';
-      const bValue = b.employee?.name?.toLowerCase() || '';
-      return sortOrder === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+  const handleRefresh = () => {
+    ('Refetching for date:', format(selectedDate, 'yyyy-MM-dd'), 'location:', user?.locations?.[0]?._id);
+    if (user?.locations?.length > 0) {
+      const timeZone = 'Asia/Kolkata';
+      const zonedDate = toZonedTime(selectedDate, timeZone);
+      dispatch(fetchDashboardData({ location: user.locations[0]._id, date: zonedDate }))
+        .unwrap()
+        .then((data) => {
+          ('Refreshed dashboardData:', data);
+          toast.success('Data refreshed successfully');
+        })
+        .catch((err) => toast.error(err));
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (!filteredAttendance?.length) {
+      toast.error('No recent attendance data to export');
+      return;
+    }
+    const doc = new jsPDF();
+    doc.text('Recent Attendance', 14, 20);
+    doc.text(`Date: ${format(selectedDate, 'MMMM dd, yyyy')}`, 14, 30);
+    autoTable(doc, {
+      startY: 40,
+      head: [['Employee', 'Date', 'Status']],
+      body: filteredAttendance.map((record) => [
+        `${record.employee?.name || 'Unknown'} (${record.employee?.employeeId || 'N/A'})`,
+        format(new Date(record.date), 'MM/dd/yyyy'),
+        record.status.charAt(0).toUpperCase() + record.status.slice(1),
+      ]),
+      theme: 'striped',
+      styles: { fontSize: 10, cellPadding: 2 },
+      headStyles: { fillColor: currentTheme === 'dark' ? [96, 165, 250] : [59, 130, 246] },
     });
-  }, [metrics?.recentAttendance, sortOrder]);
-
-  const handleDismissErrors = () => {
-    dispatch(reset());
-    setServerError(null);
-    toast.dismiss();
+    doc.save(`recent-attendance-${format(selectedDate, 'yyyy-MM-dd')}.pdf`);
   };
 
-  // Prepare chart data with Tailwind-aligned colors
-  const chartData = {
-    labels: metrics?.attendanceTrends?.map((trend) => format(new Date(trend.date), 'MMM d')) || [],
-    datasets: [
-      {
-        label: 'Present',
-        data: metrics?.attendanceTrends?.map((trend) => trend.present) || [],
-        backgroundColor: '#22c55e', // Tailwind's text-green-500
-        borderColor: '#16a34a', // Tailwind's text-green-600
-        borderWidth: 1,
-      },
-      {
-        label: 'Absent',
-        data: metrics?.attendanceTrends?.map((trend) => trend.absent) || [],
-        backgroundColor: '#ef4444', // Tailwind's text-red-500
-        borderColor: '#dc2626', // Tailwind's text-red-600
-        borderWidth: 1,
-      },
-    ],
+  const handleExportCSV = () => {
+    if (!filteredAttendance?.length) {
+      toast.error('No recent attendance data to export');
+      return [];
+    }
+    ('Exporting CSV with data:', filteredAttendance);
+    return filteredAttendance.map((record) => ({
+      Employee: `${record.employee?.name || 'Unknown'} (${record.employee?.employeeId || 'N/A'})`,
+      Date: format(new Date(record.date), 'MM/dd/yyyy'),
+      Status: record.status.charAt(0).toUpperCase() + record.status.slice(1),
+    }));
   };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Number of Employees',
-          color: '#e5e7eb', // Tailwind's text-gray-200
-          font: { size: 12 },
-        },
-        ticks: { color: '#e5e7eb' },
-        grid: { color: '#4b5563' }, // Tailwind's text-gray-600
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Date',
-          color: '#e5e7eb',
-          font: { size: 12 },
-        },
-        ticks: { color: '#e5e7eb' },
-        grid: { color: '#4b5563' },
-      },
-    },
-    plugins: {
-      legend: {
-        labels: { color: '#e5e7eb' },
-      },
-      tooltip: {
-        backgroundColor: '#1f2937', // Tailwind's bg-gray-800
-        titleColor: '#e5e7eb',
-        bodyColor: '#e5e7eb',
-      },
-    },
+  const handleDateSelect = (date) => {
+    if (date) {
+      const timeZone = 'Asia/Kolkata';
+      const zonedDate = toZonedTime(date, timeZone);
+      ('Selected date:', date, 'Zoned date:', zonedDate);
+      setSelectedDate(zonedDate);
+      setIsCalendarOpen(false);
+    }
   };
+
+  const filteredAttendance = useMemo(() => {
+    let result = metrics?.recentAttendance || [];
+    ('Raw recentAttendance:', result);
+    if (searchQuery) {
+      result = result.filter(
+        (record) =>
+          record.employee?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          record.employee?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    if (statusFilter !== 'all') {
+      result = result.filter((record) => record.status === statusFilter);
+    }
+    ('Filtered Attendance for day', format(selectedDate, 'yyyy-MM-dd'), ':', result);
+    return result;
+  }, [metrics, searchQuery, statusFilter, selectedDate]);
+
+  const paginatedAttendance = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredAttendance.slice(start, start + itemsPerPage);
+  }, [filteredAttendance, currentPage]);
+
+  const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
+
+  const chartData = useMemo(() => {
+    const counts = {
+      present: filteredAttendance.filter((record) => record.status === 'present').length,
+      absent: filteredAttendance.filter((record) => record.status === 'absent').length,
+      leave: filteredAttendance.filter((record) => record.status === 'leave').length,
+      halfDay: filteredAttendance.filter((record) => record.status === 'half-day').length,
+    };
+    const data = [
+      { name: 'Present', value: counts.present, fill: 'rgb(var(--color-green))' },
+      { name: 'Absent', value: counts.absent, fill: 'rgb(var(--color-error))' },
+      { name: 'Leave', value: counts.leave, fill: 'rgb(var(--color-yellow))' },
+      { name: 'Half-Day', value: counts.halfDay, fill: 'rgb(var(--color-accent))' },
+    ];
+    ('Chart Data:', data);
+    return data;
+  }, [filteredAttendance]);
+
+  if (loading && !metrics) {
+    return (
+      <Layout title="Site Incharge Dashboard" role="siteincharge">
+        <div className="flex justify-center items-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-accent" aria-label="Loading dashboard data" />
+        </div>
+      </Layout>
+    );
+  }
+
+  const { totalEmployees, todayAttendance } = metrics || {};
 
   return (
-    <Layout title="Site Incharge Dashboard" role="siteincharge">
-      {serverError && (
-        <Alert variant="destructive" className="mb-4 sm:mb-5 md:mb-6 border-error text-error max-w-2xl mx-auto rounded-md relative animate-fade-in">
-          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-          <AlertTitle className="text-[10px] sm:text-sm md:text-base xl:text-lg font-bold">Error</AlertTitle>
-          <AlertDescription className="text-[10px] sm:text-sm md:text-base xl:text-lg">
-            <p>{serverError}</p>
+    <Layout title={`Welcome, ${user?.name || 'Site Incharge'}`} role="siteincharge">
+      {error && (
+        <Alert className="mb-6 border-error bg-error text-error animate-fade-in">
+          <AlertDescription className="flex justify-between items-center">
+            <span>{error}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="border-accent text-accent hover:bg-accent-hover"
+              aria-label="Retry fetching dashboard data"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Retry
+            </Button>
           </AlertDescription>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDismissErrors}
-            className="absolute top-2 right-2 text-error hover:text-error-hover"
-            aria-label="Dismiss errors"
-          >
-            <X className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
         </Alert>
       )}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-          {Array(3).fill().map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full rounded-md" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-            <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-              <CardHeader className="flex flex-row items-center space-x-2">
-                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-accent" />
-                <CardTitle className="text-sm sm:text-base md:text-lg xl:text-xl">Total Employees</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold">{metrics?.totalEmployees || 0}</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-              <CardHeader className="flex flex-row items-center space-x-2">
-                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-500" />
-                <CardTitle className="text-sm sm:text-base md:text-lg xl:text-xl">Today's Present</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold">{metrics?.todayAttendance?.present || 0}</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-              <CardHeader className="flex flex-row items-center space-x-2">
-                <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500" />
-                <CardTitle className="text-sm sm:text-base md:text-lg xl:text-xl">Today's Absent</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold">{metrics?.todayAttendance?.absent || 0}</p>
-              </CardContent>
-            </Card>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const timeZone = 'Asia/Kolkata';
+                const today = toZonedTime(new Date(), timeZone);
+                setSelectedDate(today);
+              }}
+              className="bg-complementary text-body border-accent"
+              aria-label="Select today's date"
+            >
+              Today
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleRefresh}
+              className="bg-complementary text-body border-accent"
+              aria-label="Refresh dashboard data"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+            </Button>
           </div>
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Recent Attendance</CardTitle>
+          <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto justify-start text-left font-normal bg-complementary text-body border-accent animate-fade-in"
+                aria-label="Select a specific date"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(selectedDate, 'PPP')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-complementary text-body border-accent">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleDateSelect}
+                disabled={(date) => date > toZonedTime(new Date(), 'Asia/Kolkata')}
+                className="rounded-md p-4"
+                calendarClassName="text-lg"
+                dayClassName="h-10 w-10 rounded-full hover:bg-accent-light"
+                styles={{
+                  head_row: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 0',
+                    backgroundColor: 'var(--color-complementary)',
+                    borderBottom: '1px solid var(--color-accent)',
+                  },
+                  head_cell: {
+                    flex: '1',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: 'var(--color-body)',
+                  },
+                  cell: {
+                    flex: 1,
+                    textAlign: 'center',
+                  },
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 animate-fade-in">
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <MapPin className="h-5 w-5 text-accent" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">Location</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
-              {sortedRecentAttendance?.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">
-                          <Button variant="ghost" onClick={handleSort} className="flex items-center space-x-1">
-                            Employee
-                            <ArrowUpDown className="h-4 w-4 sm:h-5 sm:w-5" />
-                          </Button>
-                        </TableHead>
-                        <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Date</TableHead>
-                        <TableHead className="text-body text-[10px] sm:text-sm xl:text-base">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedRecentAttendance.map((att) => (
-                        <TableRow key={att._id}>
-                          <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
-                            {att.employee?.name || 'Unknown'} ({att.employee?.employeeId || 'N/A'})
-                          </TableCell>
-                          <TableCell className="text-body text-[10px] sm:text-sm xl:text-base">
-                            {format(new Date(att.date), 'MMM d, yyyy')}
-                          </TableCell>
-                          <TableCell
-                            className={`text-[10px] sm:text-sm xl:text-base ${
-                              att.status === 'present'
-                                ? 'text-green-500'
-                                : att.status === 'absent'
-                                ? 'text-red-500'
-                                : 'text-yellow-500'
-                            }`}
-                          >
-                            {att.status.charAt(0).toUpperCase() + att.status.slice(1)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-body text-[10px] sm:text-sm xl:text-base">No recent attendance records</p>
-              )}
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{user?.locations?.[0]?.name || 'N/A'}</p>
             </CardContent>
           </Card>
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">Leave Usage Summary</CardTitle>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-accent" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">Total Employees</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
-              <p className="text-sm sm:text-base md:text-lg xl:text-xl">
-                Total Leaves Taken:{' '}
-                <span className="font-bold">{metrics?.leaveSummary?.totalLeaves || 0}</span>
-              </p>
-              <p className="text-sm sm:text-base md:text-lg xl:text-xl">
-                Average Leaves per Employee:{' '}
-                <span className="font-bold">{metrics?.leaveSummary?.averageLeaves?.toFixed(1) || 0}</span>
-              </p>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{totalEmployees || 0}</p>
             </CardContent>
           </Card>
-          <Card className="bg-complementary text-body shadow-lg rounded-md border border-accent/10 animate-fade-in">
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">
-                Attendance Trends (Last 7 Days)
-              </CardTitle>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <CheckCircle className="h-5 w-5 text-green" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">Present Today</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
-              <div className="h-64 sm:h-80 md:h-96">
-                <Bar data={chartData} options={chartOptions} />
-              </div>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{todayAttendance?.present || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <XCircle className="h-5 w-5 text-error" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">Absent Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{todayAttendance?.absent || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Sun className="h-5 w-5 text-yellow" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">On Leave Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{todayAttendance?.leave || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-complementary text-body shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader className="flex items-center space-x-2">
+              <Clock className="h-5 w-5 text-accent" aria-hidden="true" />
+              <CardTitle className="text-sm sm:text-base">Half-Day Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl sm:text-2xl font-semibold">{todayAttendance?.halfDay || 0}</p>
             </CardContent>
           </Card>
         </div>
-      )}
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg md:text-xl">Attendance Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {chartData.every((item) => item.value === 0) ? (
+              <div className="text-center text-body text-sm sm:text-base">
+                No attendance data available for {format(selectedDate, 'PPP')}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
+                  <XAxis dataKey="name" stroke="rgb(var(--color-text))" />
+                  <YAxis stroke="rgb(var(--color-text))" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'rgb(var(--color-complementary))',
+                      borderColor: 'rgb(var(--color-accent))',
+                      color: 'rgb(var(--color-text))',
+                    }}
+                  />
+                  <Bar dataKey="value" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+          <div className="flex-1">
+            <Input
+              placeholder="Search by employee name or ID"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-complementary text-body border-accent"
+              aria-label="Search employees"
+            />
+          </div>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => {
+              setStatusFilter(value);
+              setCurrentPage(1);
+            }}
+            aria-label="Filter by attendance status"
+          >
+            <SelectTrigger className="w-[180px] bg-complementary text-body border-accent">
+              <SelectValue placeholder="Filter by Status" />
+            </SelectTrigger>
+            <SelectContent className="bg-complementary text-body border-accent">
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="present">Present</SelectItem>
+              <SelectItem value="absent">Absent</SelectItem>
+              <SelectItem value="leave">Leave</SelectItem>
+              <SelectItem value="half-day">Half-Day</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Card className="bg-complementary text-body shadow-md animate-fade-in">
+          <CardHeader className="flex justify-between items-center">
+            <CardTitle className="text-base sm:text-lg md:text-xl">Recent Attendance</CardTitle>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleExportPDF}
+                className="bg-accent text-body hover:bg-accent-hover"
+                disabled={!filteredAttendance?.length}
+                aria-label="Export attendance as PDF"
+              >
+                <Download className="h-4 w-4 mr-2" /> PDF
+              </Button>
+              <ErrorBoundary>
+                <CSVLink
+                  data={filteredAttendance?.length ? handleExportCSV() : []}
+                  filename={`recent-attendance-${format(selectedDate, 'yyyy-MM-dd')}.csv`}
+                  className={`inline-flex items-center px-3 py-2 rounded-md text-sm ${
+                    filteredAttendance?.length
+                      ? 'bg-accent text-body hover:bg-accent-hover'
+                      : 'bg-complementary-light text-body opacity-50 cursor-not-allowed'
+                  }`}
+                  aria-label="Export attendance as CSV"
+                  target={filteredAttendance?.length ? '_blank' : undefined}
+                  onClick={(e) => {
+                    if (!filteredAttendance?.length) {
+                      e.preventDefault();
+                      toast.error('No recent attendance data to export');
+                    }
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" /> CSV
+                </CSVLink>
+              </ErrorBoundary>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[600px]">
+                <TableHeader>
+                  <TableRow className="bg-complementary-light">
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Employee</TableHead>
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Date</TableHead>
+                    <TableHead className="text-body font-semibold text-sm sm:text-base">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedAttendance.length > 0 ? (
+                    paginatedAttendance.map((record) => (
+                      <TableRow
+                        key={record._id}
+                        className="bg-complementary hover:bg-complementary-light"
+                      >
+                        <TableCell className="text-body text-sm sm:text-base">
+                          {record.employee?.name || 'Unknown'} ({record.employee?.employeeId || 'N/A'})
+                        </TableCell>
+                        <TableCell className="text-body text-sm sm:text-base">
+                          {format(new Date(record.date), 'PPP')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              record.status === 'present'
+                                ? 'bg-green text-body'
+                                : record.status === 'absent'
+                                ? 'bg-error text-body'
+                                : record.status === 'leave'
+                                ? 'bg-yellow text-body'
+                                : 'bg-accent text-body'
+                            }
+                          >
+                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-body text-sm sm:text-base">
+                        No recent attendance records for {format(selectedDate, 'PPP')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  className="bg-complementary text-body border-accent"
+                  aria-label="Previous page"
+                >
+                  Previous
+                </Button>
+                <span className="text-body self-center">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  className="bg-complementary text-body border-accent"
+                  aria-label="Next page"
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </Layout>
   );
 };
