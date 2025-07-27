@@ -33,6 +33,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Loader2,
   Search,
   Users,
@@ -49,6 +57,7 @@ import {
   IndianRupee,
   Pencil,
   Filter,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Layout from "../../../components/layout/Layout";
@@ -65,6 +74,8 @@ import {
   fetchLocations,
   fetchAllLocations,
   fetchSettings,
+  deleteEmployee,
+  restoreEmployee,
   reset,
 } from "../redux/employeeSlice";
 import toast from "react-hot-toast";
@@ -81,6 +92,7 @@ const Employees = () => {
     settings = {},
     loading: employeesLoading,
     success,
+    pagination = { total: 0, page: 1, limit: 5, totalPages: 1 },
   } = useSelector((state) => state.siteInchargeEmployee || {});
 
   const initialDepartment = searchParams.get("department") || "all";
@@ -96,17 +108,21 @@ const Employees = () => {
   const [openAddDocumentsDialog, setOpenAddDocumentsDialog] = useState(false);
   const [openDeactivateDialog, setOpenDeactivateDialog] = useState(false);
   const [openUpdateAdvanceDialog, setOpenUpdateAdvanceDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [openRestoreDialog, setOpenRestoreDialog] = useState(false);
   const [employeeToEdit, setEmployeeToEdit] = useState(null);
   const [transferEmployeeId, setTransferEmployeeId] = useState(null);
   const [employeeToRejoin, setEmployeeToRejoin] = useState(null);
   const [addDocumentsEmployeeId, setAddDocumentsEmployeeId] = useState(null);
   const [deactivateEmployeeId, setDeactivateEmployeeId] = useState(null);
+  const [deleteEmployeeId, setDeleteEmployeeId] = useState(null);
+  const [restoreEmployeeId, setRestoreEmployeeId] = useState(null);
   const [employeeToUpdateAdvance, setEmployeeToUpdateAdvance] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(pagination.page);
   const [successMessage, setSuccessMessage] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [isFiltering, setIsFiltering] = useState(false);
-  const itemsPerPage = 5;
+  const itemsPerPage = pagination.limit;
 
   const locationId = user?.locations?.[0]?._id;
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
@@ -127,7 +143,7 @@ const Employees = () => {
   const shouldHighlightEmployee = (employee) => {
     if (!employee.transferTimestamp) return false;
     const transferTime = new Date(employee.transferTimestamp).getTime();
-    const currentTime = new Date("2025-07-03T17:42:00+05:30").getTime();
+    const currentTime = new Date().getTime();
     return currentTime - transferTime <= HIGHLIGHT_DURATION;
   };
 
@@ -139,8 +155,13 @@ const Employees = () => {
           const matchesSearch =
             (emp.name || "").toLowerCase().includes(searchLower) ||
             (emp.employeeId || "").toLowerCase().includes(searchLower);
-          const matchesDepartment = filterDepartment === "all" || emp.department === filterDepartment;
-          const matchesStatus = filterStatus === "all" || emp.status === filterStatus;
+          const matchesDepartment =
+            filterDepartment === "all" || emp.department === filterDepartment;
+          const matchesStatus =
+            filterStatus === "all" ||
+            (filterStatus === "deleted"
+              ? emp.isDeleted === true
+              : emp.isDeleted !== true && emp.status === filterStatus);
           return matchesSearch && matchesDepartment && matchesStatus;
         })
       : [];
@@ -151,7 +172,10 @@ const Employees = () => {
   const sortedEmployees = useMemo(() => {
     return [...filteredEmployees].sort((a, b) => {
       let aValue, bValue;
-      if (sortField === "salary") {
+      if (sortField === "employeeId") {
+        aValue = parseInt(a[sortField] || "0", 10);
+        bValue = parseInt(b[sortField] || "0", 10);
+      } else if (sortField === "salary") {
         aValue = a[sortField] || 0;
         bValue = b[sortField] || 0;
       } else if (sortField === "advance") {
@@ -180,11 +204,7 @@ const Employees = () => {
     });
   }, [filteredEmployees, sortField, sortOrder]);
 
-  const totalItems = filteredEmployees.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedEmployees = sortedEmployees.slice(startIndex, endIndex);
+  const totalPages = pagination.totalPages;
 
   const getDepartmentName = (dept) => (dept === "all" ? "All Departments" : dept);
 
@@ -199,26 +219,29 @@ const Employees = () => {
     }
   }, [totalPages, currentPage]);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user || user.role !== "siteincharge") {
-      navigate("/login");
-    } else if (!user?.locations?.length) {
-      navigate("/siteincharge/dashboard");
-    } else if (locationId) {
-      dispatch(
-        fetchEmployees({
-          location: locationId,
-          department: filterDepartment === "all" ? undefined : filterDepartment,
-          status: filterStatus === "all" ? undefined : filterStatus,
-          cache: false,
-        })
-      );
-      dispatch(fetchLocations());
-      dispatch(fetchAllLocations());
-      dispatch(fetchSettings());
-    }
-  }, [user, authLoading, locationId, dispatch, navigate, filterDepartment, filterStatus, success]);
+ useEffect(() => {
+  if (authLoading) return;
+  if (!user || user.role !== "siteincharge") {
+    navigate("/login");
+  } else if (!user?.locations?.length) {
+    navigate("/siteincharge/dashboard");
+  } else if (locationId) {
+    dispatch(
+      fetchEmployees({
+        location: locationId,
+        status: filterStatus === "all" || filterStatus === "deleted" ? undefined : filterStatus,
+        department: filterDepartment === "all" ? undefined : filterDepartment,
+        isDeleted: filterStatus === "deleted" ? true : undefined, // Explicitly set isDeleted for "deleted" filter, undefined for "all"
+        page: currentPage,
+        limit: itemsPerPage,
+        cache: false,
+      })
+    );
+    dispatch(fetchLocations());
+    dispatch(fetchAllLocations());
+    dispatch(fetchSettings());
+  }
+}, [user, authLoading, locationId, dispatch, navigate, filterStatus, filterDepartment, currentPage, success]);
 
   useEffect(() => {
     if (successMessage) {
@@ -226,6 +249,13 @@ const Employees = () => {
       setSuccessMessage(null);
     }
   }, [successMessage]);
+
+  useEffect(() => {
+    setOpenDeleteDialog(false);
+    setDeleteEmployeeId(null);
+    setOpenRestoreDialog(false);
+    setRestoreEmployeeId(null);
+  }, [dispatch]);
 
   const handleEditClick = (employee) => {
     setEmployeeToEdit(employee);
@@ -259,6 +289,18 @@ const Employees = () => {
   const handleDeactivateClick = (id) => {
     setDeactivateEmployeeId(id);
     setOpenDeactivateDialog(true);
+    setSelectedEmployeeId(id);
+  };
+
+  const handleDeleteClick = (id) => {
+    setDeleteEmployeeId(id);
+    setOpenDeleteDialog(true);
+    setSelectedEmployeeId(id);
+  };
+
+  const handleRestoreClick = (id) => {
+    setRestoreEmployeeId(id);
+    setOpenRestoreDialog(true);
     setSelectedEmployeeId(id);
   };
 
@@ -318,6 +360,50 @@ const Employees = () => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
       setSelectedEmployeeId(null);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await dispatch(deleteEmployee(deleteEmployeeId)).unwrap();
+      setSuccessMessage("Employee deleted successfully");
+      setOpenDeleteDialog(false);
+      setDeleteEmployeeId(null);
+      dispatch(
+        fetchEmployees({
+          location: locationId,
+          status: filterStatus === "all" ? undefined : filterStatus,
+          department: filterDepartment === "all" ? undefined : filterDepartment,
+          isDeleted: filterStatus === "deleted" ? true : undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+          cache: false,
+        })
+      );
+    } catch (err) {
+      toast.error(err || "Failed to delete employee");
+    }
+  };
+
+  const handleRestoreConfirm = async () => {
+    try {
+      await dispatch(restoreEmployee(restoreEmployeeId)).unwrap();
+      setSuccessMessage("Employee restored successfully");
+      setOpenRestoreDialog(false);
+      setRestoreEmployeeId(null);
+      dispatch(
+        fetchEmployees({
+          location: locationId,
+          status: filterStatus === "all" ? undefined : filterStatus,
+          department: filterDepartment === "all" ? undefined : filterDepartment,
+          isDeleted: filterStatus === "deleted" ? true : undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+          cache: false,
+        })
+      );
+    } catch (err) {
+      toast.error(err || "Failed to restore employee");
     }
   };
 
@@ -416,6 +502,9 @@ const Employees = () => {
                         <SelectItem value="inactive" className="text-sm">
                           Inactive
                         </SelectItem>
+                        <SelectItem value="deleted" className="text-sm">
+                          Deleted
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -435,7 +524,7 @@ const Employees = () => {
         <CardContent className="p-4 sm:p-6">
           {employeesLoading ? (
             <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: itemsPerPage }).map((_, i) => (
                 <div key={i} className="animate-pulse flex space-x-4">
                   <div className="h-4 bg-complementary/20 rounded w-full"></div>
                 </div>
@@ -616,7 +705,7 @@ const Employees = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedEmployees.map((employee) => {
+                  {sortedEmployees.map((employee) => {
                     const openingLeaves = Math.max(employee.paidLeaves?.available || 0, 0);
                     const leavesAccrued = Math.max(employee.paidLeaves?.carriedForward || 0, 0);
                     const leavesTaken = Math.max(employee.paidLeaves?.used || 0, 0);
@@ -682,127 +771,160 @@ const Employees = () => {
                         <TableCell
                           className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
                         >
-                          {employee.status}
+                          {employee.isDeleted ? "Deleted" : employee.status}
                         </TableCell>
                         <TableCell
                           className="px-1 sm:px-3 py-2 text-sm sm:text-base flex justify-center items-center space-x-1 sm:space-x-2"
                         >
                           <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewClick(employee._id)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`View employee ${employee.name}`}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEditClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Edit employee ${employee.name}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Edit Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleTransferClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
-                                  disabled={employee.status !== "active"}
-                                  aria-label={`Transfer employee ${employee.name}`}
-                                >
-                                  <Truck className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Transfer Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleHistoryClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`View history for employee ${employee.name}`}
-                                >
-                                  <History className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View History</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleAddDocumentsClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Add documents for employee ${employee.name}`}
-                                >
-                                  <FilePlus className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Add Documents</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleUpdateAdvanceClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Update advance for employee ${employee.name}`}
-                                >
-                                  <IndianRupee className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Update Advance</TooltipContent>
-                            </Tooltip>
-                            {employee.status === "active" ? (
+                            {employee.isDeleted ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDeactivateClick(employee._id)}
-                                    className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
-                                    aria-label={`Deactivate employee ${employee.name}`}
-                                  >
-                                    <LogOut className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Deactivate Employee</TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRejoinClick(employee)}
+                                    onClick={() => handleRestoreClick(employee._id)}
                                     className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                    aria-label={`Rejoin employee ${employee.name}`}
+                                    aria-label={`Restore employee ${employee.name}`}
                                   >
                                     <UserPlus className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Rejoin Employee</TooltipContent>
+                                <TooltipContent>Restore Employee</TooltipContent>
                               </Tooltip>
+                            ) : (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleViewClick(employee._id)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`View employee ${employee.name}`}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View Employee</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Edit employee ${employee.name}`}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit Employee</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleTransferClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
+                                      disabled={employee.status !== "active"}
+                                      aria-label={`Transfer employee ${employee.name}`}
+                                    >
+                                      <Truck className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Transfer Employee</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleHistoryClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`View history for employee ${employee.name}`}
+                                    >
+                                      <History className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View History</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleAddDocumentsClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Add documents for employee ${employee.name}`}
+                                    >
+                                      <FilePlus className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Add Documents</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleUpdateAdvanceClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Update advance for employee ${employee.name}`}
+                                    >
+                                      <IndianRupee className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Update Advance</TooltipContent>
+                                </Tooltip>
+                                {employee.status === "active" ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeactivateClick(employee._id)}
+                                        className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
+                                        aria-label={`Deactivate employee ${employee.name}`}
+                                      >
+                                        <LogOut className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Deactivate Employee</TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRejoinClick(employee)}
+                                        className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                        aria-label={`Rejoin employee ${employee.name}`}
+                                      >
+                                        <UserPlus className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Rejoin Employee</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteClick(employee._id)}
+                                      className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Delete employee ${employee.name}`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Delete Employee</TooltipContent>
+                                </Tooltip>
+                              </>
                             )}
                           </TooltipProvider>
                         </TableCell>
@@ -856,9 +978,7 @@ const Employees = () => {
           ) : (
             <div className="flex flex-col items-center justify-center h-32 text-body">
               <Users className="h-10 w-10 sm:h-12 sm:w-12 text-accent/50 mb-2 animate-pulse" />
-              <p className="text-sm">
-                No employees found
-              </p>
+              <p className="text-sm">No employees found</p>
               <div className="flex gap-2 mt-2">
                 <Button
                   onClick={() => navigate("/siteincharge/register-employee")}
@@ -875,8 +995,11 @@ const Employees = () => {
                     dispatch(
                       fetchEmployees({
                         location: locationId,
-                        department: filterDepartment === "all" ? undefined : filterDepartment,
                         status: filterStatus === "all" ? undefined : filterStatus,
+                        department: filterDepartment === "all" ? undefined : filterDepartment,
+                        isDeleted: filterStatus === "deleted" ? true : undefined,
+                        page: currentPage,
+                        limit: itemsPerPage,
                         cache: false,
                       })
                     )
@@ -891,43 +1014,111 @@ const Employees = () => {
         </CardContent>
       </Card>
 
-      <EditDialog
-        open={openEditDialog}
-        onOpenChange={setOpenEditDialog}
-        employee={employeeToEdit}
-        setSuccessMessage={setSuccessMessage}
-      />
-      <TransferDialog
-        open={openTransferDialog}
-        onOpenChange={setOpenTransferDialog}
-        employeeId={transferEmployeeId}
-        allLocations={allLocations}
-        setSuccessMessage={setSuccessMessage}
-      />
-      <RejoinDialog
-        open={openRejoinDialog}
-        onOpenChange={setOpenRejoinDialog}
-        employee={employeeToRejoin}
-        setSuccessMessage={setSuccessMessage}
-      />
-      <AddDocumentsDialog
-        open={openAddDocumentsDialog}
-        onOpenChange={setOpenAddDocumentsDialog}
-        employeeId={addDocumentsEmployeeId}
-        setSuccessMessage={setSuccessMessage}
-      />
-      <DeactivateDialog
-        open={openDeactivateDialog}
-        onOpenChange={setOpenDeactivateDialog}
-        employeeId={deactivateEmployeeId}
-        setSuccessMessage={setSuccessMessage}
-      />
-      <UpdateAdvanceDialog
-        open={openUpdateAdvanceDialog}
-        onOpenChange={setOpenUpdateAdvanceDialog}
-        employee={employeeToUpdateAdvance}
-        setSuccessMessage={setSuccessMessage}
-      />
+      {employeeToEdit && (
+        <EditDialog
+          open={openEditDialog}
+          onOpenChange={setOpenEditDialog}
+          employee={employeeToEdit}
+          locations={allLocations}
+          settings={settings}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      {transferEmployeeId && (
+        <TransferDialog
+          open={openTransferDialog}
+          onOpenChange={setOpenTransferDialog}
+          employeeId={transferEmployeeId}
+          allLocations={allLocations}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      {employeeToRejoin && (
+        <RejoinDialog
+          open={openRejoinDialog}
+          onOpenChange={setOpenRejoinDialog}
+          employee={employeeToRejoin}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      {addDocumentsEmployeeId && (
+        <AddDocumentsDialog
+          open={openAddDocumentsDialog}
+          onOpenChange={setOpenAddDocumentsDialog}
+          employeeId={addDocumentsEmployeeId}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      {deactivateEmployeeId && (
+        <DeactivateDialog
+          open={openDeactivateDialog}
+          onOpenChange={setOpenDeactivateDialog}
+          employeeId={deactivateEmployeeId}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      {employeeToUpdateAdvance && (
+        <UpdateAdvanceDialog
+          open={openUpdateAdvanceDialog}
+          onOpenChange={setOpenUpdateAdvanceDialog}
+          employee={employeeToUpdateAdvance}
+          setSuccessMessage={setSuccessMessage}
+        />
+      )}
+      <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
+        <DialogContent className="bg-complementary text-body rounded-md shadow-lg max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this employee? This action will
+              mark the employee as deleted and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setOpenDeleteDialog(false)}
+              className="border-complementary text-body hover:bg-accent/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              className="bg-error hover:bg-error-hover"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={openRestoreDialog} onOpenChange={setOpenRestoreDialog}>
+        <DialogContent className="bg-complementary text-body rounded-md shadow-lg max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Confirm Restore</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to restore this employee? This will make the
+              employee visible again in the employee list.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setOpenRestoreDialog(false)}
+              className="border-complementary text-body hover:bg-accent/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleRestoreConfirm}
+              className="bg-accent hover:bg-accent-hover"
+            >
+              Restore
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };

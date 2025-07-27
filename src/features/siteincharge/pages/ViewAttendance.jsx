@@ -46,7 +46,7 @@ const ViewAttendance = ({ locationId }) => {
   const { employees, loading: empLoading } = useSelector(
     (state) => state.siteInchargeEmployee
   );
-  const { attendance, monthlyAttendance, loading: attLoading, error } = useSelector(
+  const { attendance, monthlyAttendance, pagination, loading: attLoading, error } = useSelector(
     (state) => state.siteInchargeAttendance
   );
 
@@ -73,12 +73,26 @@ const ViewAttendance = ({ locationId }) => {
     }
   }, [error, dispatch]);
 
+  // Debug attendance data
+  useEffect(() => {
+    console.log("Raw attendance:", attendance);
+    console.log("Raw monthlyAttendance:", monthlyAttendance);
+  }, [attendance, monthlyAttendance]);
+
+  // Fetch attendance or monthly attendance based on filters
   useEffect(() => {
     if (!locationId) return;
     dispatch(fetchEmployees({ location: locationId }));
 
     const currentYear = new Date().getFullYear();
-    if (
+    
+    if (filterDate) {
+      const filters = { location: locationId, page: currentPage, limit: employeesPerPage };
+      filters.date = format(filterDate, "yyyy-MM-dd'T'00:00:00+05:30");
+      if (filterStatus && filterStatus !== "all") filters.status = filterStatus;
+      console.log("Fetching attendance for date:", filters);
+      dispatch(fetchAttendance(filters));
+    } else if (
       filterMonth &&
       filterYear &&
       filterMonth >= 1 &&
@@ -91,25 +105,43 @@ const ViewAttendance = ({ locationId }) => {
           month: filterMonth,
           year: filterYear,
           location: locationId,
+          page: currentPage,
+          limit: employeesPerPage,
         })
       );
       const newDate = new Date(filterYear, filterMonth - 1, 1);
       if (newDate > new Date()) {
-        setFilterDate(null); // Reset to show full month
+        setFilterDate(null);
       }
     } else {
-      const filters = { location: locationId };
-      if (filterDate) filters.date = format(filterDate, "yyyy-MM-dd");
-      if (filterStatus && filterStatus !== "all") filters.status = filterStatus;
-      dispatch(fetchAttendance(filters));
+      toast.error("Please select a date or a month/year to view attendance", { duration: 5000 });
     }
-  }, [dispatch, locationId, filterDate, filterStatus, filterMonth, filterYear]);
+  }, [dispatch, locationId, filterDate, filterStatus, filterMonth, filterYear, currentPage]);
 
+  // Normalize and sort attendance data
   const sortedAttendance = useMemo(() => {
-    const data = filterMonth && filterYear ? monthlyAttendance : attendance;
-    if (!data || !Array.isArray(data)) return [];
+    let data = [];
+    if (filterDate) {
+      // Daily attendance: flat array of records
+      data = Array.isArray(attendance) ? [...attendance] : [];
+    } else {
+      // Monthly attendance: flatten nested structure
+      data = Array.isArray(monthlyAttendance)
+        ? monthlyAttendance.flatMap(item =>
+            Array.isArray(item.attendance)
+              ? item.attendance.map(record => ({
+                  ...record,
+                  employee: item.employee,
+                }))
+              : []
+          )
+        : [];
+    }
 
-    return [...data].sort((a, b) => {
+    console.log("Normalized sortedAttendance:", data);
+
+    return data.sort((a, b) => {
+      if (!a || !b) return 0;
       if (sortConfig.column === "name") {
         const nameA = a.employee?.name || "";
         const nameB = b.employee?.name || "";
@@ -124,63 +156,61 @@ const ViewAttendance = ({ locationId }) => {
         return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
       }
     });
-  }, [attendance, monthlyAttendance, filterMonth, filterYear, sortConfig]);
+  }, [attendance, monthlyAttendance, filterDate, sortConfig]);
 
+  // Filter attendance data
   const filteredAttendance = useMemo(() => {
     let filtered = sortedAttendance || [];
+    console.log("Before filtering:", filtered);
     if (filterStatus && filterStatus !== "all") {
-      filtered = filtered.filter((record) => record.status === filterStatus);
+      filtered = filtered.filter(record => record?.status === filterStatus);
     }
-    if (filterDate && filterMonth && filterYear) {
-      filtered = filtered.filter((record) => {
+    if (filterDate) {
+      filtered = filtered.filter(record => {
+        if (!record?.date) return false;
         const recordDate = new Date(record.date);
-        const isMatch =
-          recordDate.getMonth() + 1 === filterMonth &&
-          recordDate.getFullYear() === filterYear &&
-          format(recordDate, "yyyy-MM-dd") === format(filterDate, "yyyy-MM-dd");
-        return isMatch;
+        const filterDateStr = format(filterDate, "yyyy-MM-dd");
+        const recordDateStr = format(recordDate, "yyyy-MM-dd");
+        const matches = recordDateStr === filterDateStr;
+        console.log(`Comparing record date ${recordDateStr} with filter date ${filterDateStr}: ${matches}`);
+        return matches;
       });
-    } else if (filterDate) {
-      filtered = filtered.filter((record) => {
-        const isMatch = format(new Date(record.date), "yyyy-MM-dd") === format(filterDate, "yyyy-MM-dd");
-        return isMatch;
+    } else if (filterMonth && filterYear) {
+      filtered = filtered.filter(record => {
+        if (!record?.date) return false;
+        const recordDate = new Date(record.date);
+        return (
+          recordDate.getMonth() + 1 === filterMonth &&
+          recordDate.getFullYear() === filterYear
+        );
       });
     }
     if (searchQuery) {
       filtered = filtered.filter(
-        (record) =>
-          record.employee?.name?.toLowerCase().includes(searchQuery?.toLowerCase()) ||
-          record.employee?.employeeId?.toLowerCase().includes(searchQuery?.toLowerCase())
+        record =>
+          record?.employee?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          record?.employee?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
+    console.log("Filtered attendance:", filtered);
     return filtered;
   }, [sortedAttendance, filterStatus, filterDate, filterMonth, filterYear, searchQuery]);
 
-  // Debug attendance data
-  useEffect(() => {
-    filteredAttendance.forEach((att) => {
-      console.log(
-        `Attendance Record: Employee=${att.employee?._id}, Date=${att.date}, Normalized=${format(
-          new Date(att.date),
-          "yyyy-MM-dd"
-        )}`
-      );
-    });
-  }, [attendance, monthlyAttendance, filterDate, filterMonth, filterYear, filteredAttendance]);
+  // Use backend-provided pagination data
+  const totalPages = pagination.totalPages || 1;
+  const totalRecords = pagination.total || 0;
 
-  const paginatedAttendance = useMemo(() => {
-    const startIndex = (currentPage - 1) * employeesPerPage;
-    return filteredAttendance.slice(startIndex, startIndex + employeesPerPage);
-  }, [filteredAttendance, currentPage]);
-
-  const totalPages = Math.ceil(filteredAttendance.length / employeesPerPage);
+  // Slice for client-side display (already paginated by backend)
+  const paginatedAttendance = filteredAttendance;
 
   const statusTotals = useMemo(() => {
     return filteredAttendance.reduce(
-      (totals, record) => ({
-        ...totals,
-        [record.status]: (totals[record.status] || 0) + 1,
-      }),
+      (totals, record) => {
+        if (record?.status) {
+          totals[record.status] = (totals[record.status] || 0) + 1;
+        }
+        return totals;
+      },
       { present: 0, absent: 0, leave: 0, "half-day": 0 }
     );
   }, [filteredAttendance]);
@@ -215,54 +245,24 @@ const ViewAttendance = ({ locationId }) => {
       toast.error("Cannot select a future date", { duration: 5000 });
       return;
     }
-    if (filterMonth && filterYear) {
-      const dateMonth = date.getMonth() + 1;
-      const dateYear = date.getFullYear();
-      if (dateMonth !== filterMonth || dateYear !== filterYear) {
-        toast.error(`Please select a date in ${months[filterMonth - 1].label} ${filterYear}`, { duration: 5000 });
-        return;
-      }
-    }
     setFilterDate(date);
+    setFilterMonth(date.getMonth() + 1);
+    setFilterYear(date.getFullYear());
     setCurrentPage(1);
   };
 
   const handleMonthChange = (value) => {
     const parsedMonth = value ? parseInt(value) : null;
     setFilterMonth(parsedMonth);
+    setFilterDate(null); // Reset date when changing month
     setCurrentPage(1);
-    if (parsedMonth && filterYear) {
-      const newDate = new Date(filterYear, parsedMonth - 1, 1);
-      if (newDate > new Date()) {
-        setFilterDate(null); // Reset to show full month
-      } else if (filterDate) {
-        // Reset filterDate if it doesn't match the new month
-        const dateMonth = filterDate.getMonth() + 1;
-        const dateYear = filterDate.getFullYear();
-        if (dateMonth !== parsedMonth || dateYear !== filterYear) {
-          setFilterDate(null);
-        }
-      }
-    }
   };
 
   const handleYearChange = (value) => {
     const parsedYear = value ? parseInt(value) : null;
     setFilterYear(parsedYear);
+    setFilterDate(null); // Reset date when changing year
     setCurrentPage(1);
-    if (filterMonth && parsedYear) {
-      const newDate = new Date(parsedYear, filterMonth - 1, 1);
-      if (newDate > new Date()) {
-        setFilterDate(null); // Reset to show full month
-      } else if (filterDate) {
-        // Reset filterDate if it doesn't match the new year
-        const dateMonth = filterDate.getMonth() + 1;
-        const dateYear = filterDate.getFullYear();
-        if (dateMonth !== filterMonth || dateYear !== parsedYear) {
-          setFilterDate(null);
-        }
-      }
-    }
   };
 
   const handleMonthNavChange = (newMonth) => {
@@ -280,7 +280,7 @@ const ViewAttendance = ({ locationId }) => {
       return;
     }
     const doc = new jsPDF();
-    doc.setFont('helvetica', 'normal');
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(14);
     doc.text("Attendance Records Report", 14, 20);
     doc.setFontSize(10);
@@ -293,14 +293,12 @@ const ViewAttendance = ({ locationId }) => {
     doc.text(`Total Absent: ${statusTotals.absent}`, 14, 90);
     doc.text(`Total Leave: ${statusTotals.leave}`, 14, 100);
     doc.text(`Total Half-Day: ${statusTotals["half-day"]}`, 14, 110);
-
     const body = filteredAttendance.map(record => [
       record.employee?.employeeId || "N/A",
       record.employee?.name || "Unknown",
-      record.status.charAt(0).toUpperCase() + record.status.slice(1),
+      record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1) : "N/A",
       isNaN(new Date(record.date)) ? "Invalid Date" : format(new Date(record.date), "PPP"),
     ]);
-
     autoTable(doc, {
       startY: 120,
       head: [["ID", "Name", "Status", "Date"]],
@@ -309,7 +307,6 @@ const ViewAttendance = ({ locationId }) => {
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [59, 130, 246] },
     });
-
     doc.save(`Attendance_Records_${format(new Date(), "yyyy-MM-dd")}.pdf`);
     toast.success("PDF downloaded successfully", { duration: 5000 });
   };
@@ -319,58 +316,54 @@ const ViewAttendance = ({ locationId }) => {
       toast.error("No attendance data available to export", { duration: 5000 });
       return;
     }
-
     const data = filteredAttendance.map((record) => ({
       ID: record.employee?.employeeId || "N/A",
       Name: record.employee?.name || "Unknown",
-      Status: record.status.charAt(0).toUpperCase() + record.status.slice(1),
+      Status: record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1) : "N/A",
       Date: isNaN(new Date(record.date)) ? "Invalid Date" : format(new Date(record.date), "PPP"),
     }));
-
     const ws = XLSX.utils.json_to_sheet(data, {
       header: ["ID", "Name", "Status", "Date"],
     });
-
-    ws['!cols'] = [
+    ws["!cols"] = [
       { wch: 15 },
       { wch: 30 },
       { wch: 15 },
       { wch: 20 },
     ];
-
-    const range = XLSX.utils.decode_range(ws['!ref']);
+    const range = XLSX.utils.decode_range(ws["!ref"]);
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const cell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
       if (cell) {
         cell.s = {
           font: { bold: true },
-          fill: { fgColor: { rgb: '3B82F6' } },
-          color: { rgb: 'FFFFFF' },
-          alignment: { horizontal: 'center' },
+          fill: { fgColor: { rgb: "3B82F6" } },
+          color: { rgb: "FFFFFF" },
+          alignment: { horizontal: "center" },
         };
       }
     }
-
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Attendance Records');
-
-    const headerWs = XLSX.utils.json_to_sheet([
-      { A: 'Attendance Records Report' },
-      { A: `Location: ${locationId}` },
-      { A: `Month: ${filterMonth ? months.find((m) => m.value === filterMonth)?.label : "N/A"}` },
-      { A: `Year: ${filterYear || "N/A"}` },
-      ...(filterDate ? [{ A: `Date: ${format(filterDate, "PPP")}` }] : []),
-      ...(filterStatus !== "all" ? [{ A: `Status: ${filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)}` }] : []),
-      { A: `Total Present: ${statusTotals.present}` },
-      { A: `Total Absent: ${statusTotals.absent}` },
-      { A: `Total Leave: ${statusTotals.leave}` },
-      { A: `Total Half-Day: ${statusTotals["half-day"]}` },
-      { A: '' },
-    ], { skipHeader: true });
-    XLSX.utils.book_append_sheet(wb, headerWs, 'Header');
-
+    XLSX.utils.book_append_sheet(wb, ws, "Attendance Records");
+    const headerWs = XLSX.utils.json_to_sheet(
+      [
+        { A: "Attendance Records Report" },
+        { A: `Location: ${locationId}` },
+        { A: `Month: ${filterMonth ? months.find((m) => m.value === filterMonth)?.label : "N/A"}` },
+        { A: `Year: ${filterYear || "N/A"}` },
+        ...(filterDate ? [{ A: `Date: ${format(filterDate, "PPP")}` }] : []),
+        ...(filterStatus !== "all" ? [{ A: `Status: ${filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)}` }] : []),
+        { A: `Total Present: ${statusTotals.present}` },
+        { A: `Total Absent: ${statusTotals.absent}` },
+        { A: `Total Leave: ${statusTotals.leave}` },
+        { A: `Total Half-Day: ${statusTotals["half-day"]}` },
+        { A: "" },
+      ],
+      { skipHeader: true }
+    );
+    XLSX.utils.book_append_sheet(wb, headerWs, "Header");
     const filename = `Attendance_Records_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    XLSX.writeFile(wb, filename, { bookType: 'xlsx', type: 'binary' });
+    XLSX.writeFile(wb, filename, { bookType: "xlsx", type: "binary" });
     toast.success("Excel downloaded successfully", { duration: 5000 });
   };
 
@@ -481,7 +474,7 @@ const ViewAttendance = ({ locationId }) => {
                       disabled={(date) =>
                         date > new Date() ||
                         (filterMonth && filterYear &&
-                         (date.getMonth() + 1 !== filterMonth || date.getFullYear() !== filterYear))
+                          (date.getMonth() + 1 !== filterMonth || date.getFullYear() !== filterYear))
                       }
                       className="border border-complementary rounded-md text-sm"
                       modifiers={{
@@ -576,7 +569,7 @@ const ViewAttendance = ({ locationId }) => {
         </CardHeader>
         <CardContent className="p-6">
           <p className="text-body text-sm mb-4">
-            Showing attendance for {filterDate ? format(filterDate, "PPP") : `full month (${filterMonth ? months.find((m) => m.value === filterMonth)?.label : "N/A"} ${filterYear || "N/A"})`}
+            Showing attendance for {filterDate ? format(filterDate, "PPP") : `full month (${filterMonth ? months.find((m) => m.value === filterMonth)?.label : "N/A"} ${filterYear || "N/A"})`} ({filteredAttendance.length} records)
           </p>
           {attLoading || empLoading ? (
             <div className="flex justify-center py-4">
@@ -644,10 +637,10 @@ const ViewAttendance = ({ locationId }) => {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span>{record.status.charAt(0).toUpperCase()}</span>
+                              <span>{record.status ? record.status.charAt(0).toUpperCase() : "N/A"}</span>
                             </TooltipTrigger>
                             <TooltipContent className="bg-body text-body border-complementary text-sm">
-                              {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                              {record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1) : "No Status"}
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -675,7 +668,11 @@ const ViewAttendance = ({ locationId }) => {
               </Table>
             </div>
           ) : (
-            <p className="text-body text-sm text-center py-4">No attendance records found</p>
+            <p className="text-body text-sm text-center py-4">
+              {filterDate
+                ? `No attendance records found for ${format(filterDate, "PPP")}. Records may exist for other dates.`
+                : "No attendance records found. Please select a date or month/year."}
+            </p>
           )}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-4">

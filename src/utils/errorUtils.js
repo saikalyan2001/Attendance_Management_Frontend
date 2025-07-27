@@ -1,4 +1,3 @@
-// utils/errorUtils.js
 export const parseServerError = (error) => {
   if (!error) return { message: 'An unknown error occurred', fields: {} };
 
@@ -24,13 +23,16 @@ export const parseServerError = (error) => {
       fieldErrors.year = 'Invalid year';
     } else if (error.includes('At least one document is required')) {
       fieldErrors.documents = 'At least one document is required';
+    } else if (error.includes('Invalid join date')) {
+      fieldErrors.joinDate = 'Invalid join date';
     }
     return { message: error, fields: fieldErrors };
   }
 
   if (error.message && error.errors) {
     const fieldErrors = error.errors.reduce((acc, err) => {
-      acc[err.field] = err.message;
+      // Map row-specific errors to a generic field for display
+      acc[`row_${err.row}`] = `Row ${err.row}: ${err.message}`;
       return acc;
     }, {});
     return { message: error.message || 'Validation failed', fields: fieldErrors };

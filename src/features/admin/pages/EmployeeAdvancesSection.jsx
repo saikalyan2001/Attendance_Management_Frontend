@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,9 @@ import { format } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
+import toast from 'react-hot-toast';
+import { parseServerError } from '../../../utils/errorUtils';
+import { fetchEmployeeAdvances } from '../redux/employeeSlice';
 
 const EmployeeAdvancesSection = ({
   advances,
@@ -19,35 +22,27 @@ const EmployeeAdvancesSection = ({
   setSortOrder,
   employeeName,
   isLoading = false,
+  totalPages,
+  dispatch,
+  id,
+  itemsPerPage = 5,
 }) => {
-  const ITEMS_PER_PAGE = 5;
   const [isTableOpen, setIsTableOpen] = useState(true);
 
-  const sortedAdvances = useMemo(() => {
-    if (!advances || !Array.isArray(advances)) return [];
-
-    return [...advances].sort((a, b) => {
-      let aValue, bValue;
-      if (sortField === 'amount') {
-        aValue = a.amount || 0;
-        bValue = b.amount || 0;
-      } else if (sortField === 'month') {
-        aValue = a.month || 0;
-        bValue = b.month || 0;
-      } else if (sortField === 'year') {
-        aValue = a.year || 0;
-        bValue = b.year || 0;
-      }
-
-      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-    });
-  }, [advances, sortField, sortOrder]);
-
-  const totalPages = Math.ceil(sortedAdvances.length / ITEMS_PER_PAGE);
-  const paginatedAdvances = sortedAdvances.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+useEffect(() => {
+  if (!advances) {
+    dispatch(fetchEmployeeAdvances({ id, page: currentPage, limit: itemsPerPage, sortField, sortOrder }))
+      .unwrap()
+      .catch((error) => {
+        const parsedError = parseServerError(error);
+        toast.error(parsedError.message, {
+          id: 'advances-fetch-error',
+          duration: 5000,
+          position: 'top-center',
+        });
+      });
+  }
+}, [dispatch, id, currentPage, itemsPerPage, sortField, sortOrder]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -57,11 +52,32 @@ const EmployeeAdvancesSection = ({
       setSortOrder('asc');
     }
     setCurrentPage(1);
+    // Fetch advances with new sort parameters
+    dispatch(fetchEmployeeAdvances({ id, page: 1, limit: itemsPerPage, sortField: field, sortOrder: sortOrder === 'asc' ? 'desc' : 'asc' }))
+      .unwrap()
+      .catch((error) => {
+        const parsedError = parseServerError(error);
+        toast.error(parsedError.message, {
+          id: 'advances-sort-error',
+          duration: 5000,
+          position: 'top-center',
+        });
+      });
   };
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
+      dispatch(fetchEmployeeAdvances({ id, page, limit: itemsPerPage, sortField, sortOrder }))
+        .unwrap()
+        .catch((error) => {
+          const parsedError = parseServerError(error);
+          toast.error(parsedError.message, {
+            id: 'advances-page-error',
+            duration: 5000,
+            position: 'top-center',
+          });
+        });
     }
   };
 
@@ -179,8 +195,8 @@ const EmployeeAdvancesSection = ({
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : paginatedAdvances.length > 0 ? (
-                    paginatedAdvances.map((advance, index) => (
+                  ) : advances.length > 0 ? (
+                    advances.map((advance, index) => (
                       <TableRow key={advance._id || index} className="hover:bg-accent/5 transition-colors">
                         <TableCell className="text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left break-words">
                           ₹{advance.amount}

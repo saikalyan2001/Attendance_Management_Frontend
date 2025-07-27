@@ -15,11 +15,18 @@ const EmployeeProfile = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { employee, attendance, loadingGeneral, loadingFetch: loadingSettings } = useSelector((state) => state.siteInchargeEmployee);
+  const { employee, attendance, attendancePagination, loadingGeneral, loadingFetch: loadingSettings } = useSelector((state) => state.siteInchargeEmployee);
   const [advancesSortField, setAdvancesSortField] = useState('year');
   const [advancesSortOrder, setAdvancesSortOrder] = useState('desc');
   const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
+  const [documentsCurrentPage, setDocumentsCurrentPage] = useState(1);
+  const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
+  const [monthFilter, setMonthFilter] = useState(1); // January
+  const [yearFilter, setYearFilter] = useState(2025); // 2025
   const [activeTab, setActiveTab] = useState('profile');
+
+  console.log("employee", employee);
+  
 
   const tabs = [
     { id: 'profile', label: 'Profile' },
@@ -29,11 +36,34 @@ const EmployeeProfile = () => {
   ];
 
   useEffect(() => {
-    dispatch(getEmployee(id));
-    dispatch(fetchEmployeeAttendance({ employeeId: id, month: new Date().getMonth() + 1, year: new Date().getFullYear() }));
+    console.log('EmployeeProfile - Dispatching fetchEmployeeAttendance with:', {
+      employeeId: id,
+      month: monthFilter,
+      year: yearFilter,
+      page: attendanceCurrentPage,
+      limit: 10,
+      sortField: 'date',
+      sortOrder: 'desc',
+    });
+    dispatch(getEmployee({
+      id,
+      documentsPage: documentsCurrentPage,
+      documentsLimit: 10,
+      advancesPage: advancesCurrentPage,
+      advancesLimit: 5,
+    }));
+    dispatch(fetchEmployeeAttendance({
+      employeeId: id,
+      month: monthFilter,
+      year: yearFilter,
+      page: attendanceCurrentPage,
+      limit: 10,
+      sortField: 'date',
+      sortOrder: 'desc',
+    }));
     dispatch(fetchSettings());
     return () => dispatch(reset());
-  }, [dispatch, id]);
+  }, [dispatch, id, documentsCurrentPage, advancesCurrentPage, attendanceCurrentPage, monthFilter, yearFilter]);
 
   if (loadingGeneral || !employee || loadingSettings) {
     return (
@@ -128,19 +158,44 @@ const EmployeeProfile = () => {
         {/* Tab Content */}
         <div className="space-y-4 sm:space-y-6">
           {activeTab === 'profile' && <EmployeeDetails employee={employee} />}
-          {activeTab === 'attendance' && <AttendanceHistory attendance={attendance} employeeId={id} />}
+          {activeTab === 'attendance' && (
+            <AttendanceHistory
+              attendance={attendance}
+              attendancePagination={attendancePagination}
+              employeeId={id}
+              employeeName={employee?.name}
+              currentPage={attendanceCurrentPage}
+              setCurrentPage={setAttendanceCurrentPage}
+              monthFilter={monthFilter}
+              setMonthFilter={setMonthFilter}
+              yearFilter={yearFilter}
+              setYearFilter={setYearFilter}
+            />
+          )}
           {activeTab === 'advances' && (
             <AdvanceHistory
               advances={employee?.advances || []}
+              advancesPagination={employee?.advancesPagination}
               currentPage={advancesCurrentPage}
               setCurrentPage={setAdvancesCurrentPage}
               sortField={advancesSortField}
               setSortField={setAdvancesSortField}
               sortOrder={advancesSortOrder}
               setSortOrder={setAdvancesSortOrder}
+              employeeName={employee?.name}
+              isLoading={loadingGeneral}
             />
           )}
-          {activeTab === 'documents' && <Documents employeeId={id} documents={employee.documents} />}
+          {activeTab === 'documents' && (
+            <Documents
+              employeeId={id}
+              documents={employee.documents}
+              documentsPagination={employee.documentsPagination}
+              setDocumentsCurrentPage={setDocumentsCurrentPage}
+              employeeName={employee.name || 'Documents'}
+              isLoading={loadingGeneral}
+            />
+          )}
         </div>
       </div>
     </Layout>

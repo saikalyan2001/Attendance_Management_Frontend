@@ -87,7 +87,7 @@ const formatUploadedAt = (uploadedAt) => {
   }
 };
 
-const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoading = false }) => {
+const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCurrentPage, employeeName = 'Documents', isLoading = false }) => {
   const dispatch = useDispatch();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -99,12 +99,12 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
   const [previewUrls, setPreviewUrls] = useState({});
   const [removingIndices, setRemovingIndices] = useState([]);
   const [isTableOpen, setIsTableOpen] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState('uploadedAt');
   const [sortOrder, setSortOrder] = useState('desc');
-  const itemsPerPage = 5; // Changed to 5 items per page
   const autoDismissDuration = 5000;
   const formRef = useRef(null);
+    const [serverError, setServerError] = useState(null);
+  
 
   const uploadForm = useForm({
     resolver: zodResolver(uploadDocumentSchema),
@@ -150,16 +150,6 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
     });
   }, [filteredDocuments, sortField, sortOrder]);
 
-  // Pagination logic
-  const totalItems = sortedDocuments.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const paginatedDocuments = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    console.log('Pagination - currentPage:', currentPage, 'totalItems:', totalItems, 'totalPages:', totalPages, 'startIndex:', startIndex, 'endIndex:', endIndex);
-    return sortedDocuments.slice(startIndex, endIndex);
-  }, [sortedDocuments, currentPage, itemsPerPage]);
-
   const handleSort = (field) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -167,12 +157,12 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
       setSortField(field);
       setSortOrder('asc');
     }
-    setCurrentPage(1);
+    setDocumentsCurrentPage(1); // Reset to first page on sort change
   };
 
   const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
+    if (page >= 1 && page <= documentsPagination?.totalPages) {
+      setDocumentsCurrentPage(page);
       console.log('Page changed to:', page);
     }
   };
@@ -249,7 +239,7 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
       setPreviewUrls({});
       setDragStates({});
       setRemovingIndices([]);
-      setCurrentPage(1); // Reset to first page after upload
+      setDocumentsCurrentPage(1); // Reset to first page after upload
     } catch (err) {
       console.error('Upload error:', err);
       toast.dismiss();
@@ -611,8 +601,8 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : paginatedDocuments.length > 0 ? (
-                    paginatedDocuments.map((doc, index) => (
+                  ) : sortedDocuments.length > 0 ? (
+                    sortedDocuments.map((doc, index) => (
                       <TableRow key={index} className="hover:bg-accent/5 transition-colors">
                         <TableCell className="flex items-center text-[10px] xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left break-words">
                           {getFileIcon(doc.name)}
@@ -682,82 +672,82 @@ const Documents = ({ employeeId, documents, employeeName = 'Documents', isLoadin
                 </TableBody>
               </Table>
             </div>
-            <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1 || isLoading}
-                      className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-[10px] xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
-                      aria-label="Go to previous page"
-                    >
-                      <ChevronLeft className="h-4 xs:h-5 w-4 xs:w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
-                    Navigate to previous page
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex flex-wrap justify-center items-center gap-2">
-                {totalPages > 0 ? (
-                  Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <TooltipProvider key={page}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={currentPage === page ? 'default' : 'outline'}
-                            onClick={() => handlePageChange(page)}
-                            disabled={isLoading}
-                            className={cn(
-                              currentPage === page
-                                ? 'bg-accent text-body hover:bg-accent-hover'
-                                : 'border-accent text-accent hover:bg-accent-hover hover:text-body',
-                              'rounded-lg text-[10px] xs:text-sm sm:text-base py-1 xs:py-2 px-2 xs:px-3 min-h-[36px] transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2'
-                            )}
-                            aria-label={`Go to page ${page}`}
-                          >
-                            {page}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
-                          Go to page {page}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ))
-                ) : (
-                  <Button
-                    variant="outline"
-                    disabled
-                    className="border-accent text-accent rounded-lg text-[10px] xs:text-sm sm:text-base py-1 xs:py-2 px-2 xs:px-3 min-h-[36px] transition-all duration-300"
-                    aria-label="Page 1"
-                  >
-                    1
-                  </Button>
+           <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          onClick={() => handlePageChange((documentsPagination?.page || 1) - 1)}
+          disabled={(documentsPagination?.page || 1) === 1 || isLoading}
+          className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-[10px] xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+          aria-label="Go to previous page"
+        >
+          <ChevronLeft className="h-4 xs:h-5 w-4 xs:w-5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
+        Navigate to previous page
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+  <div className="flex flex-wrap justify-center items-center gap-2">
+    {documentsPagination?.totalPages > 0 ? (
+      Array.from({ length: documentsPagination.totalPages }, (_, i) => i + 1).map((page) => (
+        <TooltipProvider key={page}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={documentsPagination?.page === page ? 'default' : 'outline'}
+                onClick={() => handlePageChange(page)}
+                disabled={isLoading}
+                className={cn(
+                  documentsPagination?.page === page
+                    ? 'bg-accent text-body hover:bg-accent-hover'
+                    : 'border-accent text-accent hover:bg-accent-hover hover:text-body',
+                  'rounded-lg text-[10px] xs:text-sm sm:text-base py-1 xs:py-2 px-2 xs:px-3 min-h-[36px] transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2'
                 )}
-              </div>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages || isLoading}
-                      className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-[10px] xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
-                      aria-label="Go to next page"
-                    >
-                      <ChevronRight className="h-4 xs:h-5 w-4 xs:w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
-                    Navigate to next page
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+                aria-label={`Go to page ${page}`}
+              >
+                {page}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
+              Go to page {page}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ))
+    ) : (
+      <Button
+        variant="outline"
+        disabled
+        className="border-accent text-accent rounded-lg text-[10px] xs:text-sm sm:text-base py-1 xs:py-2 px-2 xs:px-3 min-h-[36px] transition-all duration-300"
+        aria-label="Page 1"
+      >
+        1
+      </Button>
+    )}
+  </div>
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          onClick={() => handlePageChange((documentsPagination?.page || 1) + 1)}
+          disabled={(documentsPagination?.page || 1) === (documentsPagination?.totalPages || 1) || isLoading}
+          className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-[10px] xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+          aria-label="Go to next page"
+        >
+          <ChevronRight className="h-4 xs:h-5 w-4 xs:w-5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="bg-complementary text-body border-accent text-[10px] xs:text-sm sm:text-base">
+        Navigate to next page
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+</div>
           </CollapsibleContent>
         </Collapsible>
       </CardContent>

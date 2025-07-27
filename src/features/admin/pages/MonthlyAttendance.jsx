@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchAttendance, editAttendance } from "../redux/attendanceSlice";
+import { fetchMonthlyAttendance, editAttendance } from "../redux/attendanceSlice";
 import { fetchEmployees } from "../redux/employeeSlice";
 import { fetchLocations } from "../redux/locationsSlice";
 import { Button } from "@/components/ui/button";
@@ -69,25 +69,25 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
-const MonthlyAttendance = () => {
+const MonthlyAttendance = ({ month, year, location, setLocation, setMonth, setYear }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const { employees, loading: empLoading } = useSelector(
     (state) => state.adminEmployees
   );
-  const { attendance, loading } = useSelector(
+  const { monthlyAttendance, monthlyPagination, loading, error } = useSelector(
     (state) => state.adminAttendance
   );
   const { locations, loading: locationsLoading } = useSelector(
     (state) => state.adminLocations
   );
 
-  const [locationFilter, setLocationFilter] = useState("all");
-  const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
-  const [displayMonth, setDisplayMonth] = useState(new Date().getMonth() + 1);
-  const [displayYear, setDisplayYear] = useState(new Date().getFullYear());
+  const [locationFilter, setLocationFilter] = useState(location || "all");
+  const [monthFilter, setMonthFilter] = useState(month || new Date().getMonth() + 1);
+  const [yearFilter, setYearFilter] = useState(year || new Date().getFullYear());
+  const [displayMonth, setDisplayMonth] = useState(month || new Date().getMonth() + 1);
+  const [displayYear, setDisplayYear] = useState(year || new Date().getFullYear());
   const [editDialog, setEditDialog] = useState({
     open: false,
     attendanceId: null,
@@ -99,10 +99,15 @@ const MonthlyAttendance = () => {
   const [sortField, setSortField] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
   const [monthlySearch, setMonthlySearch] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [attendancePage, setAttendancePage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
-  const employeesPerPage = 5; // Fixed page size of 5
   const [dateFilter, setDateFilter] = useState(null);
+  const attendancePerPage = 5;
+
+  // Debug logging to trace monthlyPagination
+  useEffect(() => {
+    console.log("monthlyPagination:", monthlyPagination);
+  }, [monthlyPagination]);
 
   useEffect(() => {
     if (!user || user.role !== "admin") {
@@ -116,14 +121,29 @@ const MonthlyAttendance = () => {
     if (locationFilter && locationFilter !== "all") {
       dispatch(fetchEmployees({ location: locationFilter }));
       dispatch(
-        fetchAttendance({
+        fetchMonthlyAttendance({
           month: monthFilter,
           year: yearFilter,
           location: locationFilter,
+          page: attendancePage,
+          limit: attendancePerPage,
         })
       );
     }
-  }, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter]);
+  }, [dispatch, user, navigate, locationFilter, monthFilter, yearFilter, attendancePage]);
+
+  useEffect(() => {
+    setLocation(locationFilter);
+    setMonth(monthFilter);
+    setYear(yearFilter);
+  }, [locationFilter, monthFilter, yearFilter, setLocation, setMonth, setYear]);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error, { duration: 5000 });
+      dispatch({ type: "adminAttendance/reset" });
+    }
+  }, [error, dispatch]);
 
   const handleEditAttendance = (attendanceId, employeeName, date, currentStatus) => {
     setEditDialog({
@@ -140,7 +160,7 @@ const MonthlyAttendance = () => {
     const parsedMonth = parseInt(value);
     setMonthFilter(parsedMonth);
     setDisplayMonth(parsedMonth);
-    setCurrentPage(1);
+    setAttendancePage(1);
     setDateFilter(null);
   };
 
@@ -148,19 +168,18 @@ const MonthlyAttendance = () => {
     const parsedYear = parseInt(value);
     setYearFilter(parsedYear);
     setDisplayYear(parsedYear);
-    setCurrentPage(1);
+    setAttendancePage(1);
     setDateFilter(null);
   };
 
   const handleLocationChange = (value) => {
     setLocationFilter(value);
-    setCurrentPage(1);
+    setAttendancePage(1);
     setDateFilter(null);
   };
 
   const handleSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-    setCurrentPage(1);
   };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -192,33 +211,35 @@ const MonthlyAttendance = () => {
       }));
   }, [startDate, endDate, dateFilter]);
 
-  const sortedEmployees = useMemo(() => {
-    return [...employees]
+  // Get unique employees from monthlyAttendance
+  const attendanceEmployees = useMemo(() => {
+    const employeeMap = new Map();
+    monthlyAttendance.forEach((att) => {
+      if (att.employee && att.employee._id) {
+        employeeMap.set(att.employee._id.toString(), att.employee);
+      }
+    });
+    return Array.from(employeeMap.values())
       .filter(
         (emp) =>
-          emp.name.toLowerCase().includes(monthlySearch.toLowerCase()) ||
-          emp.employeeId.toLowerCase().includes(monthlySearch.toLowerCase())
+          !monthlySearch ||
+          emp.name?.toLowerCase().includes(monthlySearch.toLowerCase()) ||
+          emp.employeeId?.toLowerCase().includes(monthlySearch.toLowerCase())
       )
       .sort((a, b) => {
-        const aValue = a[sortField].toLowerCase();
-        const bValue = b[sortField].toLowerCase();
+        const aValue = a[sortField]?.toLowerCase() || "";
+        const bValue = b[sortField]?.toLowerCase() || "";
         return sortOrder === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       });
-  }, [employees, sortField, sortOrder, monthlySearch]);
+  }, [monthlyAttendance, sortField, sortOrder, monthlySearch]);
 
-  const paginatedEmployees = useMemo(() => {
-    const startIndex = (currentPage - 1) * employeesPerPage;
-    return sortedEmployees.slice(startIndex, startIndex + employeesPerPage);
-  }, [sortedEmployees, currentPage]);
-
-  const totalPages = Math.ceil(sortedEmployees.length / employeesPerPage);
-
-  const getPageNumbers = () => {
+  const getAttendancePageNumbers = () => {
     const maxPagesToShow = 5;
     const pages = [];
-    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+    const totalPages = monthlyPagination?.totalPages || 1;
+    let startPage = Math.max(1, attendancePage - Math.floor(maxPagesToShow / 2));
     let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
 
     if (endPage - startPage + 1 < maxPagesToShow) {
@@ -253,7 +274,7 @@ const MonthlyAttendance = () => {
   };
 
   const handleDownloadExcel = () => {
-    if (!attendance || !attendance.length) {
+    if (!monthlyAttendance || !monthlyAttendance.length) {
       toast.error("No attendance data available to export. Please select a location and ensure data is loaded.", { duration: 5000 });
       return;
     }
@@ -265,7 +286,7 @@ const MonthlyAttendance = () => {
       "half-day": 0,
     };
 
-    const data = sortedEmployees.map((emp) => {
+    const data = attendanceEmployees.map((emp) => {
       const counts = {
         present: 0,
         absent: 0,
@@ -273,9 +294,9 @@ const MonthlyAttendance = () => {
         "half-day": 0,
       };
       const statuses = days.map((day) => {
-        const record = attendance.find(
+        const record = monthlyAttendance.find(
           (att) =>
-            att.employee?._id?.toString() === emp._id.toString() &&
+            att.employee?._id?.toString() === emp._id?.toString() &&
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
         if (record) {
@@ -286,8 +307,8 @@ const MonthlyAttendance = () => {
         return "-";
       });
       return {
-        ID: emp.employeeId,
-        Employee: emp.name,
+        ID: emp.employeeId || "N/A",
+        Employee: emp.name || "Unknown",
         ...days.reduce((acc, day, index) => {
           acc[day.formatted] = statuses[index];
           return acc;
@@ -303,7 +324,7 @@ const MonthlyAttendance = () => {
       ID: "",
       Employee: "Daily Totals",
       ...days.reduce((acc, day) => {
-        const records = attendance.filter(
+        const records = monthlyAttendance.filter(
           (att) =>
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
@@ -370,7 +391,7 @@ const MonthlyAttendance = () => {
   };
 
   const handleDownloadPDF = () => {
-    if (!attendance || !attendance.length) {
+    if (!monthlyAttendance || !monthlyAttendance.length) {
       toast.error("No attendance data available to export. Please select a location and ensure data is loaded.", { duration: 5000 });
       return;
     }
@@ -407,7 +428,7 @@ const MonthlyAttendance = () => {
       "half-day": 0,
     };
 
-    const body = sortedEmployees.map((emp) => {
+    const body = attendanceEmployees.map((emp) => {
       const counts = {
         present: 0,
         absent: 0,
@@ -415,9 +436,9 @@ const MonthlyAttendance = () => {
         "half-day": 0,
       };
       const statuses = days.map((day) => {
-        const record = attendance.find(
+        const record = monthlyAttendance.find(
           (att) =>
-            att.employee?._id?.toString() === emp._id.toString() &&
+            att.employee?._id?.toString() === emp._id?.toString() &&
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
         if (record) {
@@ -442,7 +463,7 @@ const MonthlyAttendance = () => {
       "",
       "Daily Totals",
       ...days.map((day) => {
-        const records = attendance.filter(
+        const records = monthlyAttendance.filter(
           (att) =>
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
@@ -586,7 +607,6 @@ const MonthlyAttendance = () => {
                   value={monthlySearch}
                   onChange={(e) => {
                     setMonthlySearch(e.target.value);
-                    setCurrentPage(1);
                   }}
                   className="pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md text-sm"
                   aria-label="Search employees in monthly attendance"
@@ -621,7 +641,7 @@ const MonthlyAttendance = () => {
                       variant="outline"
                       onClick={() => {
                         setDateFilter(null);
-                        setCurrentPage(1);
+                        setAttendancePage(1);
                       }}
                       className="w-full border-accent text-accent hover:bg-accent-light hover:text-body text-sm py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                       aria-label="Show full month attendance"
@@ -644,7 +664,7 @@ const MonthlyAttendance = () => {
                         setYearFilter(date.getFullYear());
                         setDisplayMonth(date.getMonth() + 1);
                         setDisplayYear(date.getFullYear());
-                        setCurrentPage(1);
+                        setAttendancePage(1);
                       }}
                       onMonthChange={(newMonth) => {
                         setDisplayMonth(newMonth.getMonth() + 1);
@@ -746,7 +766,7 @@ const MonthlyAttendance = () => {
               <Button
                 onClick={handleDownloadExcel}
                 className="w-full bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={isExporting || loading || empLoading || locationsLoading || !sortedEmployees.length || locationFilter === "all" || !attendance?.length}
+                disabled={isExporting || loading || empLoading || locationsLoading || !attendanceEmployees.length || locationFilter === "all" || !monthlyAttendance?.length}
                 aria-label="Download monthly attendance as Excel"
               >
                 {isExporting ? (
@@ -762,7 +782,7 @@ const MonthlyAttendance = () => {
               <Button
                 onClick={handleDownloadPDF}
                 className="w-full bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={isExporting || loading || empLoading || locationsLoading || !sortedEmployees.length || locationFilter === "all" || !attendance?.length}
+                disabled={isExporting || loading || empLoading || locationsLoading || !attendanceEmployees.length || locationFilter === "all" || !monthlyAttendance?.length}
                 aria-label="Download monthly attendance as PDF"
               >
                 {isExporting ? (
@@ -782,7 +802,7 @@ const MonthlyAttendance = () => {
             <p className="text-body text-sm text-center py-4">
               Please select a specific location to view attendance records.
             </p>
-          ) : paginatedEmployees.length > 0 ? (
+          ) : attendanceEmployees.length > 0 ? (
             <div className="space-y-4">
               <div className="max-h-[400px] overflow-x-auto overflow-y-auto border border-complementary rounded-lg shadow-sm relative">
                 <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
@@ -829,7 +849,7 @@ const MonthlyAttendance = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedEmployees.map((emp, index) => {
+                    {attendanceEmployees.map((emp, index) => {
                       const counts = {
                         present: 0,
                         absent: 0,
@@ -845,15 +865,15 @@ const MonthlyAttendance = () => {
                           style={{ animationDelay: `${index * 0.05}s` }}
                         >
                           <TableCell className="text-body text-sm w-[100px] text-center px-2 whitespace-nowrap">
-                            {emp.employeeId}
+                            {emp.employeeId || "N/A"}
                           </TableCell>
                           <TableCell className="text-body text-sm w-[200px] text-center px-2 max-w-[200px] truncate">
-                            {emp.name}
+                            {emp.name || "Unknown"}
                           </TableCell>
                           {days.map((day) => {
-                            const record = attendance.find(
+                            const record = monthlyAttendance.find(
                               (att) =>
-                                att.employee?._id?.toString() === emp._id.toString() &&
+                                att.employee?._id?.toString() === emp._id?.toString() &&
                                 format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
                             );
                             if (record) {
@@ -869,7 +889,7 @@ const MonthlyAttendance = () => {
                                   record &&
                                   handleEditAttendance(
                                     record._id,
-                                    emp.name,
+                                    emp.name || "Unknown",
                                     day.date,
                                     record.status
                                   )
@@ -916,7 +936,7 @@ const MonthlyAttendance = () => {
                         Daily Totals
                       </TableCell>
                       {days.map((day) => {
-                        const records = attendance.filter(
+                        const records = monthlyAttendance.filter(
                           (att) =>
                             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
                         );
@@ -956,125 +976,53 @@ const MonthlyAttendance = () => {
                         );
                       })}
                       <TableCell className="text-body text-sm w-[80px] text-center px-2">
-                        {paginatedEmployees.reduce((sum, emp) => {
-                          const counts = {
-                            present: 0,
-                            absent: 0,
-                            leave: 0,
-                            "half-day": 0,
-                          };
-                          days.forEach((day) => {
-                            const record = attendance.find(
-                              (att) =>
-                                att.employee?._id?.toString() === emp._id.toString() &&
-                                format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                            );
-                            if (record) {
-                              counts[record.status]++;
-                            }
-                          });
-                          return sum + counts.present;
-                        }, 0)}
+                        {monthlyAttendance.reduce((sum, att) => (att.status === "present" ? sum + 1 : sum), 0)}
                       </TableCell>
                       <TableCell className="text-body text-sm w-[80px] text-center px-2">
-                        {paginatedEmployees.reduce((sum, emp) => {
-                          const counts = {
-                            present: 0,
-                            absent: 0,
-                            leave: 0,
-                            "half-day": 0,
-                          };
-                          days.forEach((day) => {
-                            const record = attendance.find(
-                              (att) =>
-                                att.employee?._id?.toString() === emp._id.toString() &&
-                                format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                            );
-                            if (record) {
-                              counts[record.status]++;
-                            }
-                          });
-                          return sum + counts.absent;
-                        }, 0)}
+                        {monthlyAttendance.reduce((sum, att) => (att.status === "absent" ? sum + 1 : sum), 0)}
                       </TableCell>
                       <TableCell className="text-body text-sm w-[80px] text-center px-2">
-                        {paginatedEmployees.reduce((sum, emp) => {
-                          const counts = {
-                            present: 0,
-                            absent: 0,
-                            leave: 0,
-                            "half-day": 0,
-                          };
-                          days.forEach((day) => {
-                            const record = attendance.find(
-                              (att) =>
-                                att.employee?._id?.toString() === emp._id.toString() &&
-                                format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                            );
-                            if (record) {
-                              counts[record.status]++;
-                            }
-                          });
-                          return sum + counts.leave;
-                        }, 0)}
+                        {monthlyAttendance.reduce((sum, att) => (att.status === "leave" ? sum + 1 : sum), 0)}
                       </TableCell>
                       <TableCell className="text-body text-sm w-[80px] text-center px-2">
-                        {paginatedEmployees.reduce((sum, emp) => {
-                          const counts = {
-                            present: 0,
-                            absent: 0,
-                            leave: 0,
-                            "half-day": 0,
-                          };
-                          days.forEach((day) => {
-                            const record = attendance.find(
-                              (att) =>
-                                att.employee?._id?.toString() === emp._id.toString() &&
-                                format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                            );
-                            if (record) {
-                              counts[record.status]++;
-                            }
-                          });
-                          return sum + counts["half-day"];
-                        }, 0)}
+                        {monthlyAttendance.reduce((sum, att) => (att.status === "half-day" ? sum + 1 : sum), 0)}
                       </TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
               </div>
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2">
+              {monthlyPagination && monthlyPagination.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setAttendancePage((prev) => Math.max(prev - 1, 1))}
+                    disabled={attendancePage === 1}
                     className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
-                    aria-label="Previous page"
+                    aria-label="Previous attendance page"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  {getPageNumbers().map((page) => (
+                  {getAttendancePageNumbers().map((page) => (
                     <Button
                       key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      onClick={() => setCurrentPage(page)}
+                      variant={attendancePage === page ? "default" : "outline"}
+                      onClick={() => setAttendancePage(page)}
                       className={`${
-                        currentPage === page
+                        attendancePage === page
                           ? "bg-accent text-body hover:bg-accent-hover"
                           : "border-complementary text-body hover:bg-complementary-light"
                       } text-sm w-10 h-10 rounded-md`}
-                      aria-label={`Go to page ${page}`}
+                      aria-label={`Go to attendance page ${page}`}
                     >
                       {page}
                     </Button>
                   ))}
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setAttendancePage((prev) => Math.min(prev + 1, monthlyPagination.totalPages))}
+                    disabled={attendancePage === monthlyPagination.totalPages}
                     className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
-                    aria-label="Next page"
+                    aria-label="Next attendance page"
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -1121,7 +1069,7 @@ const MonthlyAttendance = () => {
               </Label>
               <Input
                 id="currentStatus"
-                value={editDialog.currentStatus.charAt(0).toUpperCase() + editDialog.currentStatus.slice(1)}
+                value={editDialog.currentStatus ? editDialog.currentStatus.charAt(0).toUpperCase() + editDialog.currentStatus.slice(1) : ""}
                 disabled
                 className="bg-complementary-light text-body border-complementary h-10 rounded-md text-sm cursor-not-allowed"
                 aria-label="Current attendance status"
@@ -1228,10 +1176,12 @@ const MonthlyAttendance = () => {
                       newStatus: "",
                     });
                     dispatch(
-                      fetchAttendance({
+                      fetchMonthlyAttendance({
                         month: monthFilter,
                         year: yearFilter,
                         location: locationFilter,
+                        page: attendancePage,
+                        limit: attendancePerPage,
                       })
                     );
                   })
@@ -1258,4 +1208,3 @@ const MonthlyAttendance = () => {
 };
 
 export default MonthlyAttendance;
-

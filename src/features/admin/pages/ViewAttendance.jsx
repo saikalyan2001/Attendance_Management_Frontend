@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchEmployees } from "../redux/employeeSlice";
 import { fetchAttendance, reset, editAttendance } from "../redux/attendanceSlice";
@@ -43,7 +43,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CalendarIcon, Loader2, Search, Download, ArrowUp, ArrowDown, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarIcon, Loader2, Search, Download, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
 import jsPDF from "jspdf";
@@ -55,7 +55,7 @@ const ViewAttendance = () => {
   const { employees, loading: empLoading } = useSelector(
     (state) => state.adminEmployees
   );
-  const { attendance, loading: attLoading, error } = useSelector(
+  const { attendance, pagination, loading: attLoading, error } = useSelector(
     (state) => state.adminAttendance
   );
   const { locations, loading: locLoading } = useSelector(
@@ -70,7 +70,6 @@ const ViewAttendance = () => {
   const [displayYear, setDisplayYear] = useState(new Date().getFullYear());
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortConfig, setSortConfig] = useState({ column: "date", direction: "desc" });
   const [currentPage, setCurrentPage] = useState(1);
   const [editDialog, setEditDialog] = useState({
     open: false,
@@ -80,7 +79,7 @@ const ViewAttendance = () => {
     currentStatus: "",
     newStatus: "",
   });
-  const recordsPerPage = 5; // Fixed page size of 5
+  const recordsPerPage = 5; // Matches backend limit
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i + 1,
@@ -115,81 +114,25 @@ const ViewAttendance = () => {
         month: filterMonth,
         year: filterYear,
         location: locationId,
+        page: currentPage,
+        limit: recordsPerPage,
       };
       if (filterDate) filters.date = format(filterDate, "yyyy-MM-dd");
       if (filterStatus !== "all") filters.status = filterStatus;
       dispatch(fetchAttendance(filters));
     }
-  }, [dispatch, locationId, filterMonth, filterYear, filterDate, filterStatus]);
-
-  // Sorting logic
-  const sortedAttendance = useMemo(() => {
-    if (!attendance || !Array.isArray(attendance)) return [];
-
-    return [...attendance].sort((a, b) => {
-      if (sortConfig.column === "name") {
-        const nameA = a.employee?.name || "";
-        const nameB = b.employee?.name || "";
-        return sortConfig.direction === "asc"
-          ? nameA.localeCompare(nameB)
-          : nameB.localeCompare(nameA);
-      } else {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        if (isNaN(dateA)) return 1;
-        if (isNaN(dateB)) return -1;
-        return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
-      }
-    });
-  }, [attendance, sortConfig]);
-
-  // Client-side search filtering
-  const filteredAttendance = useMemo(() => {
-    let filtered = sortedAttendance;
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (record) =>
-          record.employee?.name?.toLowerCase().includes(searchQuery?.toLowerCase()) ||
-          record.employee?.employeeId?.toLowerCase().includes(searchQuery?.toLowerCase())
-      );
-    }
-    return filtered;
-  }, [sortedAttendance, searchQuery]);
-
-  // Pagination
-  const paginatedAttendance = useMemo(() => {
-    const startIndex = (currentPage - 1) * recordsPerPage;
-    return filteredAttendance.slice(startIndex, startIndex + recordsPerPage);
-  }, [filteredAttendance, currentPage]);
-
-  const totalPages = Math.ceil(filteredAttendance.length / recordsPerPage);
-
-  const getPageNumbers = () => {
-    const maxPagesToShow = 5;
-    const pages = [];
-    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
-    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
-
-    if (endPage - startPage + 1 < maxPagesToShow) {
-      startPage = Math.max(1, endPage - maxPagesToShow + 1);
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(i);
-    }
-    return pages;
-  };
+  }, [dispatch, locationId, filterMonth, filterYear, filterDate, filterStatus, currentPage]);
 
   // Status totals
   const statusTotals = useMemo(() => {
-    return filteredAttendance.reduce(
+    return attendance.reduce(
       (totals, record) => ({
         ...totals,
         [record.status]: (totals[record.status] || 0) + 1,
       }),
       { present: 0, absent: 0, leave: 0, "half-day": 0 }
     );
-  }, [filteredAttendance]);
+  }, [attendance]);
 
   // Days for Daily Totals
   const days = useMemo(() => {
@@ -206,15 +149,6 @@ const ViewAttendance = () => {
         formatted: format(day, "d"),
       }));
   }, [filterMonth, filterYear, filterDate]);
-
-  const handleSort = (column) => {
-    setSortConfig((prev) => ({
-      column,
-      direction:
-        prev.column === column && prev.direction === "asc" ? "desc" : "asc",
-    }));
-    setCurrentPage(1);
-  };
 
   const handleDateSelect = (date) => {
     if (date > new Date()) {
@@ -269,6 +203,8 @@ const ViewAttendance = () => {
             location: locationId,
             date: filterDate && format(new Date(filterDate), "yyyy-MM-dd"),
             status: filterStatus !== "all" && filterStatus,
+            page: currentPage,
+            limit: recordsPerPage,
           })
         );
       })
@@ -276,7 +212,7 @@ const ViewAttendance = () => {
   };
 
   const handleDownloadPDF = () => {
-    if (!filteredAttendance.length) {
+    if (!attendance.length) {
       toast.error("No attendance data available to export", { duration: 5000 });
       return;
     }
@@ -304,7 +240,7 @@ const ViewAttendance = () => {
     doc.text(`Total Leave: ${statusTotals.leave}`, 15, 78);
     doc.text(`Total Half-Day: ${statusTotals["half-day"]}`, 15, 85);
 
-    const body = filteredAttendance.map((record) => [
+    const body = attendance.map((record) => [
       record.employee?.employeeId || "N/A",
       record.employee?.name || "Unknown",
       record.status.charAt(0).toUpperCase(),
@@ -316,7 +252,7 @@ const ViewAttendance = () => {
       "Daily Totals",
       "",
       ...days.map((day) => {
-        const records = filteredAttendance.filter(
+        const records = attendance.filter(
           (att) =>
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
@@ -380,12 +316,12 @@ const ViewAttendance = () => {
   };
 
   const handleDownloadExcel = () => {
-    if (!filteredAttendance.length) {
+    if (!attendance.length) {
       toast.error("No attendance data available to export", { duration: 5000 });
       return;
     }
 
-    const data = filteredAttendance.map((record) => ({
+    const data = attendance.map((record) => ({
       ID: record.employee?.employeeId || "N/A",
       Name: record.employee?.name || "Unknown",
       Status: record.status.charAt(0).toUpperCase(),
@@ -397,7 +333,7 @@ const ViewAttendance = () => {
       Name: "Daily Totals",
       Status: "",
       Date: days.reduce((acc, day) => {
-        const records = filteredAttendance.filter(
+        const records = attendance.filter(
           (att) =>
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
@@ -458,6 +394,23 @@ const ViewAttendance = () => {
     const filename = `Attendance_Records_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
     XLSX.writeFile(wb, filename, { bookType: 'xlsx', type: 'binary' });
     toast.success("Excel downloaded successfully", { duration: 5000 });
+  };
+
+  const getPageNumbers = () => {
+    if (!pagination) return [];
+    const maxPagesToShow = 5;
+    const pages = [];
+    let startPage = Math.max(1, pagination.currentPage - Math.floor(maxPagesToShow / 2));
+    let endPage = Math.min(pagination.totalPages, startPage + maxPagesToShow - 1);
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
   };
 
   return (
@@ -691,7 +644,7 @@ const ViewAttendance = () => {
             <Button
               onClick={handleDownloadPDF}
               className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-              disabled={attLoading || empLoading || locLoading || !filteredAttendance.length || locationId === "all"}
+              disabled={attLoading || empLoading || locLoading || !attendance.length || locationId === "all"}
               aria-label="Download attendance records as PDF"
             >
               <Download className="h-4 w-4" />
@@ -700,7 +653,7 @@ const ViewAttendance = () => {
             <Button
               onClick={handleDownloadExcel}
               className="bg-accent text-body hover:bg-accent-hover text-sm py-2 px-4 flex items-center gap-2 h-10 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-              disabled={attLoading || empLoading || locLoading || !filteredAttendance.length || locationId === "all"}
+              disabled={attLoading || empLoading || locLoading || !attendance.length || locationId === "all"}
               aria-label="Download attendance records as Excel"
             >
               <Download className="h-4 w-4" />
@@ -718,7 +671,7 @@ const ViewAttendance = () => {
             </div>
           ) : locationId === "all" ? (
             <p className="text-body text-sm text-center py-4">Please select a specific location</p>
-          ) : filteredAttendance.length > 0 ? (
+          ) : attendance.length > 0 ? (
             <div className="space-y-4">
               <div className="max-h-[400px] overflow-x-auto relative">
                 <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
@@ -727,76 +680,51 @@ const ViewAttendance = () => {
                   <TableHeader className="sticky top-0 bg-complementary shadow-sm z-10">
                     <TableRow>
                       <TableHead className="text-body text-sm text-center px-2">ID</TableHead>
-                      <TableHead className="text-body text-sm text-center px-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleSort("name")}
-                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
-                          aria-label={`Sort by employee name ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
-                        >
-                          Employee Name
-                          {sortConfig.column === "name" && (
-                            sortConfig.direction === "asc" ? (
-                              <ArrowUp className="h-4 w-4" />
-                            ) : (
-                              <ArrowDown className="h-4 w-4" />
-                            )
-                          )}
-                        </Button>
-                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">Employee Name</TableHead>
                       <TableHead className="text-body text-sm text-center px-2">Status</TableHead>
-                      <TableHead className="text-body text-sm text-center px-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleSort("date")}
-                          className="flex items-center space-x-1 text-body hover:bg-accent-light mx-auto"
-                          aria-label={`Sort by date ${sortConfig.direction === "asc" ? "descending" : "ascending"}`}
-                        >
-                          Date
-                          {sortConfig.column === "date" && (
-                            sortConfig.direction === "asc" ? (
-                              <ArrowUp className="h-4 w-4" />
-                            ) : (
-                              <ArrowDown className="h-4 w-4" />
-                            )
-                          )}
-                        </Button>
-                      </TableHead>
+                      <TableHead className="text-body text-sm text-center px-2">Date</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedAttendance.map((record, index) => (
-                      <TableRow
-                        key={record._id}
-                        className={`${
-                          index % 2 === 0 ? "bg-body" : "bg-complementary-light"
-                        } hover:bg-accent-light cursor-pointer animate-slide-in-row`}
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                        onClick={() => handleEditAttendance(record)}
-                      >
-                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
-                          {record.employee?.employeeId || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap max-w-[200px] truncate">
-                          {record.employee?.name || "Unknown"}
-                        </TableCell>
-                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>{record.status.charAt(0).toUpperCase()}</span>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-body text-body border-complementary text-sm">
-                                {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableCell>
-                        <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
-                          {isNaN(new Date(record.date)) ? "Invalid Date" : format(new Date(record.date), "d")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {attendance
+                      .filter(
+                        (record) =>
+                          !searchQuery ||
+                          record.employee?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          record.employee?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((record, index) => (
+                        <TableRow
+                          key={record._id}
+                          className={`${
+                            index % 2 === 0 ? "bg-body" : "bg-complementary-light"
+                          } hover:bg-accent-light cursor-pointer animate-slide-in-row`}
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                          onClick={() => handleEditAttendance(record)}
+                        >
+                          <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                            {record.employee?.employeeId || "N/A"}
+                          </TableCell>
+                          <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap max-w-[200px] truncate">
+                            {record.employee?.name || "Unknown"}
+                          </TableCell>
+                          <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span>{record.status.charAt(0).toUpperCase()}</span>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-body text-body border-complementary text-sm">
+                                  {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
+                            {isNaN(new Date(record.date)) ? "Invalid Date" : format(new Date(record.date), "d")}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                   <TableFooter className="bg-complementary sticky bottom-0">
                     <TableRow>
@@ -814,12 +742,12 @@ const ViewAttendance = () => {
                   </TableFooter>
                 </Table>
               </div>
-              {totalPages > 1 && (
+              {pagination && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2">
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
+                    disabled={pagination.currentPage === 1}
                     className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Previous page"
                   >
@@ -828,10 +756,10 @@ const ViewAttendance = () => {
                   {getPageNumbers().map((page) => (
                     <Button
                       key={page}
-                      variant={currentPage === page ? "default" : "outline"}
+                      variant={pagination.currentPage === page ? "default" : "outline"}
                       onClick={() => setCurrentPage(page)}
                       className={`${
-                        currentPage === page
+                        pagination.currentPage === page
                           ? "bg-accent text-body hover:bg-accent-hover"
                           : "border-complementary text-body hover:bg-complementary-light"
                       } text-sm w-10 h-10 rounded-md`}
@@ -842,8 +770,8 @@ const ViewAttendance = () => {
                   ))}
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, pagination.totalPages))}
+                    disabled={pagination.currentPage === pagination.totalPages}
                     className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Next page"
                   >

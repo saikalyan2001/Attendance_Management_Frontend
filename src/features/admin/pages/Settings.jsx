@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -23,15 +24,22 @@ const formSchema = z.object({
     .number()
     .int()
     .min(12, 'Paid Leaves Per Year must be at least 12')
-    .max(360, 'Paid Leaves Per Year cannot exceed 360'),
+    .max(360, 'Paid Leaves Per Year cannot exceed 360')
+    .optional(),
+  updatePaidLeavesPerYear: z.boolean().optional(),
   halfDayDeduction: z
     .number()
     .min(0, 'Half-Day Deduction must be at least 0')
-    .max(1, 'Half-Day Deduction cannot exceed 1'),
+    .max(1, 'Half-Day Deduction cannot exceed 1')
+    .optional(),
+  updateHalfDayDeduction: z.boolean().optional(),
   highlightDuration: z
     .number()
-    .min(1, 'Highlight Duration must be at least 1 minute')
-    .max(10080, 'Highlight Duration cannot exceed 10,080 minutes (7 days)'),
+    .min(0.0167, 'Highlight Duration must be at least 0.0167 hours (1 minute)')
+    .max(168, 'Highlight Duration cannot exceed 168 hours (7 days)')
+    .optional(),
+  updateHighlightDuration: z.boolean().optional(),
+  applyLeaveChanges: z.boolean().optional(),
 });
 
 const Settings = () => {
@@ -47,10 +55,28 @@ const Settings = () => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       paidLeavesPerYear: 24,
+      updatePaidLeavesPerYear: false,
       halfDayDeduction: 0.5,
-      highlightDuration: 1440,
+      updateHalfDayDeduction: false,
+      highlightDuration: 24,
+      updateHighlightDuration: false,
+      applyLeaveChanges: false,
     },
   });
+
+  // Watch checkbox states to enable/disable the button
+  const watchedCheckboxes = form.watch([
+    'updatePaidLeavesPerYear',
+    'updateHalfDayDeduction',
+    'updateHighlightDuration',
+  ]);
+
+  // Reset applyLeaveChanges when updatePaidLeavesPerYear is unchecked
+  useEffect(() => {
+    if (!form.getValues('updatePaidLeavesPerYear')) {
+      form.setValue('applyLeaveChanges', false);
+    }
+  }, [watchedCheckboxes, form]);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -63,8 +89,12 @@ const Settings = () => {
     if (settings) {
       form.reset({
         paidLeavesPerYear: settings.paidLeavesPerYear || 24,
+        updatePaidLeavesPerYear: false,
         halfDayDeduction: settings.halfDayDeduction,
-        highlightDuration: settings.highlightDuration / (60 * 1000),
+        updateHalfDayDeduction: false,
+        highlightDuration: settings.highlightDuration / (60 * 60 * 1000),
+        updateHighlightDuration: false,
+        applyLeaveChanges: false,
       });
     }
   }, [settings, form]);
@@ -81,8 +111,8 @@ const Settings = () => {
       type: 'Half-Day Deduction must be a valid number',
     },
     highlightDuration: {
-      min: 'Highlight Duration must be at least 1 minute',
-      max: 'Highlight Duration cannot exceed 10,080 minutes (7 days)',
+      min: 'Highlight Duration must be at least 0.0167 hours (1 minute)',
+      max: 'Highlight Duration cannot exceed 168 hours (7 days)',
       type: 'Highlight Duration must be a valid number',
     },
   };
@@ -103,12 +133,21 @@ const Settings = () => {
       });
     }
     if (successUpdate) {
-      toast.success('Settings updated successfully', {
+      const updatedFields = [];
+      if (form.getValues('updatePaidLeavesPerYear')) updatedFields.push('Paid Leaves Per Year');
+      if (form.getValues('updateHalfDayDeduction')) updatedFields.push('Half-Day Deduction');
+      if (form.getValues('updateHighlightDuration')) updatedFields.push('Highlight Duration');
+      toast.success(`${updatedFields.join(', ')} updated successfully`, {
         id: 'update-success',
         duration: 5000,
         position: 'top-center',
       });
       dispatch(reset());
+      // Reset checkboxes after successful update
+      form.setValue('updatePaidLeavesPerYear', false);
+      form.setValue('updateHalfDayDeduction', false);
+      form.setValue('updateHighlightDuration', false);
+      form.setValue('applyLeaveChanges', false);
     }
     if (successLeaves) {
       toast.success(`Employee leaves updated successfully for ${employeeCount} employees`, {
@@ -119,44 +158,79 @@ const Settings = () => {
       dispatch(reset());
       setIsDialogOpen(false);
     }
-  }, [error, successUpdate, successLeaves, employeeCount, dispatch]);
+  }, [error, successUpdate, successLeaves, employeeCount, dispatch, form]);
 
-  const handleSaveClick = async () => {
+  const handleUpdateClick = async () => {
     try {
-      const isValid = await form.trigger();
-      if (!isValid) {
-        const errors = [];
-        const addError = (field, errorObj) => {
-          if (errorObj) {
-            const errorType = errorObj.type === 'number' ? 'type' : errorObj.type;
-            errors.push({ field, message: fieldErrorMessages[field][errorType] });
-          }
-        };
+      const fieldsToUpdate = [
+        { name: 'paidLeavesPerYear', checkbox: 'updatePaidLeavesPerYear' },
+        { name: 'halfDayDeduction', checkbox: 'updateHalfDayDeduction' },
+        { name: 'highlightDuration', checkbox: 'updateHighlightDuration' },
+      ].filter(field => form.getValues(field.checkbox));
 
-        const fieldOrder = ['paidLeavesPerYear', 'halfDayDeduction', 'highlightDuration'];
-        for (const field of fieldOrder) {
-          addError(field, form.formState.errors[field]);
-        }
+      console.log('Fields to update:', fieldsToUpdate.map(field => field.name));
+      console.log('Checkbox values:', {
+        updatePaidLeavesPerYear: form.getValues('updatePaidLeavesPerYear'),
+        updateHalfDayDeduction: form.getValues('updateHalfDayDeduction'),
+        updateHighlightDuration: form.getValues('updateHighlightDuration'),
+        applyLeaveChanges: form.getValues('applyLeaveChanges'),
+      });
 
-        if (errors.length > 0) {
-          const firstError = errors[0];
-          toast.error(firstError.message, {
-            id: `settings-validation-error-${firstError.field}`,
-            duration: 5000,
-            position: 'top-center',
-          });
-          const firstErrorField = document.querySelector(`[name="${firstError.field}"]`) || formRef.current;
-          if (firstErrorField) {
-            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            firstErrorField.focus();
-          }
-          return;
+      if (fieldsToUpdate.length === 0) {
+        toast.error('Please select at least one setting to update', {
+          id: 'no-selection-error',
+          duration: 5000,
+          position: 'top-center',
+        });
+        return;
+      }
+
+      const errors = [];
+      for (const field of fieldsToUpdate) {
+        const isValid = await form.trigger(field.name);
+        if (!isValid && form.formState.errors[field.name]) {
+          const errorType = form.formState.errors[field.name].type === 'number' ? 'type' : form.formState.errors[field.name].type;
+          errors.push({ field: field.name, message: fieldErrorMessages[field.name][errorType] });
         }
       }
-      await form.handleSubmit(onSubmit)();
+
+      if (errors.length > 0) {
+        const firstError = errors[0];
+        toast.error(firstError.message, {
+          id: `settings-validation-error-${firstError.field}`,
+          duration: 5000,
+          position: 'top-center',
+        });
+        const firstErrorField = document.querySelector(`[name="${firstError.field}"]`) || formRef.current;
+        if (firstErrorField) {
+          firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstErrorField.focus();
+        }
+        return;
+      }
+
+      if (form.getValues('updatePaidLeavesPerYear') && form.getValues('applyLeaveChanges')) {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No token found in localStorage');
+        }
+        const response = await fetch('http://localhost:5000/api/admin/employees/count', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to fetch employee count');
+        }
+        setEmployeeCount(data.count || 0);
+        setIsDialogOpen(true);
+      } else {
+        await submitFields(fieldsToUpdate);
+      }
     } catch (error) {
-      ('Save click error:', error);
-      toast.error('Error submitting form, please try again', {
+      console.error('Update settings error:', error);
+      toast.error(error.message || 'Error updating settings', {
         id: 'submit-error',
         duration: 5000,
         position: 'top-center',
@@ -164,20 +238,46 @@ const Settings = () => {
     }
   };
 
-  const onSubmit = (data) => {
-    const submissionData = {
-      paidLeavesPerYear: data.paidLeavesPerYear,
-      halfDayDeduction: data.halfDayDeduction,
-      highlightDuration: data.highlightDuration * 60 * 1000,
-    };
+  const submitFields = (fieldsToUpdate) => {
+    const data = form.getValues();
+    const submissionData = {};
+    fieldsToUpdate.forEach(field => {
+      if (field.name === 'paidLeavesPerYear') {
+        submissionData.paidLeavesPerYear = data.paidLeavesPerYear;
+      } else if (field.name === 'halfDayDeduction') {
+        submissionData.halfDayDeduction = data.halfDayDeduction;
+      } else if (field.name === 'highlightDuration') {
+        submissionData.highlightDuration = data.highlightDuration * 60 * 60 * 1000;
+      }
+    });
+
     dispatch(updateSettings(submissionData))
       .unwrap()
       .then(() => {
-        toast.success('Settings updated successfully', {
+        const updatedFields = fieldsToUpdate.map(field => 
+          field.name === 'paidLeavesPerYear' ? 'Paid Leaves Per Year' :
+          field.name === 'halfDayDeduction' ? 'Half-Day Deduction' :
+          'Highlight Duration'
+        );
+        toast.success(`${updatedFields.join(', ')} updated successfully`, {
           id: 'update-success',
           duration: 5000,
           position: 'top-center',
         });
+        if (form.getValues('updatePaidLeavesPerYear') && data.applyLeaveChanges) {
+          dispatch(updateEmployeeLeaves())
+            .unwrap()
+            .then((response) => {
+              setEmployeeCount(response.employeeCount || 0);
+            })
+            .catch((err) => {
+              toast.error(err.message || 'Failed to update employee leaves', {
+                id: 'leaves-error',
+                duration: 5000,
+                position: 'top-center',
+              });
+            });
+        }
       })
       .catch((err) => {
         toast.error(err.message || 'Failed to update settings', {
@@ -188,49 +288,17 @@ const Settings = () => {
       });
   };
 
-  const handleUpdateLeaves = async () => {
-  try {
-    const token = localStorage.getItem('token'); // Get token from localStorage
-    if (!token) {
-      throw new Error('No token found in localStorage');
-    }
-    ('Token before request:', token); // Log for debugging
-    const response = await fetch('http://localhost:5000/api/admin/employees/count', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to fetch employee count');
-    }
-    setEmployeeCount(data.count || 0);
-    setIsDialogOpen(true);
-  } catch (error) {
-    ('Fetch employee count error:', error);
-    toast.error(error.message || 'Failed to fetch employee count', {
-      id: 'employee-count-error',
-      duration: 5000,
-      position: 'top-center',
-    });
-  }
-};
-
-
   const confirmUpdateLeaves = () => {
-    dispatch(updateEmployeeLeaves())
-      .unwrap()
-      .then((response) => {
-        setEmployeeCount(response.employeeCount || 0);
-      })
-      .catch((err) => {
-        toast.error(err.message || 'Failed to update employee leaves', {
-          id: 'leaves-error',
-          duration: 5000,
-          position: 'top-center',
-        });
-      });
+    const fieldsToUpdate = [
+      { name: 'paidLeavesPerYear', checkbox: 'updatePaidLeavesPerYear' },
+      { name: 'halfDayDeduction', checkbox: 'updateHalfDayDeduction' },
+      { name: 'highlightDuration', checkbox: 'updateHighlightDuration' },
+    ].filter(field => form.getValues(field.checkbox));
+    submitFields(fieldsToUpdate);
+    setIsDialogOpen(false);
   };
+
+  const isUpdateButtonDisabled = !watchedCheckboxes.some(Boolean) || loadingUpdate || loadingLeaves;
 
   if (loadingFetch) {
     return (
@@ -274,117 +342,200 @@ const Settings = () => {
           </AlertDescription>
         </Alert>
       )}
-      <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto">
         <Card className="bg-complementary text-body shadow-md animate-fade-in">
           <CardHeader>
             <CardTitle className="text-base sm:text-lg md:text-xl">System Settings</CardTitle>
+            <p className="text-sm text-body/60">
+              Select the settings to update by checking the boxes, then click Update Selected Settings. For Paid Leaves Per Year, you can optionally apply changes to employee leave balances.
+            </p>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <form ref={formRef} className="space-y-6">
                 <FormField
                   control={form.control}
-                  name="paidLeavesPerYear"
-                  render={({ field }) => (
+                  name="updatePaidLeavesPerYear"
+                  render={({ field: checkboxField }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">Paid Leaves Per Year</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          className="bg-complementary text-body border-accent"
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          aria-label="Paid Leaves Per Year"
-                          disabled={loadingUpdate}
-                        />
-                      </FormControl>
-                      <p className="text-sm text-body/60 mt-1">
-                        Employees receive {field.value / 12} leaves per month, prorated for mid-year joiners (e.g., March joiners get {Math.round((field.value * 10) / 12) / 10} leaves for 10 months). Unused leaves are carried forward to the next month.
-                      </p>
-                      <FormMessage className="text-error text-xs sm:text-sm" />
+                      <div className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={checkboxField.value}
+                            onCheckedChange={(checked) => {
+                              checkboxField.onChange(checked);
+                              console.log('updatePaidLeavesPerYear changed:', checked);
+                            }}
+                            disabled={loadingUpdate || loadingLeaves}
+                            aria-label="Update Paid Leaves Per Year"
+                          />
+                        </FormControl>
+                        <FormLabel className="text-sm sm:text-base">Paid Leaves Per Year</FormLabel>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="paidLeavesPerYear"
+                        render={({ field }) => (
+                          <FormItem className="ml-8">
+                            <FormControl>
+                              <Input
+                                type="number"
+                                className="bg-complementary text-body border-accent"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value))}
+                                aria-label="Paid Leaves Per Year"
+                                disabled={loadingUpdate || loadingLeaves || !form.getValues('updatePaidLeavesPerYear')}
+                              />
+                            </FormControl>
+                            <p className="text-sm text-body/60 mt-1">
+                              Employees receive {Math.floor((form.getValues('paidLeavesPerYear') || 24) / 12)} leaves per month. For employees joining in {new Date().getFullYear()}, leaves are allocated for the remaining months (e.g., a July joiner gets {Math.floor((form.getValues('paidLeavesPerYear') || 24) / 12) * (12 - 6)} leaves for July to December). Employees from previous years get {Math.floor((form.getValues('paidLeavesPerYear') || 24) / 12) * (12 - 6)} leaves for the remaining months.
+                            </p>
+                            <FormMessage className="text-error text-xs sm:text-sm" />
+                            {form.getValues('updatePaidLeavesPerYear') && (
+                              <FormField
+                                control={form.control}
+                                name="applyLeaveChanges"
+                                render={({ field: applyField }) => (
+                                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 mt-2">
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={applyField.value}
+                                        onCheckedChange={applyField.onChange}
+                                        disabled={loadingUpdate || loadingLeaves}
+                                        aria-label="Apply leave changes to all employees"
+                                      />
+                                    </FormControl>
+                                    <div className="space-y-1 leading-none">
+                                      <FormLabel className="text-sm sm:text-base">
+                                        Apply Leave Changes to All Employees
+                                      </FormLabel>
+                                      <p className="text-sm text-body/60">
+                                        Check to update leave balances for {employeeCount || 'all active'} employees based on the Paid Leaves Per Year setting ({form.getValues('paidLeavesPerYear') || 24} leaves, allocated for July to December {new Date().getFullYear()}). This action cannot be undone.
+                                      </p>
+                                    </div>
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+                          </FormItem>
+                        )}
+                      />
                     </FormItem>
                   )}
                 />
                 <FormField
                   control={form.control}
-                  name="halfDayDeduction"
-                  render={({ field }) => (
+                  name="updateHalfDayDeduction"
+                  render={({ field: checkboxField }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">Half-Day Deduction Rate</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          className="bg-complementary text-body border-accent"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                          aria-label="Half-Day Deduction Rate"
-                          disabled={loadingUpdate}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-error text-xs sm:text-sm" />
+                      <div className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={checkboxField.value}
+                            onCheckedChange={(checked) => {
+                              checkboxField.onChange(checked);
+                              console.log('updateHalfDayDeduction changed:', checked);
+                            }}
+                            disabled={loadingUpdate}
+                            aria-label="Update Half-Day Deduction Rate"
+                          />
+                        </FormControl>
+                        <FormLabel className="text-sm sm:text-base">Half-Day Deduction Rate</FormLabel>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="halfDayDeduction"
+                        render={({ field }) => (
+                          <FormItem className="ml-8">
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="bg-complementary text-body border-accent"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                aria-label="Half-Day Deduction Rate"
+                                disabled={loadingUpdate || !form.getValues('updateHalfDayDeduction')}
+                              />
+                            </FormControl>
+                            <p className="text-sm text-body/60 mt-1">
+                              Specifies the leave deduction for a half-day (e.g., 0.5 deducts half a leave). Must be between 0 and 1.
+                            </p>
+                            <FormMessage className="text-error text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
                     </FormItem>
                   )}
                 />
                 <FormField
                   control={form.control}
-                  name="highlightDuration"
-                  render={({ field }) => (
+                  name="updateHighlightDuration"
+                  render={({ field: checkboxField }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">Highlight Duration (minutes)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="1"
-                          className="bg-complementary text-body border-accent"
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          aria-label="Highlight Duration"
-                          disabled={loadingUpdate}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-error text-xs sm:text-sm" />
+                      <div className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={checkboxField.value}
+                            onCheckedChange={(checked) => {
+                              checkboxField.onChange(checked);
+                              console.log('updateHighlightDuration changed:', checked);
+                            }}
+                            disabled={loadingUpdate}
+                            aria-label="Update Highlight Duration"
+                          />
+                        </FormControl>
+                        <FormLabel className="text-sm sm:text-base">Highlight Duration (hours)</FormLabel>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="highlightDuration"
+                        render={({ field }) => (
+                          <FormItem className="ml-8">
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="bg-complementary text-body border-accent"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                aria-label="Highlight Duration"
+                                disabled={loadingUpdate || !form.getValues('updateHighlightDuration')}
+                              />
+                            </FormControl>
+                            <p className="text-sm text-body/60 mt-1">
+                              Duration in hours for highlighting records (e.g., 24 hours for one day, 0.5 for 30 minutes). Must be between 0.0167 hours (1 minute) and 168 hours (7 days).
+                            </p>
+                            <FormMessage className="text-error text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
                     </FormItem>
                   )}
                 />
+                {isUpdateButtonDisabled && !loadingUpdate && !loadingLeaves && (
+                  <p className="text-sm text-error mt-2">
+                    Please select at least one setting to update.
+                  </p>
+                )}
                 <Button
                   type="button"
-                  onClick={handleSaveClick}
+                  onClick={handleUpdateClick}
                   className={cn(
                     'bg-accent text-body hover:bg-accent-hover w-full sm:w-auto transition-all duration-300',
-                    !loadingUpdate && 'animate-pulse'
+                    !isUpdateButtonDisabled && 'animate-pulse'
                   )}
-                  disabled={loadingUpdate}
-                  aria-label="Save Settings"
+                  disabled={isUpdateButtonDisabled}
+                  aria-label="Update Selected Settings"
                 >
-                  {loadingUpdate ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save Settings'}
+                  {loadingUpdate || loadingLeaves ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    'Update Selected Settings'
+                  )}
                 </Button>
               </form>
             </Form>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-complementary text-body shadow-md animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg md:text-xl">Employee Leave Management</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <p className="text-sm text-body">
-                Update the available paid leaves for all employees based on the current "Paid Leaves Per Year" setting. Leaves are prorated for mid-year joiners based on their join date, and unused leaves are carried forward to the next month.
-              </p>
-              <Button
-                onClick={handleUpdateLeaves}
-                className={cn(
-                  'bg-accent text-body hover:bg-accent-hover w-full sm:w-auto transition-all duration-300',
-                  !loadingLeaves && 'animate-pulse'
-                )}
-                disabled={loadingLeaves}
-                aria-label="Update Employee Leaves"
-              >
-                {loadingLeaves ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Update Employee Leaves'}
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -392,9 +543,9 @@ const Settings = () => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="bg-complementary text-body border-accent">
           <DialogHeader>
-            <DialogTitle>Confirm Employee Leave Update</DialogTitle>
+            <DialogTitle>Confirm Leave Balance Update</DialogTitle>
             <DialogDescription>
-              This action will update the available paid leaves for {employeeCount} employee{employeeCount !== 1 ? 's' : ''} based on the current "Paid Leaves Per Year" setting ({settings?.paidLeavesPerYear || 24} leaves, prorated for mid-year joiners). Unused leaves will be carried forward. This action cannot be undone.
+              This will reset the available paid leaves for {employeeCount} active employee{employeeCount !== 1 ? 's' : ''} based on the Paid Leaves Per Year setting ({form.getValues('paidLeavesPerYear') || 24} leaves, allocated for July to December {new Date().getFullYear()}). This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

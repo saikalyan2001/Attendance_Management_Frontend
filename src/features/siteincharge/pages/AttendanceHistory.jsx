@@ -1,6 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchEmployeeAttendance } from '../redux/employeeSlice';
+import { useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,33 +12,35 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
-  const dispatch = useDispatch();
+const AttendanceHistory = ({ 
+  attendance, 
+  employeeId, 
+  employeeName, 
+  currentPage, 
+  setCurrentPage, 
+  monthFilter, 
+  setMonthFilter, 
+  yearFilter, 
+  setYearFilter, 
+  attendancePagination 
+}) => {
   const { loading, error } = useSelector((state) => state.siteInchargeEmployee);
-  const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [currentPage, setCurrentPage] = useState(1);
   const [isTableOpen, setIsTableOpen] = useState(true);
-  const ITEMS_PER_PAGE = 10;
 
-  // Fetch attendance when monthFilter or yearFilter changes
-  useEffect(() => {
-    dispatch(fetchEmployeeAttendance({ employeeId, month: monthFilter, year: yearFilter }));
-  }, [dispatch, employeeId, monthFilter, yearFilter]);
+  // Debug attendance prop
+  console.log('AttendanceHistory - attendance prop:', attendance);
 
   const sortedAttendance = useMemo(() => {
-    const uniqueAttendance = Object.values(
-      attendance.reduce((acc, att) => {
-        const dateKey = `${att.employee}-${new Date(att.date).toISOString().split('T')[0]}-${att.location}`;
-        if (!acc[dateKey] || new Date(att.updatedAt) > new Date(acc[dateKey].updatedAt)) {
-          acc[dateKey] = att;
-        }
-        return acc;
-      }, {})
-    );
-    return uniqueAttendance.sort((a, b) => {
+    // Filter by employeeId
+    const filteredAttendance = attendance.filter((att) => {
+      const employeeIdFromRecord = typeof att.employee === 'object' ? att.employee._id : att.employee;
+      return employeeIdFromRecord === employeeId;
+    });
+
+    // Sort by date or status
+    return filteredAttendance.sort((a, b) => {
       const aValue = sortField === 'date' ? new Date(a.date) : a.status;
       const bValue = sortField === 'date' ? new Date(b.date) : b.status;
       if (sortField === 'date') {
@@ -47,15 +48,9 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
       }
       return sortOrder === 'asc'
         ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
+        : bValue.localeCompare(bValue);
     });
-  }, [attendance, sortField, sortOrder]);
-
-  const totalPages = Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE);
-  const paginatedAttendance = sortedAttendance.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  }, [attendance, sortField, sortOrder, employeeId]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -78,7 +73,7 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
   };
 
   const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
+    if (page >= 1 && page <= attendancePagination.totalPages) {
       setCurrentPage(page);
     }
   };
@@ -169,7 +164,6 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
         ) : (
           <Collapsible open={isTableOpen} onOpenChange={setIsTableOpen}>
             <CollapsibleTrigger
-
               className="flex items-center justify-between w-full text-sm xs:text-base sm:text-lg font-semibold text-body hover:text-accent transition-colors"
               aria-label={isTableOpen ? 'Collapse attendance table' : 'Expand attendance table'}
             >
@@ -239,8 +233,8 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
                           </TableCell>
                         </TableRow>
                       ))
-                    ) : paginatedAttendance.length > 0 ? (
-                      paginatedAttendance.map((att) => (
+                    ) : sortedAttendance.length > 0 ? (
+                      sortedAttendance.map((att) => (
                         <TableRow key={att._id} className="hover:bg-accent/5 transition-colors">
                           <TableCell className="text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] break-words">
                             {format(new Date(att.date), 'MMM d, yyyy')}
@@ -277,7 +271,7 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
                   </TableBody>
                 </Table>
               </div>
-              {totalPages > 1 && !loading && (
+              {attendancePagination.totalPages > 1 && !loading && (
                 <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
                   <TooltipProvider>
                     <Tooltip>
@@ -298,7 +292,7 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
                     </Tooltip>
                   </TooltipProvider>
                   <div className="flex flex-wrap justify-center items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    {Array.from({ length: attendancePagination.totalPages }, (_, i) => i + 1).map((page) => (
                       <TooltipProvider key={page}>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -330,7 +324,7 @@ const AttendanceHistory = ({ attendance, employeeId, employeeName }) => {
                         <Button
                           variant="outline"
                           onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={currentPage === totalPages || loading}
+                          disabled={currentPage === attendancePagination.totalPages || loading}
                           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-4 py-2 min-h-[36px] text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
                           aria-label="Go to next page"
                         >

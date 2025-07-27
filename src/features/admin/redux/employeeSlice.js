@@ -1,22 +1,32 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "../../../utils/api";
+import { fetchLocations } from "./locationsSlice";
 
 export const fetchEmployees = createAsyncThunk(
-  'employees/fetchEmployees',
-  async ({ location, status, month, year, page = 1, limit = 10 }, { rejectWithValue }) => {
+  "employees/fetchEmployees",
+  async (
+    { location, status, department, month, year, page = 1, limit = 10 },
+    { rejectWithValue }
+  ) => {
     try {
       const params = {};
-      if (location && location !== 'all') params.location = location;
-      if (status && status !== 'all') params.status = status;
+      if (location && location !== "all") params.location = location;
+      if (status && status !== "all") {
+        params.status = status !== "deleted" ? status : undefined;
+        params.isDeleted = status === "deleted" ? true : false;
+      }
+      if (department && department !== "all") params.department = department;
       if (month) params.month = month;
       if (year) params.year = year;
       if (page) params.page = page;
       if (limit) params.limit = limit;
-      const response = await api.get('/admin/employees', { params });
+      const response = await api.get("/admin/employees", { params });
       return response.data;
     } catch (error) {
-      ('Fetch employees error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch employees');
+      console.error("Fetch employees error:", error.response?.data || error.message);
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employees"
+      );
     }
   }
 );
@@ -41,14 +51,30 @@ export const fetchMonthlyLeaves = createAsyncThunk(
 
 export const fetchEmployeeById = createAsyncThunk(
   "employees/fetchEmployeeById",
-  async (id, { rejectWithValue }) => {
+  async (arg, { rejectWithValue }) => {
     try {
+      // Handle both string and object inputs
+      const employeeId = typeof arg === 'string' ? arg : arg.id;
+      if (!employeeId) {
+        console.error("No employee ID provided:", arg);
+        throw new Error("No employee ID provided");
+      }
+      const id = String(employeeId); // Ensure string
+      if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+        console.error("Invalid employee ID format:", id);
+        throw new Error("Invalid employee ID format");
+      }
+      console.log("Fetching employee with validated ID:", id);
       const response = await api.get(`/admin/employees/${id}`);
       return response.data;
     } catch (error) {
-      "Fetch employee by ID error:", error.response?.data || error.message;
+      console.error("Fetch employee by ID error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       return rejectWithValue(
-        error.response?.data?.message || "Failed to fetch employee"
+        error.response?.data || { message: error.message || "Failed to fetch employee" }
       );
     }
   }
@@ -185,7 +211,7 @@ export const getEmployeeHistory = createAsyncThunk(
 
 export const addEmployeeDocuments = createAsyncThunk(
   "employees/addEmployeeDocuments",
-  async ({ id, documents }, { rejectWithValue }) => {
+  async ({ id, documents, page, limit }, { rejectWithValue }) => {
     try {
       const formData = new FormData();
       documents.forEach((doc) => {
@@ -198,13 +224,17 @@ export const addEmployeeDocuments = createAsyncThunk(
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
+          params: { page, limit },
         }
       );
       return response.data;
     } catch (error) {
-      "Add employee documents error:", error.response?.data || error.message;
+      console.error(
+        "Add employee documents error:",
+        error.response?.data || error.message
+      );
       return rejectWithValue(
-        error.response?.data?.message || "Failed to add employee documents"
+        error.response?.data || { message: "Failed to add employee documents" }
       );
     }
   }
@@ -212,17 +242,23 @@ export const addEmployeeDocuments = createAsyncThunk(
 
 export const fetchEmployeeAttendance = createAsyncThunk(
   "employees/fetchEmployeeAttendance",
-  async ({ employeeId, month, year }, { rejectWithValue }) => {
+  async (
+    { employeeId, month, year, page = 1, limit = 10 },
+    { rejectWithValue }
+  ) => {
     try {
       const response = await api.get(
         `/admin/employees/${employeeId}/attendance`,
         {
-          params: { month, year },
+          params: { month, year, page, limit },
         }
       );
       return response.data;
     } catch (error) {
-      "Fetch employee attendance error:", error.response?.data || error.message;
+      console.error(
+        "Fetch employee attendance error:",
+        error.response?.data || error.message
+      );
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee attendance"
       );
@@ -245,44 +281,201 @@ export const fetchSettings = createAsyncThunk(
   }
 );
 
-const employeesSlice = createSlice({
-  name: "employees",
+export const fetchEmployeeAdvances = createAsyncThunk(
+  "employees/fetchEmployeeAdvances",
+  async (
+    { id, page, limit, sortField = "year", sortOrder = "desc" },
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await api.get(`/admin/employees/${id}/advances`, {
+        params: { page, limit, sortField, sortOrder },
+      });
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Fetch employee advances error:",
+        error.response?.data || error.message
+      );
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employee advances"
+      );
+    }
+  }
+);
+
+export const registerEmployeesFromExcel = createAsyncThunk(
+  "employees/registerEmployeesFromExcel",
+  async ({ excelFile }, { rejectWithValue }) => {
+    try {
+      if (!(excelFile instanceof File)) {
+        console.error("Invalid excelFile:", excelFile);
+        throw new Error("No valid Excel file provided");
+      }
+      console.log("Sending Excel file:", {
+        name: excelFile.name,
+        type: excelFile.type,
+        size: excelFile.size,
+        lastModified: excelFile.lastModified,
+      });
+      const formData = new FormData();
+      formData.append("excelFile", excelFile, excelFile.name);
+      const response = await api.post("/admin/employees/excel", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Register employees from Excel error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      return rejectWithValue(
+        error.response?.data || { message: error.message || "Failed to register employees from Excel" }
+      );
+    }
+  }
+);
+
+export const fetchDepartments = createAsyncThunk(
+  "employees/fetchDepartments",
+  async ({ location } = {}, { rejectWithValue }) => {
+    try {
+      const params = {};
+      if (location && location !== "all") params.location = location;
+      const response = await api.get("/admin/employees/departments", { params });
+      return response.data.departments;
+    } catch (error) {
+      console.error("Fetch departments error:", error.response?.data || error.message);
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch departments"
+      );
+    }
+  }
+);
+
+export const deleteEmployee = createAsyncThunk(
+  "employees/deleteEmployee",
+  async (id, { rejectWithValue, dispatch }) => { // Add dispatch to thunk arguments
+    try {
+      console.log("Deleting employee with ID:", id);
+      const response = await api.delete(`/admin/employees/${id}`);
+      // Refresh locations to update employeeCount
+      await dispatch(fetchLocations()).unwrap();
+      return { id, message: response.data.message };
+    } catch (error) {
+      console.error("Delete employee error:", error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || "Failed to delete employee");
+    }
+  }
+);
+
+
+export const restoreEmployee = createAsyncThunk(
+  "employees/restoreEmployee",
+  async (id, { rejectWithValue }) => {
+    try {
+      console.log("Restoring employee with ID:", id);
+      const response = await api.put(`/admin/employees/${id}/restore`);
+      return response.data;
+    } catch (error) {
+      console.error("Restore employee error:", error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || "Failed to restore employee");
+    }
+  }
+);
+
+export const employeesSlice = createSlice({
+   name: "employees",
   initialState: {
     employees: [],
-    monthlyLeaves: [], // Added for monthly leave data
+    monthlyLeaves: [],
     currentEmployee: null,
     history: null,
     attendance: [],
-    settings: null,
-    loading: false,
-    error: null,
-    success: false,
-    successMessage: null,
-    pagination: {
-      // Added pagination state
+    attendancePagination: {
       currentPage: 1,
       totalPages: 1,
       totalItems: 0,
       itemsPerPage: 10,
     },
+    advances: [],
+    settings: null,
+    departments: [],
+    loading: false,
+    error: null,
+    errorType: null,
+    success: false,
+    successType: null,
+    successMessage: null,
+    pagination: {
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      itemsPerPage: 10,
+    },
+    advancesPagination: {
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      itemsPerPage: 5,
+    },
   },
   reducers: {
+    setEmployees: (state, action) => {
+      const newEmployees = action.payload;
+      const employeeMap = new Map(state.employees.map(emp => [emp._id, emp]));
+      newEmployees.forEach(newEmp => {
+        if (employeeMap.has(newEmp._id)) {
+          const existingEmp = employeeMap.get(newEmp._id);
+          // Merge monthlyLeaves
+          const mergedLeaves = [
+            ...new Map(
+              [...(existingEmp.monthlyLeaves || []), ...(newEmp.monthlyLeaves || [])].map(ml => [
+                `${ml.year}-${ml.month}`,
+                ml,
+              ])
+            ).values(),
+          ];
+          employeeMap.set(newEmp._id, { ...existingEmp, ...newEmp, monthlyLeaves: mergedLeaves });
+        } else {
+          employeeMap.set(newEmp._id, { ...newEmp });
+        }
+      });
+      state.employees = Array.from(employeeMap.values());
+      state.pagination.totalItems = state.employees.length;
+      state.pagination.totalPages = Math.ceil(state.employees.length / state.pagination.itemsPerPage);
+    },
     reset: (state) => {
       state.error = null;
+      state.errorType = null;
       state.loading = false;
       state.success = false;
+      state.successType = null;
       state.successMessage = null;
       state.currentEmployee = null;
       state.history = null;
       state.attendance = [];
-      state.monthlyLeaves = []; // Reset monthlyLeaves
-      // Note: Not resetting state.settings to keep it cached
+      state.attendancePagination = {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: 0,
+        itemsPerPage: 10,
+      };
+      state.advances = [];
+      state.advancesPagination = {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: 0,
+        itemsPerPage: 5,
+      };
+      state.monthlyLeaves = [];
     },
   },
   extraReducers: (builder) => {
-    // Fetch Employees
+    // Existing reducers for fetchEmployees
     builder
-      .addCase(fetchEmployees.pending, (state) => {
+  .addCase(fetchEmployees.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
@@ -330,11 +523,23 @@ const employeesSlice = createSlice({
       .addCase(fetchEmployeeById.fulfilled, (state, action) => {
         state.loading = false;
         state.currentEmployee = action.payload;
+        state.pagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
       })
       .addCase(fetchEmployeeById.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.currentEmployee = null;
+        state.pagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
       })
       // Register Employee
       .addCase(registerEmployee.pending, (state) => {
@@ -343,15 +548,18 @@ const employeesSlice = createSlice({
         state.success = false;
         state.successMessage = null;
       })
+  
       .addCase(registerEmployee.fulfilled, (state, action) => {
         state.loading = false;
         state.employees.push(action.payload);
         state.success = true;
+        state.successType = "single"; // Set successType for single employee
         state.successMessage = "Employee registered successfully";
       })
-      .addCase(registerEmployee.rejected, (state, action) => {
+       .addCase(registerEmployee.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.errorType = "single"; // Set errorType for single employee
         state.success = false;
       })
       // Update Employee
@@ -394,6 +602,8 @@ const employeesSlice = createSlice({
         if (index !== -1) state.employees[index] = action.payload;
         if (state.currentEmployee?._id === action.payload._id)
           state.currentEmployee = action.payload;
+        // Update advances state to reflect the latest advances
+        state.advances = action.payload.advances || [];
       })
       .addCase(updateEmployeeAdvance.rejected, (state, action) => {
         state.loading = false;
@@ -431,17 +641,17 @@ const employeesSlice = createSlice({
         state.success = false;
         state.successMessage = null;
       })
-      .addCase(transferEmployee.fulfilled, (state, action) => {
-        state.loading = false;
-        state.success = true;
-        state.successMessage = "Employee transferred successfully";
-        const index = state.employees.findIndex(
-          (emp) => emp._id === action.payload._id
-        );
-        if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id)
-          state.currentEmployee = action.payload;
-      })
+    .addCase(transferEmployee.fulfilled, (state, action) => {
+  state.loading = false;
+  state.success = true;
+  state.successMessage = null; // Avoid setting a generic message
+  const index = state.employees.findIndex(
+    (emp) => emp._id === action.payload._id
+  );
+  if (index !== -1) state.employees[index] = action.payload;
+  if (state.currentEmployee?._id === action.payload._id)
+    state.currentEmployee = action.payload;
+})
       .addCase(transferEmployee.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
@@ -497,11 +707,18 @@ const employeesSlice = createSlice({
         state.success = true;
         state.successMessage = "Documents added successfully";
         const index = state.employees.findIndex(
-          (emp) => emp._id === action.payload._id
+          (emp) => emp._id === action.payload.employee._id
         );
-        if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id)
-          state.currentEmployee = action.payload;
+        if (index !== -1) state.employees[index] = action.payload.employee;
+        if (state.currentEmployee?._id === action.payload.employee._id) {
+          state.currentEmployee = action.payload.employee;
+        }
+        state.pagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
       })
       .addCase(addEmployeeDocuments.rejected, (state, action) => {
         state.loading = false;
@@ -515,12 +732,50 @@ const employeesSlice = createSlice({
       })
       .addCase(fetchEmployeeAttendance.fulfilled, (state, action) => {
         state.loading = false;
-        state.attendance = action.payload;
+        state.attendance = action.payload.attendance || [];
+        state.attendancePagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+        };
       })
       .addCase(fetchEmployeeAttendance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.attendance = [];
+        state.attendancePagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+        };
+      })
+      // Fetch Employee Advances
+      .addCase(fetchEmployeeAdvances.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchEmployeeAdvances.fulfilled, (state, action) => {
+        state.loading = false;
+        state.advances = action.payload.advances || [];
+        state.advancesPagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
+      })
+      .addCase(fetchEmployeeAdvances.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.advances = [];
+        state.advancesPagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
       })
       // Fetch Settings
       .addCase(fetchSettings.pending, (state) => {
@@ -535,9 +790,94 @@ const employeesSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
         state.settings = null;
-      });
+      })
+         .addCase(registerEmployeesFromExcel.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = false;
+        state.successMessage = null;
+      })
+      .addCase(registerEmployeesFromExcel.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.successType = "excel"; // Set successType for Excel import
+        state.successMessage =
+          action.payload.message || "Employees registered successfully";
+        if (action.payload.count) {
+          state.pagination.totalItems += action.payload.count;
+        }
+        if (action.payload.employees && Array.isArray(action.payload.employees)) {
+          state.employees = [...state.employees, ...action.payload.employees];
+        }
+      })
+        .addCase(registerEmployeesFromExcel.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.errorType = "excel"; // Set errorType for Excel
+        state.success = false;
+        console.log("registerEmployeesFromExcel rejected:", action.payload);
+      })
+      .addCase(fetchDepartments.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchDepartments.fulfilled, (state, action) => {
+        state.loading = false;
+        state.departments = action.payload || [];
+      })
+      .addCase(fetchDepartments.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.departments = [];
+      })
+  .addCase(deleteEmployee.pending, (state) => {
+        state.status = "loading";
+        state.error = null;
+      })
+      .addCase(deleteEmployee.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        const deletedId = action.payload.id;
+        state.employees = state.employees.map((employee) =>
+          employee._id === deletedId ? { ...employee, isDeleted: true } : employee
+        );
+        if (state.currentEmployee?._id === deletedId) {
+          state.currentEmployee = null;
+        }
+        state.error = null;
+      })
+      .addCase(deleteEmployee.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.payload;
+      })
+      .addCase(restoreEmployee.pending, (state) => {
+  state.loading = true;
+  state.error = null;
+  state.success = false;
+  state.successMessage = null;
+})
+.addCase(restoreEmployee.fulfilled, (state, action) => {
+  state.loading = false;
+  state.success = true;
+  state.successMessage = action.payload.message || "Employee restored successfully";
+  const index = state.employees.findIndex(
+    (emp) => emp._id === action.payload.employee._id
+  );
+  if (index !== -1) {
+    state.employees[index] = action.payload.employee;
+  } else {
+    state.employees.push(action.payload.employee);
+  }
+  if (state.currentEmployee?._id === action.payload.employee._id) {
+    state.currentEmployee = action.payload.employee;
+  }
+})
+.addCase(restoreEmployee.rejected, (state, action) => {
+  state.loading = false;
+  state.error = action.payload;
+  state.success = false;
+});
   },
 });
 
-export const { reset } = employeesSlice.actions;
+export const { reset, setEmployees } = employeesSlice.actions;
 export default employeesSlice.reducer;

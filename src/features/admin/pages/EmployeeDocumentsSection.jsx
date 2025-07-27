@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useSelector } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,10 @@ const getFileIcon = (fileName) => {
 
 // Normalize file system path to URL path
 const normalizeDocPath = (docPath) => {
-  if (!docPath) return '';
+  if (!docPath || typeof docPath !== 'string' || docPath.trim() === '') {
+    console.warn('Invalid or missing document path:', docPath);
+    return null; // Return null for invalid paths
+  }
   let normalized = docPath.replace(/\\/g, '/');
   const uploadsIndex = normalized.indexOf('Uploads/documents');
   if (uploadsIndex !== -1) {
@@ -77,7 +81,10 @@ const uploadDocumentSchema = z.object({
 
 // Check if file is an image
 const isImageFile = (file) => {
-  if (!file || !file.name || typeof file.name !== 'string') return false;
+  if (!file || !file.name || typeof file.name !== 'string') {
+    console.warn('Invalid file in isImageFile:', file);
+    return false;
+  }
   const extension = file.name.toLowerCase().split('.').pop();
   return ['jpg', 'jpeg', 'png'].includes(extension);
 };
@@ -96,20 +103,30 @@ const formatUploadedAt = (uploadedAt) => {
   }
 };
 
-const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName, isLoading = false }) => {
+const EmployeeDocumentsSection = ({
+  currentEmployee,
+  dispatch,
+  id,
+  employeeName,
+  isLoading = false,
+  currentPage,
+  setCurrentPage,
+  itemsPerPage,
+}) => {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [dragStates, setDragStates] = useState({});
   const [previewUrls, setPreviewUrls] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isTableOpen, setIsTableOpen] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 5; // Fixed items per page
   const autoDismissDuration = 5000;
   const formRef = useRef(null);
+
+  const { pagination } = useSelector((state) => state.adminEmployees);
 
   const uploadForm = useForm({
     resolver: zodResolver(uploadDocumentSchema),
@@ -123,26 +140,32 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
     name: 'documents',
   });
 
+  // Apply search filter and validate documents
   const filteredDocuments = useMemo(() => {
-    if (!currentEmployee?.documents) return [];
-    if (!searchQuery) return currentEmployee.documents;
-    return currentEmployee.documents.filter((doc) => {
-      if (!doc.name || typeof doc.name !== 'string') {
-        console.warn('Invalid doc.name in filteredDocuments:', doc);
-        return false;
-      }
-      return doc.name.toLowerCase().includes(searchQuery.toLowerCase());
-    });
+    if (!currentEmployee?.documents || !Array.isArray(currentEmployee.documents)) {
+      return [];
+    }
+    return currentEmployee.documents
+      .filter((doc) => {
+        if (!doc || typeof doc !== 'object' || !doc.name || typeof doc.name !== 'string' || !doc.path || typeof doc.path !== 'string') {
+          console.warn('Skipping invalid document entry:', doc);
+          return false;
+        }
+        return searchQuery
+          ? doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+          : true;
+      })
+      .map((doc) => ({
+        ...doc,
+        normalizedPath: normalizeDocPath(doc.path),
+      }))
+      .filter((doc) => doc.normalizedPath && doc.normalizedPath.startsWith('/Uploads/documents'));
   }, [currentEmployee?.documents, searchQuery]);
 
-  // Pagination logic
-  const totalItems = filteredDocuments.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const paginatedDocuments = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    return filteredDocuments.slice(startIndex, endIndex);
-  }, [filteredDocuments, currentPage]);
+  // Use backend pagination metadata
+  const totalItems = pagination?.totalItems || filteredDocuments.length;
+  const totalPages = pagination?.totalPages || Math.ceil(totalItems / itemsPerPage);
+  const paginatedDocuments = filteredDocuments;
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
@@ -155,8 +178,9 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
       Object.values(previewUrls).forEach((url) => {
         if (url) URL.revokeObjectURL(url);
       });
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
-  }, [previewUrls]);
+  }, [previewUrls, previewUrl]);
 
   const handleDocumentSubmit = async (data) => {
     try {
@@ -174,7 +198,7 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
         return;
       }
 
-      await dispatch(addEmployeeDocuments({ id, documents: data.documents })).unwrap();
+      await dispatch(addEmployeeDocuments({ id, documents: data.documents, page: 1, limit: itemsPerPage })).unwrap();
       toast.dismiss();
       toast.success('Documents uploaded successfully', {
         id: 'upload-success',
@@ -185,9 +209,10 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
       setUploadDialogOpen(false);
       setPreviewOpen(false);
       setPreviewDocument(null);
+      setPreviewUrl(null);
       setDragStates({});
       setPreviewUrls({});
-      setCurrentPage(1); // Reset to first page after upload
+      setCurrentPage(1);
       setTimeout(() => {
         dispatch(resetEmployees());
         toast.dismiss();
@@ -287,9 +312,25 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
   };
 
   const handlePreviewDocument = (file) => {
-    if (!file) return;
+    if (!file) {
+      console.error('No file provided for preview');
+      toast.error('No file selected for preview', {
+        id: 'preview-error',
+        duration: autoDismissDuration,
+        position: 'top-center',
+        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+      });
+      return;
+    }
     if (file instanceof File && ['image/jpeg', 'image/png'].includes(file.type)) {
       setPreviewDocument(file);
+      const index = documentFields.findIndex((field) => field.file === file);
+      if (index !== -1 && previewUrls[index]) {
+        setPreviewUrl(previewUrls[index]);
+      } else {
+        const url = URL.createObjectURL(file);
+        setPreviewUrl(url);
+      }
       setPreviewOpen(true);
     } else if (file instanceof File) {
       try {
@@ -327,11 +368,13 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
 
   const fetchDocumentForPreview = async (docPath, docName) => {
     try {
+      const normalizedDocPath = normalizeDocPath(docPath);
+      if (!normalizedDocPath || !normalizedDocPath.startsWith('/Uploads/documents')) {
+        throw new Error('Invalid document path after normalization');
+      }
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const normalizedDocPath = normalizeDocPath(docPath);
-      
       const response = await fetch(`http://localhost:5000${normalizedDocPath}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -345,10 +388,11 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
 
       const blob = await response.blob();
       const file = new File([blob], docName || 'document', { type: blob.type });
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
       handlePreviewDocument(file);
     } catch (err) {
       console.error('Preview error:', err);
-      toast.dismiss();
       toast.error(`Failed to fetch document for preview: ${err.message}`, {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -360,11 +404,13 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
 
   const handleDownloadDocument = async (docPath, docName) => {
     try {
+      const normalizedDocPath = normalizeDocPath(docPath);
+      if (!normalizedDocPath || !normalizedDocPath.startsWith('/Uploads/documents')) {
+        throw new Error('Invalid document path after normalization');
+      }
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const normalizedDocPath = normalizeDocPath(docPath);
-      
       const response = await fetch(`http://localhost:5000${normalizedDocPath}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -395,7 +441,6 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      toast.dismiss();
       toast.success(`Downloaded ${docName || 'document'} successfully`, {
         id: 'download-success',
         duration: autoDismissDuration,
@@ -404,7 +449,6 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
       });
     } catch (err) {
       console.error('Download error:', err);
-      toast.dismiss();
       toast.error(`Failed to download document: ${err.message}`, {
         id: 'download-error',
         duration: autoDismissDuration,
@@ -547,7 +591,7 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
               Document Records
               {isTableOpen ? <ChevronUp className="h-4 xs:h-5 w-4 xs:w-5" /> : <ChevronDown className="h-4 xs:h-5 w-4 xs:w-5" />}
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-2 xs:mt-3 sm:mt-4 animate-fade-in">
+            <CollapsibleContent className="mt-2 xs:mt-3 sm:mt-4">
               <div className="overflow-x-auto">
                 <Table className="w-full" role="grid">
                   <TableHeader>
@@ -572,7 +616,27 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                           </TableCell>
                         </TableRow>
                       ))
-                    ) : paginatedDocuments.length > 0 ? (
+                    ) : filteredDocuments.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={3}
+                          className="text-center text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 bg-accent/5 border border-accent/20 rounded-lg"
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <p>No valid documents available. Please upload documents.</p>
+                            <Button
+                              variant="outline"
+                              onClick={openUploadDialog}
+                              className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+                              aria-label="Upload new documents"
+                            >
+                              <Upload className="h-5 w-5 mr-1 xs:mr-2" />
+                              Upload Documents
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
                       paginatedDocuments.map((doc) => (
                         <TableRow key={doc._id} className="hover:bg-accent/5 transition-colors">
                           <TableCell className="flex items-center text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left break-words">
@@ -592,7 +656,7 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                                       onClick={() => fetchDocumentForPreview(doc.path, doc.name)}
                                       className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                                       aria-label={`Preview ${doc.name || 'document'}`}
-                                      disabled={!doc.name || typeof doc.name !== 'string'}
+                                      disabled={!doc.normalizedPath}
                                     >
                                       <Eye className="h-4 w-4 sm:h-5 sm:w-5 mr-1 xs:mr-2" />
                                       Preview
@@ -611,7 +675,7 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                                       onClick={() => handleDownloadDocument(doc.path, doc.name)}
                                       className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                                       aria-label={`Download ${doc.name || 'document'}`}
-                                      disabled={!doc.name || typeof doc.name !== 'string'}
+                                      disabled={!doc.normalizedPath}
                                     >
                                       Download
                                     </Button>
@@ -625,15 +689,6 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                           </TableCell>
                         </TableRow>
                       ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={3}
-                          className="text-center text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 bg-accent/5 border border-accent/20 rounded-lg"
-                        >
-                          No documents found
-                        </TableCell>
-                      </TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -794,7 +849,7 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                               <div className="flex flex-col space-y-1 xs:space-y-2">
                                 <div className="flex items-center justify-between space-x-2">
                                   <div className="flex items-center space-x-1 xs:space-x-2 truncate">
-                                    {getFileIcon(field.value)}
+                                    {getFileIcon(field.value.name)}
                                     <div className="truncate">
                                       <span className="text-xs xs:text-sm sm:text-base text-body truncate">
                                         {field.value.name}
@@ -805,23 +860,19 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                                     </div>
                                   </div>
                                   <div className="flex gap-1 xs:gap-2">
-                                    <a
-                                      href={previewUrls[index]}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      onClick={() => handlePreviewDocument(field.value)}
                                       className={cn(
                                         'p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full',
                                         (isLoading || isSubmitting || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
                                       )}
                                       aria-label={`Preview document ${field.value.name}`}
-                                      onClick={(e) => {
-                                        if (isLoading || isSubmitting || !previewUrls[index]) {
-                                          e.preventDefault();
-                                        }
-                                      }}
+                                      disabled={isLoading || isSubmitting || !previewUrls[index]}
                                     >
                                       <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </a>
+                                    </Button>
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -835,11 +886,11 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                                   </div>
                                 </div>
                                 {isImageFile(field.value) && previewUrls[index] && (
-                                  <div className="mt-1 xs:mt-2 flex justify-center">
+                                  <div className="mt-2">
                                     <img
                                       src={previewUrls[index]}
                                       alt={`Preview of ${field.value.name}`}
-                                      className="h-16 xs:h-20 sm:h-24 w-16 xs:w-20 sm:w-24 object-cover rounded-md border border-complementary"
+                                      className="max-w-full h-auto rounded-md max-h-40 object-contain"
                                     />
                                   </div>
                                 )}
@@ -847,87 +898,126 @@ const EmployeeDocumentsSection = ({ currentEmployee, dispatch, id, employeeName,
                             )}
                           </div>
                         </FormControl>
-                        <FormMessage className="text-error text-[8px] xs:text-[9px] sm:text-xs mt-1 xs:mt-2">
-                          {serverError?.fields?.[`documents[${index}].file`] || uploadForm.formState.errors.documents?.[index]?.file?.message}
-                        </FormMessage>
+                        <FormMessage className="text-error text-[9px] xs:text-xs sm:text-sm mt-1" />
+                        {serverError?.fields?.[`documents[${index}].file`] && (
+                          <p className="text-error text-[9px] xs:text-xs sm:text-sm mt-1">{serverError.fields[`documents[${index}].file`]}</p>
+                        )}
                       </FormItem>
                     )}
                   />
                 </div>
               ))}
+              {serverError?.fields?.documents && (
+                <p className="text-error text-[9px] xs:text-xs sm:text-sm">{serverError.fields.documents}</p>
+              )}
+              <div className="flex justify-between items-center mt-2 xs:mt-3 sm:mt-4">
+                <Button
+                  type="button"
+                  onClick={addDocumentField}
+                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
+                  disabled={documentFields.length >= 5 || isLoading || isSubmitting}
+                  aria-label="Add another document"
+                >
+                  <FilePlus className="h-4 w-4 xs:h-5 xs:w-5 mr-1 xs:mr-2" />
+                  Add Document
+                </Button>
+                <span className="text-[8px] xs:text-[9px] sm:text-xs text-body/60">
+                  {documentFields.length}/5 documents
+                </span>
+              </div>
+            </form>
+            <DialogFooter className="mt-2 xs:mt-3 sm:mt-4 p-2 xs:p-3 sm:p-4">
+              <Button
+                variant="outline"
+                onClick={() => setUploadDialogOpen(false)}
+                className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
+                disabled={isSubmitting || isLoading}
+                aria-label="Cancel document upload"
+              >
+                Cancel
+              </Button>
               <Button
                 type="button"
-                onClick={addDocumentField}
-                className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                disabled={isLoading || isSubmitting}
-                aria-label="Add another document"
+                onClick={handleDocumentSaveClick}
+                className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
+                disabled={isSubmitting || isLoading}
+                aria-label="Save documents"
               >
-                <FilePlus className="h-4 w-4 sm:h-5 sm:w-5 mr-1 xs:mr-2" />
-                Add Document
+                {isSubmitting || isLoading ? (
+                  <Loader2 className="h-4 w-4 xs:h-5 xs:w-5 animate-spin" />
+                ) : (
+                  'Save'
+                )}
               </Button>
-              <DialogFooter className="mt-3 xs:mt-4 sm:mt-5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setUploadDialogOpen(false)}
-                  className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                  disabled={isLoading || isSubmitting}
-                  aria-label="Cancel add documents"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleDocumentSaveClick}
-                  className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                  disabled={isLoading || isSubmitting}
-                  aria-label="Upload documents"
-                >
-                  {isSubmitting ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : 'Upload Documents'}
-                </Button>
-              </DialogFooter>
-            </form>
+            </DialogFooter>
           </Form>
         </DialogContent>
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="bg-complementary text-body rounded-lg max-w-[90vw] sm:max-w-3xl animate-fade-in">
+      <Dialog open={previewOpen} onOpenChange={(open) => {
+        setPreviewOpen(open);
+        if (!open) {
+          setPreviewDocument(null);
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            setPreviewUrl(null);
+          }
+        }
+      }}>
+        <DialogContent className="bg-complementary text-body max-w-[90vw] sm:max-w-3xl rounded-lg">
           <DialogHeader>
-            <DialogTitle id="preview-dialog-title" className="text-base xs:text-lg sm:text-xl md:text-2xl font-semibold">Document Preview</DialogTitle>
+            <DialogTitle className="text-base xs:text-lg sm:text-xl md:text-2xl font-bold">
+              Preview {previewDocument?.name || 'Document'}
+            </DialogTitle>
           </DialogHeader>
-          {previewDocument && previewDocument instanceof File && ['image/jpeg', 'image/png'].includes(previewDocument.type) ? (
-            <img
-              src={URL.createObjectURL(previewDocument)}
-              alt="Document Preview"
-              className="w-full h-auto max-h-[60vh] object-contain rounded-lg"
-              onError={() => {
-                toast.error('Failed to load image preview', {
-                  id: 'preview-error',
-                  duration: autoDismissDuration,
-                  position: 'top-center',
-                  style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
-                });
-        setPreviewOpen(false);
-                setPreviewDocument(null);
-              }}
-            />
-          ) : (
-            <p className="text-error text-xs xs:text-sm sm:text-base">Preview not available for this file type</p>
-          )}
-          <DialogFooter className="mt-3 xs:mt-4 sm:mt-6">
+          <div className="flex justify-center p-2 xs:p-3 sm:p-4">
+            {previewDocument && isImageFile(previewDocument) && previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={`Preview of ${previewDocument.name}`}
+                className="max-w-full max-h-[60vh] object-contain rounded-md"
+                onError={(e) => {
+                  console.error('Image failed to load:', previewUrl);
+                  toast.error('Failed to load image preview', {
+                    id: 'image-load-error',
+                    duration: autoDismissDuration,
+                    position: 'top-center',
+                    style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+                  });
+                }}
+              />
+            ) : (
+              <p className="text-xs xs:text-sm sm:text-base text-body/60">
+                Preview not available for this file type. Please download to view.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="p-2 xs:p-3 sm:p-4">
             <Button
               variant="outline"
               onClick={() => {
                 setPreviewOpen(false);
                 setPreviewDocument(null);
+                if (previewUrl) {
+                  URL.revokeObjectURL(previewUrl);
+                  setPreviewUrl(null);
+                }
               }}
-              className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+              className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
               aria-label="Close preview"
             >
               Close
             </Button>
+            {previewDocument && (
+              <Button
+                onClick={() => handleDownloadDocument(URL.createObjectURL(previewDocument), previewDocument.name)}
+                className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
+                aria-label={`Download ${previewDocument.name}`}
+              >
+                Download
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

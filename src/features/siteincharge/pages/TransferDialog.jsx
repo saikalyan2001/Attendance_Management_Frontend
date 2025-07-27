@@ -57,7 +57,7 @@ const TransferDialog = ({ open, onOpenChange, employeeId, allLocations }) => {
           transferTimestamp: new Date(data.transferTimestamp).toISOString(),
         })
       ).unwrap();
-      const newLocation = allLocations.find((loc) => loc._id === data.location);
+      const newLocation = allLocations?.find((loc) => loc._id === data.location);
       toast.success(
         `Employee transferred to ${newLocation?.name || newLocation?.city || "new location"} successfully`,
         {
@@ -113,7 +113,7 @@ const TransferDialog = ({ open, onOpenChange, employeeId, allLocations }) => {
       await form.trigger();
       setValidationTriggered(true);
     } catch (error) {
-      ('handleTransferClick error:', error);
+      console.error('handleTransferClick error:', error);
       toast.error("Error submitting form, please try again", {
         id: 'transfer-employee-form-error',
         duration: 5000,
@@ -157,17 +157,23 @@ const TransferDialog = ({ open, onOpenChange, employeeId, allLocations }) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent className="bg-complementary text-body">
-                      {allLocations.map((loc) => (
-                        <SelectItem
-                          key={loc._id}
-                          value={loc._id}
-                          className="text-[10px] sm:text-sm xl:text-base"
-                          disabled={currentEmployee?.location?._id === loc._id}
-                        >
-                          {loc.name || loc.city}
-                          {currentEmployee?.location?._id === loc._id && ' (Current)'}
-                        </SelectItem>
-                      ))}
+                      {Array.isArray(allLocations) && allLocations.length > 0 ? (
+                        allLocations.map((loc) => (
+                          <SelectItem
+                            key={loc._id}
+                            value={loc._id}
+                            className="text-[10px] sm:text-sm xl:text-base"
+                            disabled={currentEmployee?.location?._id === loc._id}
+                          >
+                            {loc.name || loc.city}
+                            {currentEmployee?.location?._id === loc._id && ' (Current)'}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="text-[10px] sm:text-sm xl:text-base text-center p-2">
+                          No locations available
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base" />

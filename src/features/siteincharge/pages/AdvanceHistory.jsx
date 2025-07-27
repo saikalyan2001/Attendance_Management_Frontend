@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const AdvanceHistory = ({
   advances,
+  advancesPagination,
   currentPage,
   setCurrentPage,
   sortField,
@@ -20,7 +21,6 @@ const AdvanceHistory = ({
   employeeName,
   isLoading = false,
 }) => {
-  const ITEMS_PER_PAGE = 5;
   const [isTableOpen, setIsTableOpen] = useState(true);
 
   const sortedAdvances = useMemo(() => {
@@ -43,12 +43,6 @@ const AdvanceHistory = ({
     });
   }, [advances, sortField, sortOrder]);
 
-  const totalPages = Math.ceil(sortedAdvances.length / ITEMS_PER_PAGE);
-  const paginatedAdvances = sortedAdvances.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
-
   const handleSort = (field) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -60,7 +54,7 @@ const AdvanceHistory = ({
   };
 
   const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
+    if (page >= 1 && page <= advancesPagination?.totalPages) {
       setCurrentPage(page);
     }
   };
@@ -179,8 +173,8 @@ const AdvanceHistory = ({
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : paginatedAdvances.length > 0 ? (
-                    paginatedAdvances.map((advance, index) => (
+                  ) : sortedAdvances.length > 0 ? (
+                    sortedAdvances.map((advance, index) => (
                       <TableRow key={advance._id || index} className="hover:bg-accent/5 transition-colors">
                         <TableCell className="text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left break-words">
                           ₹{advance.amount}
@@ -206,15 +200,15 @@ const AdvanceHistory = ({
                 </TableBody>
               </Table>
             </div>
-            {totalPages > 1 && !isLoading && (
+            {advancesPagination?.totalPages > 1 && !isLoading && (
               <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         variant="outline"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1 || isLoading}
+                        onClick={() => handlePageChange(advancesPagination.page - 1)}
+                        disabled={advancesPagination.page === 1 || isLoading}
                         className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 min-h-[36px] text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
                         aria-label="Go to previous page"
                       >
@@ -227,16 +221,16 @@ const AdvanceHistory = ({
                   </Tooltip>
                 </TooltipProvider>
                 <div className="flex flex-wrap justify-center items-center gap-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  {Array.from({ length: advancesPagination.totalPages }, (_, i) => i + 1).map((page) => (
                     <TooltipProvider key={page}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
-                            variant={currentPage === page ? 'default' : 'outline'}
+                            variant={advancesPagination.page === page ? 'default' : 'outline'}
                             onClick={() => handlePageChange(page)}
                             disabled={isLoading}
                             className={cn(
-                              currentPage === page
+                              advancesPagination.page === page
                                 ? 'bg-accent text-body'
                                 : 'border-accent text-accent hover:bg-accent-hover hover:text-body',
                               'rounded-lg text-xs xs:text-sm sm:text-base py-1 px-2 xs:px-3 min-h-[36px] transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2'
@@ -258,8 +252,8 @@ const AdvanceHistory = ({
                     <TooltipTrigger asChild>
                       <Button
                         variant="outline"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages || isLoading}
+                        onClick={() => handlePageChange(advancesPagination.page + 1)}
+                        disabled={advancesPagination.page === advancesPagination.totalPages || isLoading}
                         className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 min-h-[36px] text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
                         aria-label="Go to next page"
                       >

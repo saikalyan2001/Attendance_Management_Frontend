@@ -3,9 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpDown, ChevronDown, ChevronUp, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { useState } from 'react';
+import { useState, useMemo } from 'react'; // Added useMemo
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,9 +27,16 @@ const EmployeeAttendanceSection = ({
   handleSort,
   setCurrentPage,
   employeeName,
+  employeeId, // Added employeeId prop
   isLoading = false,
 }) => {
   const [isTableOpen, setIsTableOpen] = useState(true);
+
+  // Filter paginatedAttendance to include only the target employee's records
+  const filteredAttendance = useMemo(() => {
+    if (!employeeId) return paginatedAttendance; // Fallback if employeeId is not provided
+    return paginatedAttendance.filter((record) => record.employee._id === employeeId);
+  }, [paginatedAttendance, employeeId]);
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
@@ -124,42 +131,14 @@ const EmployeeAttendanceSection = ({
                 <TableHeader>
                   <TableRow className="bg-accent/10 rounded-lg">
                     <TableHead
-                      onClick={() => handleSort('date')}
-                      className="cursor-pointer text-xs xs:text-sm sm:text-base font-semibold px-2 xs:px-3 sm:px-4 py-2 xs:py-3 hover:bg-accent/20 transition-colors min-w-[120px]"
-                      aria-sort={sortField === 'date' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      className="text-xs xs:text-sm sm:text-base font-semibold px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px]"
                     >
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center justify-between">
-                              Date
-                              {sortField === 'date' && <ArrowUpDown className="ml-2 h-4 xs:h-5 w-4 xs:w-5" />}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
-                            Sort by Date
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      Date
                     </TableHead>
                     <TableHead
-                      onClick={() => handleSort('status')}
-                      className="cursor-pointer text-xs xs:text-sm sm:text-base font-semibold px-2 xs:px-3 sm:px-4 py-2 xs:py-3 hover:bg-accent/20 transition-colors min-w-[120px]"
-                      aria-sort={sortField === 'status' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      className="text-xs xs:text-sm sm:text-base font-semibold px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px]"
                     >
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center justify-between">
-                              Status
-                              {sortField === 'status' && <ArrowUpDown className="ml-2 h-4 xs:h-5 w-4 xs:w-5" />}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
-                            Sort by Status
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      Status
                     </TableHead>
                     <TableHead className="text-xs xs:text-sm sm:text-base font-semibold px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px]">
                       Location
@@ -181,8 +160,8 @@ const EmployeeAttendanceSection = ({
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : paginatedAttendance.length > 0 ? (
-                    paginatedAttendance.map((record) => (
+                  ) : filteredAttendance.length > 0 ? ( // Use filteredAttendance
+                    filteredAttendance.map((record) => (
                       <TableRow key={record._id || Math.random()} className="hover:bg-accent/5 transition-colors">
                         <TableCell className="text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] break-words">
                           {format(new Date(record.date), 'MMM dd, yyyy')}

@@ -75,6 +75,7 @@ const AttendanceRequests = ({ locationId }) => {
   const dispatch = useDispatch();
   const {
     attendanceRequests,
+    requestsPagination,
     loading: reqLoading,
     error: attError,
   } = useSelector((state) => state.adminAttendance);
@@ -113,7 +114,7 @@ const AttendanceRequests = ({ locationId }) => {
     requestedStatus: "",
     isoDate: "",
   });
-  const recordsPerPage = 5; // Fixed page size of 5
+  const recordsPerPage = 5; // Matches backend default limit
 
   // Handle errors
   useEffect(() => {
@@ -123,19 +124,22 @@ const AttendanceRequests = ({ locationId }) => {
     }
   }, [attError, empError, dispatch]);
 
-  // Fetch data
+  // Fetch data with pagination
   useEffect(() => {
-    const filters = {};
-    if (locationFilter !== "all") filters.location = locationFilter;
-    if (filterDate) filters.date = format(filterDate, "yyyy-MM-dd");
-    if (statusFilter !== "all") filters.status = statusFilter;
+    const filters = {
+      location: locationFilter !== "all" ? locationFilter : undefined,
+      date: filterDate ? format(filterDate, "yyyy-MM-dd") : undefined,
+      status: statusFilter !== "all" ? statusFilter : undefined,
+      page: currentPage,
+      limit: recordsPerPage,
+    };
     dispatch(fetchAttendanceRequests(filters));
     if (locationFilter !== "all") {
       dispatch(fetchEmployees({ location: locationFilter }));
     }
-  }, [dispatch, locationFilter, filterDate, statusFilter]);
+  }, [dispatch, locationFilter, filterDate, statusFilter, currentPage]);
 
-  // Sorting logic
+  // Sorting logic (client-side, optional if backend sorting is implemented)
   const sortedRequests = useMemo(() => {
     if (!attendanceRequests || !Array.isArray(attendanceRequests)) return [];
     return [...attendanceRequests].sort((a, b) => {
@@ -169,12 +173,9 @@ const AttendanceRequests = ({ locationId }) => {
     });
   }, [attendanceRequests, sortConfig]);
 
-  // Filtering logic
+  // Employee filtering (client-side, as backend doesn't support it yet)
   const filteredRequests = useMemo(() => {
     return sortedRequests.filter((request) => {
-      const matchesLocation =
-        locationFilter === "all" ||
-        request.location?._id?.toString() === locationFilter;
       const matchesEmployee =
         !employeeFilter ||
         request.employee?.name
@@ -183,23 +184,12 @@ const AttendanceRequests = ({ locationId }) => {
         request.employee?.employeeId
           ?.toLowerCase()
           .includes(employeeFilter.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" ||
-        request.status?.toLowerCase() === statusFilter.toLowerCase();
-      const matchesDate =
-        !filterDate ||
-        format(new Date(request.date), "yyyy-MM-dd") === format(filterDate, "yyyy-MM-dd");
-      return matchesLocation && matchesEmployee && matchesStatus && matchesDate;
+      return matchesEmployee;
     });
-  }, [sortedRequests, locationFilter, employeeFilter, statusFilter, filterDate]);
+  }, [sortedRequests, employeeFilter]);
 
-  // Pagination
-  const paginatedRequests = useMemo(() => {
-    const startIndex = (currentPage - 1) * recordsPerPage;
-    return filteredRequests.slice(startIndex, startIndex + recordsPerPage);
-  }, [filteredRequests, currentPage]);
-
-  const totalPages = Math.ceil(filteredRequests.length / recordsPerPage);
+  // Use backend pagination metadata
+  const totalPages = requestsPagination?.totalPages || 1;
 
   const getPageNumbers = () => {
     const maxPagesToShow = 5;
@@ -281,6 +271,8 @@ const AttendanceRequests = ({ locationId }) => {
           location: locationFilter !== "all" ? locationFilter : undefined,
           date: filterDate ? format(filterDate, "yyyy-MM-dd") : undefined,
           status: statusFilter !== "all" ? statusFilter : undefined,
+          page: currentPage,
+          limit: recordsPerPage,
         }));
       })
       .catch((err) => {
@@ -547,7 +539,7 @@ const AttendanceRequests = ({ locationId }) => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedRequests.map((req, index) => (
+                    {filteredRequests.map((req, index) => (
                       <TableRow
                         key={req._id}
                         className={`${

@@ -80,7 +80,7 @@ const MonthlyAttendance = () => {
   const { employees, loading: empLoading } = useSelector(
     (state) => state.siteInchargeEmployee
   );
-  const { monthlyAttendance, loading, error } = useSelector(
+  const { monthlyAttendance, loading, error, pagination } = useSelector(
     (state) => state.siteInchargeAttendance
   );
 
@@ -124,15 +124,16 @@ const MonthlyAttendance = () => {
 
   // Debug Redux state
   useEffect(() => {
-    monthlyAttendance.forEach((att) => {
+    monthlyAttendance.forEach((item) => {
       console.log(
-        `Attendance Record: Employee=${att.employee?._id}, Date=${att.date}, Normalized=${format(
-          new Date(att.date),
-          "yyyy-MM-dd"
-        )}`
+        `Employee: ${item.employee.name}, Attendance Records: ${item.attendance.length}`,
+        item.attendance.map((att) => ({
+          Date: format(new Date(att.date), "yyyy-MM-dd"),
+          Status: att.status,
+        }))
       );
     });
-  }, [employees, monthlyAttendance, error]);
+  }, [monthlyAttendance]);
 
   useEffect(() => {
     if (!user || user.role !== "siteincharge") {
@@ -151,6 +152,8 @@ const MonthlyAttendance = () => {
         month: monthFilter,
         year: yearFilter,
         location: locationId,
+        page: currentPage,
+        limit: employeesPerPage,
         isDeleted: false,
       })
     ).then((result) => {
@@ -160,7 +163,7 @@ const MonthlyAttendance = () => {
         });
       }
     });
-  }, [dispatch, user, navigate, locationId, monthFilter, yearFilter]);
+  }, [dispatch, user, navigate, locationId, monthFilter, yearFilter, currentPage]);
 
   const handleRequestEdit = (
     employeeId,
@@ -244,38 +247,37 @@ const MonthlyAttendance = () => {
   }, [startDate, endDate]);
 
   const sortedEmployees = useMemo(() => {
-    const result = [...employees]
+    const result = [...monthlyAttendance]
       .filter(
-        (emp) =>
-          emp.name.toLowerCase().includes(monthlySearch.toLowerCase()) ||
-          emp.employeeId.toLowerCase().includes(monthlySearch.toLowerCase())
+        (item) =>
+          item.employee.name.toLowerCase().includes(monthlySearch.toLowerCase()) ||
+          item.employee.employeeId.toLowerCase().includes(monthlySearch.toLowerCase())
       )
       .sort((a, b) => {
-        const aValue = a[sortField].toLowerCase();
-        const bValue = b[sortField].toLowerCase();
+        const aValue = a.employee[sortField].toLowerCase();
+        const bValue = b.employee[sortField].toLowerCase();
         return sortOrder === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       });
     return result;
-  }, [employees, sortField, sortOrder, monthlySearch]);
+  }, [monthlyAttendance, sortField, sortOrder, monthlySearch]);
 
-  const paginatedEmployees = useMemo(() => {
-    const startIndex = (currentPage - 1) * employeesPerPage;
-    return sortedEmployees.slice(startIndex, startIndex + employeesPerPage);
-  }, [sortedEmployees, currentPage]);
+  const paginatedEmployees = sortedEmployees; // Backend handles pagination
 
   const monthlyTotals = useMemo(() => {
     return monthlyAttendance.reduce(
-      (totals, record) => ({
-        ...totals,
-        [record.status]: (totals[record.status] || 0) + 1,
-      }),
+      (totals, item) => {
+        item.attendance.forEach((record) => {
+          totals[record.status] = (totals[record.status] || 0) + 1;
+        });
+        return totals;
+      },
       { present: 0, absent: 0, leave: 0, "half-day": 0 }
     );
   }, [monthlyAttendance]);
 
-  const totalPages = Math.ceil(sortedEmployees.length / employeesPerPage);
+  const totalPages = pagination.totalPages || 1;
 
   const getPageNumbers = () => {
     const maxPagesToShow = 5;
@@ -339,7 +341,7 @@ const MonthlyAttendance = () => {
     doc.text(`Total Leave: ${monthlyTotals.leave}`, 15, 64);
     doc.text(`Total Half-Day: ${monthlyTotals["half-day"]}`, 15, 71);
 
-    const body = sortedEmployees.map((emp) => {
+    const body = sortedEmployees.map((item) => {
       const counts = {
         present: 0,
         absent: 0,
@@ -347,9 +349,8 @@ const MonthlyAttendance = () => {
         "half-day": 0,
       };
       const statuses = pdfDays.map((day) => {
-        const record = monthlyAttendance.find(
+        const record = item.attendance.find(
           (att) =>
-            att.employee?._id?.toString() === emp._id.toString() &&
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
         if (record) {
@@ -359,8 +360,8 @@ const MonthlyAttendance = () => {
         return "-";
       });
       return [
-        emp.employeeId,
-        emp.name,
+        item.employee.employeeId,
+        item.employee.name,
         ...statuses,
         counts.present,
         counts.absent,
@@ -373,8 +374,10 @@ const MonthlyAttendance = () => {
       "",
       "Daily Totals",
       ...pdfDays.map((day) => {
-        const records = monthlyAttendance.filter(
-          (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        const records = monthlyAttendance.flatMap((item) =>
+          item.attendance.filter(
+            (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+          )
         );
         const totals = {
           present: records.filter((r) => r.status === "present").length,
@@ -458,7 +461,7 @@ const MonthlyAttendance = () => {
       return;
     }
 
-    const data = sortedEmployees.map((emp) => {
+    const data = sortedEmployees.map((item) => {
       const counts = {
         present: 0,
         absent: 0,
@@ -466,13 +469,12 @@ const MonthlyAttendance = () => {
         "half-day": 0,
       };
       const row = {
-        ID: emp.employeeId,
-        Employee: emp.name,
+        ID: item.employee.employeeId,
+        Employee: item.employee.name,
       };
       pdfDays.forEach((day) => {
-        const record = monthlyAttendance.find(
+        const record = item.attendance.find(
           (att) =>
-            att.employee?._id?.toString() === emp._id.toString() &&
             format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
         );
         row[day.formatted] = record ? record.status.charAt(0).toUpperCase() : "-";
@@ -493,8 +495,10 @@ const MonthlyAttendance = () => {
       ID: "",
       Employee: "Daily Totals",
       ...pdfDays.reduce((acc, day) => {
-        const records = monthlyAttendance.filter(
-          (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+        const records = monthlyAttendance.flatMap((item) =>
+          item.attendance.filter(
+            (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+          )
         );
         const totals = {
           present: records.filter((r) => r.status === "present").length,
@@ -576,7 +580,7 @@ const MonthlyAttendance = () => {
         <CardContent className="p-6 space-y-6">
           {error && (
             <p className="text-error text-sm">
-              Error: {error}
+              Error: {error.message}
             </p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -842,7 +846,7 @@ const MonthlyAttendance = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedEmployees.map((emp, index) => {
+                      {paginatedEmployees.map((item, index) => {
                         const counts = {
                           present: 0,
                           absent: 0,
@@ -851,28 +855,26 @@ const MonthlyAttendance = () => {
                         };
                         return (
                           <TableRow
-                            key={emp._id}
+                            key={item.employee._id}
                             className={`${
                               index % 2 === 0 ? "bg-body" : "bg-complementary-light"
                             } animate-slide-in-row`}
                             style={{ animationDelay: `${index * 0.05}s` }}
                           >
                             <TableCell className="text-body text-sm w-[100px] text-center px-2 whitespace-nowrap">
-                              {emp.employeeId}
+                              {item.employee.employeeId}
                             </TableCell>
                             <TableCell className="text-body text-sm w-[200px] text-center px-2 max-w-[200px] truncate">
-                              {emp.name}
+                              {item.employee.name}
                             </TableCell>
                             {days.map((day) => {
-                              const record = monthlyAttendance.find(
+                              const record = item.attendance.find(
                                 (att) => {
                                   const attDate = format(new Date(att.date), "yyyy-MM-dd");
                                   const dayDate = format(day.date, "yyyy-MM-dd");
-                                  const isMatch =
-                                    att.employee?._id?.toString() === emp._id.toString() &&
-                                    attDate === dayDate;
+                                  const isMatch = attDate === dayDate;
                                   console.log(
-                                    `Comparing: Employee=${emp._id}, AttDate=${att.date} (${attDate}), DayDate=${dayDate}, Match=${isMatch}`
+                                    `Comparing: Employee=${item.employee._id}, AttDate=${att.date} (${attDate}), DayDate=${dayDate}, Match=${isMatch}`
                                   );
                                   return isMatch;
                                 }
@@ -889,8 +891,8 @@ const MonthlyAttendance = () => {
                                   onClick={() =>
                                     record &&
                                     handleRequestEdit(
-                                      emp._id,
-                                      emp.name,
+                                      item.employee._id,
+                                      item.employee.name,
                                       day.date,
                                       record.status,
                                       locationId
@@ -938,8 +940,10 @@ const MonthlyAttendance = () => {
                           Daily Totals
                         </TableCell>
                         {days.map((day) => {
-                          const records = monthlyAttendance.filter(
-                            (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+                          const records = monthlyAttendance.flatMap((item) =>
+                            item.attendance.filter(
+                              (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
+                            )
                           );
                           const totals = {
                             present: records.filter((r) => r.status === "present").length,

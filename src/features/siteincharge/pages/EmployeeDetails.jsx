@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { editEmployee } from '../redux/employeeSlice';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -117,6 +117,7 @@ const editEmployeeSchema = z.object({
 
 const EmployeeDetails = ({ employee }) => {
   const dispatch = useDispatch();
+  const settings = useSelector((state) => state.siteInchargeEmployee.settings); // Fetch settings from Redux
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isHighlighted, setIsHighlighted] = useState(false);
   const [isPersonalOpen, setIsPersonalOpen] = useState(true);
@@ -154,16 +155,17 @@ const EmployeeDetails = ({ employee }) => {
   const totalYearlyPaidLeaves = useMemo(() => {
     if (!employee?.joinDate) return 0;
     const joinDate = new Date(employee.joinDate);
+    if (isNaN(joinDate.getTime())) return 0; // Handle invalid date
     const joinYear = joinDate.getFullYear();
     const joinMonth = joinDate.getMonth();
     const currentYear = new Date().getFullYear();
-    const paidLeavesPerYear = 12; // Default value if settings not available
+    const paidLeavesPerYear = settings?.paidLeavesPerYear || 12; // Use settings or fallback to 12
     if (joinYear === currentYear) {
       const remainingMonths = 12 - joinMonth;
       return Math.round((paidLeavesPerYear * remainingMonths) / 12);
     }
     return paidLeavesPerYear;
-  }, [employee?.joinDate]);
+  }, [employee?.joinDate, settings?.paidLeavesPerYear]);
 
   // Highlight logic
   const HIGHLIGHT_DURATION = 24 * 60 * 60 * 1000; // 24 hours

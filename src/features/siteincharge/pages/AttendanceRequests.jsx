@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchEmployees } from "../redux/employeeSlice";
-import { fetchAttendanceEditRequests, reset } from "../redux/attendanceSlice";
+import { fetchEmployees, reset as resetEmployees } from "../redux/employeeSlice";
+import { fetchAttendanceEditRequests, reset as resetAttendance } from "../redux/attendanceSlice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/tooltip";
 
 const getStatusIcon = (status) => {
-  switch (status) {
+  switch (status?.toLowerCase()) {
     case "pending":
       return <Clock4 className="h-4 w-4 text-yellow-500" />;
     case "approved":
@@ -62,13 +62,14 @@ const getStatusIcon = (status) => {
 
 const AttendanceRequests = ({ locationId }) => {
   const dispatch = useDispatch();
-  const { employees, loading: empLoading } = useSelector(
+  const { employees, loading: empLoading, error: empError } = useSelector(
     (state) => state.siteInchargeEmployee
   );
   const {
     attendanceEditRequests,
     loading: reqLoading,
-    error,
+    error: reqError,
+    pagination,
   } = useSelector((state) => state.siteInchargeAttendance);
 
   const [employeeFilter, setEmployeeFilter] = useState("");
@@ -84,67 +85,58 @@ const AttendanceRequests = ({ locationId }) => {
     employeeName: "",
     date: "",
   });
-  const recordsPerPage = 5;
+  const recordsPerPage = 2; // Match backend's default limit
 
   // Handle error display
   useEffect(() => {
-    if (error) {
-      toast.error(error, { duration: 5000 });
-      dispatch(reset());
+    if (empError || reqError) {
+      toast.error(empError || reqError, { duration: 5000 });
+      dispatch(resetEmployees());
+      dispatch(resetAttendance());
     }
-  }, [error, dispatch]);
+  }, [empError, reqError, dispatch]);
 
   // Fetch initial data
   useEffect(() => {
-    if (!locationId) {
-      return;
-    }
+    if (!locationId) return;
     dispatch(fetchEmployees({ location: locationId }));
-    const filters = { location: locationId };
+    const filters = {
+      location: locationId,
+      status: statusFilter,
+      page: currentPage,
+      limit: recordsPerPage,
+      employeeFilter, // Send employee filter to backend
+    };
     if (filterDate) filters.date = format(filterDate, "yyyy-MM-dd");
+    console.log("Fetching attendance edit requests with filters:", filters);
     dispatch(fetchAttendanceEditRequests(filters));
-  }, [dispatch, locationId, filterDate]);
+  }, [dispatch, locationId, filterDate, statusFilter, employeeFilter, currentPage]);
 
-  // Log requests for debugging
+  // Log requests and pagination for debugging
   useEffect(() => {
-    console.log("AttendanceRequests updated:", attendanceEditRequests);
-  }, [attendanceEditRequests]);
-
-  const sortedAttendanceEditRequests = useMemo(() => {
-    return [...(attendanceEditRequests || [])].sort((a, b) => {
-      const aValue = a.employee?.name?.toLowerCase() || "";
-      const bValue = b.employee?.name?.toLowerCase() || "";
-      return sortOrder === "asc"
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
+    console.log("AttendanceEditRequests state:", {
+      attendanceEditRequests,
+      pagination,
+      totalRecords: pagination?.total || 0,
     });
-  }, [attendanceEditRequests, sortOrder]);
+  }, [attendanceEditRequests, pagination]);
 
-  const filteredRequests = useMemo(() => {
-    return sortedAttendanceEditRequests.filter((request) => {
-      const employee = employees.find(
-        (emp) => emp._id?.toString() === request.employee?._id?.toString()
-      );
-      const matchesEmployee =
-        !employeeFilter ||
-        employee?.name?.toLowerCase().includes(employeeFilter.toLowerCase()) ||
-        employee?.employeeId?.toLowerCase().includes(employeeFilter.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" ||
-        request.status?.toLowerCase() === statusFilter.toLowerCase();
-      const matchesDate =
-        !filterDate ||
-        format(new Date(request.date), "yyyy-MM-dd") === format(filterDate, "yyyy-MM-dd");
-      return matchesEmployee && matchesStatus && matchesDate;
-    });
-  }, [sortedAttendanceEditRequests, employees, employeeFilter, statusFilter, filterDate]);
+  // Sort requests (client-side sorting for display)
+  const sortedRequests = [...(attendanceEditRequests || [])].sort((a, b) => {
+    const aValue = a.employee?.name?.toLowerCase() || "unknown";
+    const bValue = b.employee?.name?.toLowerCase() || "unknown";
+    return sortOrder === "asc"
+      ? aValue.localeCompare(bValue)
+      : bValue.localeCompare(aValue);
+  });
 
-  const paginatedRequests = useMemo(() => {
-    const startIndex = (currentPage - 1) * recordsPerPage;
-    return filteredRequests.slice(startIndex, startIndex + recordsPerPage);
-  }, [filteredRequests, currentPage]);
-
-  const totalPages = Math.ceil(filteredRequests.length / recordsPerPage);
+  const totalPages = Math.ceil(pagination?.total / recordsPerPage) || 1;
+  console.log("Pagination info:", {
+    totalRecords: pagination?.total || 0,
+    recordsPerPage,
+    totalPages,
+    currentPage,
+  });
 
   const getPageNumbers = () => {
     const maxPagesToShow = 5;
@@ -159,19 +151,19 @@ const AttendanceRequests = ({ locationId }) => {
     for (let i = startPage; i <= endPage; i++) {
       pages.push(i);
     }
+    console.log("Page numbers:", pages);
     return pages;
   };
 
   // Status totals
-  const statusTotals = useMemo(() => {
-    return filteredRequests.reduce(
-      (totals, request) => ({
-        ...totals,
-        [request.status]: (totals[request.status] || 0) + 1,
-      }),
-      { pending: 0, approved: 0, rejected: 0 }
-    );
-  }, [filteredRequests]);
+  const statusTotals = (attendanceEditRequests || []).reduce(
+    (totals, request) => ({
+      ...totals,
+      [request.status?.toLowerCase()]: (totals[request.status?.toLowerCase()] || 0) + 1,
+    }),
+    { pending: 0, approved: 0, rejected: 0 }
+  );
+  console.log("Status totals:", statusTotals);
 
   const handleRequestsSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -197,7 +189,7 @@ const AttendanceRequests = ({ locationId }) => {
 
   return (
     <div className="space-y-8 p-4 animate-fade-in">
-      {reqLoading && (
+      {(reqLoading || empLoading) && (
         <div className="fixed inset-0 bg-overlay flex justify-center items-center z-50">
           <Loader2 className="h-8 w-8 animate-spin text-accent" />
         </div>
@@ -341,11 +333,11 @@ const AttendanceRequests = ({ locationId }) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          {reqLoading || empLoading ? (
+          {(reqLoading || empLoading) ? (
             <div className="flex justify-center py-6">
               <Loader2 className="h-6 w-6 animate-spin text-accent" />
             </div>
-          ) : filteredRequests.length > 0 ? (
+          ) : sortedRequests.length > 0 ? (
             <div className="space-y-4">
               <div className="max-h-[400px] overflow-x-auto relative">
                 <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
@@ -385,17 +377,14 @@ const AttendanceRequests = ({ locationId }) => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedRequests.map((request, index) => (
+                    {sortedRequests.map((request, index) => (
                       <TableRow
                         key={request._id}
-                        className={`${
-                          index % 2 === 0 ? "bg-body" : "bg-complementary-light"
-                        } hover:bg-accent-light animate-slide-in-row`}
+                        className={`${index % 2 === 0 ? "bg-body" : "bg-complementary-light"} hover:bg-accent-light animate-slide-in-row`}
                         style={{ animationDelay: `${index * 0.05}s` }}
                       >
                         <TableCell className="text-body text-sm text-center px-2 max-w-[200px] truncate">
-                          {request.employee?.name || "Unknown"} (
-                          {request.employee?.employeeId || "N/A"})
+                          {request.employee?.name || "Unknown"} ({request.employee?.employeeId || "N/A"})
                         </TableCell>
                         <TableCell className="text-body text-sm text-center px-2 whitespace-nowrap">
                           {format(new Date(request.date), "PPP")}
@@ -407,15 +396,14 @@ const AttendanceRequests = ({ locationId }) => {
                                 <span className="flex items-center justify-center gap-1">
                                   {getStatusIcon(request.currentStatus)}
                                   {request.currentStatus !== "N/A"
-                                    ? request.currentStatus.charAt(0).toUpperCase()
+                                    ? request.currentStatus.charAt(0).toUpperCase() + request.currentStatus.slice(1)
                                     : "N/A"}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="bg-body text-body border-complementary text-sm">
                                 {request.currentStatus !== "N/A"
-                                  ? request.currentStatus.charAt(0).toUpperCase() +
-                                    request.currentStatus.slice(1)
-                                  : "N/A"}
+                                  ? request.currentStatus.charAt(0).toUpperCase() + request.currentStatus.slice(1)
+                                  : "No attendance record"}
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -427,14 +415,13 @@ const AttendanceRequests = ({ locationId }) => {
                                 <span className="flex items-center justify-center gap-1">
                                   {getStatusIcon(request.requestedStatus)}
                                   {request.requestedStatus
-                                    ? request.requestedStatus.charAt(0).toUpperCase()
+                                    ? request.requestedStatus.charAt(0).toUpperCase() + request.requestedStatus.slice(1)
                                     : "N/A"}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="bg-body text-body border-complementary text-sm">
                                 {request.requestedStatus
-                                  ? request.requestedStatus.charAt(0).toUpperCase() +
-                                    request.requestedStatus.slice(1)
+                                  ? request.requestedStatus.charAt(0).toUpperCase() + request.requestedStatus.slice(1)
                                   : "N/A"}
                               </TooltipContent>
                             </Tooltip>
@@ -454,7 +441,7 @@ const AttendanceRequests = ({ locationId }) => {
                                 })
                               }
                               className="text-accent hover:underline p-0"
-                              aria-label={`View reason for ${request.employee?.name}'s request`}
+                              aria-label={`View reason for ${request.employee?.name || "Unknown"}'s request`}
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
@@ -468,14 +455,13 @@ const AttendanceRequests = ({ locationId }) => {
                                 <span className="flex items-center justify-center gap-1">
                                   {getStatusIcon(request.status)}
                                   {request.status
-                                    ? request.status.charAt(0).toUpperCase()
+                                    ? request.status.charAt(0).toUpperCase() + request.status.slice(1)
                                     : "N/A"}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="bg-body text-body border-complementary text-sm">
                                 {request.status
-                                  ? request.status.charAt(0).toUpperCase() +
-                                    request.status.slice(1)
+                                  ? request.status.charAt(0).toUpperCase() + request.status.slice(1)
                                   : "N/A"}
                               </TooltipContent>
                             </Tooltip>
@@ -504,8 +490,8 @@ const AttendanceRequests = ({ locationId }) => {
                   </TableFooter>
                 </Table>
               </div>
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2">
+              {totalPages > 1 ? (
+                <div className="flex items-center justify-center gap-2 mt-4">
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
@@ -540,6 +526,10 @@ const AttendanceRequests = ({ locationId }) => {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
+              ) : (
+                <p className="text-body text-sm text-center py-4">
+                  Only one page of results available
+                </p>
               )}
             </div>
           ) : (

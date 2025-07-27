@@ -1,35 +1,11 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "../../../utils/api";
 
-export const fetchAttendance = createAsyncThunk(
-  "siteInchargeAttendance/fetchAttendance",
-  async (filters = {}, { rejectWithValue }) => {
-    try {
-      const cleanedFilters = { ...filters, isDeleted: false };
-      if (cleanedFilters.status === "all") {
-        delete cleanedFilters.status;
-      }
-            const response = await api.get("/siteincharge/attendance", {
-        params: cleanedFilters,
-      });
-      return response.data.attendance || []; // Ensure array is returned
-    } catch (error) {
-      (
-        "Fetch attendance error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to fetch attendance data"
-      );
-    }
-  }
-);
-
 export const markAttendance = createAsyncThunk(
   "siteInchargeAttendance/markAttendance",
   async (records, { rejectWithValue }) => {
     try {
-            if (!Array.isArray(records)) {
+      if (!Array.isArray(records)) {
         throw new Error("Records must be an array");
       }
       const response = await api.post("/siteincharge/attendance", records);
@@ -43,7 +19,7 @@ export const markAttendance = createAsyncThunk(
         : attendance.map((rec) => rec._id);
       return { attendance, attendanceIds };
     } catch (error) {
-      (
+      console.error(
         "Mark attendance error:",
         error.response?.data || error.message
       );
@@ -60,7 +36,7 @@ export const bulkMarkAttendance = createAsyncThunk(
   "siteInchargeAttendance/bulkMarkAttendance",
   async ({ attendance, overwrite }, { rejectWithValue }) => {
     try {
-      ("Sending bulk attendance payload:", {
+      console.log("Sending bulk attendance payload:", {
         attendance,
         overwrite,
       });
@@ -88,7 +64,7 @@ export const bulkMarkAttendance = createAsyncThunk(
         attendanceIds,
       };
     } catch (error) {
-      (
+      console.error(
         "Bulk mark attendance error:",
         error.response?.data || error.message
       );
@@ -111,13 +87,13 @@ export const undoAttendance = createAsyncThunk(
   "siteInchargeAttendance/undoAttendance",
   async ({ attendanceIds }, { rejectWithValue }) => {
     try {
-            if (!Array.isArray(attendanceIds)) {
+      if (!Array.isArray(attendanceIds)) {
         throw new Error("attendanceIds must be an array");
       }
       await api.delete("/siteincharge/attendance", { data: { attendanceIds } });
       return attendanceIds;
     } catch (error) {
-      (
+      console.error(
         "Undo attendance error:",
         error.response?.data || error.message
       );
@@ -130,19 +106,44 @@ export const undoAttendance = createAsyncThunk(
   }
 );
 
+export const fetchAttendance = createAsyncThunk(
+  "siteInchargeAttendance/fetchAttendance",
+  async ({ page = 1, limit = 5, ...filters } = {}, { rejectWithValue }) => {
+    try {
+      const cleanedFilters = { ...filters, isDeleted: false };
+      if (cleanedFilters.status === "all") {
+        delete cleanedFilters.status;
+      }
+      console.log("fetchAttendance payload:", { ...cleanedFilters, page, limit });
+      const response = await api.get("/siteincharge/attendance", {
+        params: { ...cleanedFilters, page, limit },
+      });
+      return {
+        attendance: response.data.attendance || [],
+        pagination: response.data.pagination || {},
+      };
+    } catch (error) {
+      console.error("Fetch attendance error:", error.response?.data || error.message);
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch attendance data"
+      );
+    }
+  }
+);
+
 export const fetchMonthlyAttendance = createAsyncThunk(
   "siteInchargeAttendance/fetchMonthlyAttendance",
-  async ({ month, year, location }, { rejectWithValue }) => {
+  async ({ month, year, location, page = 1, limit = 5 }, { rejectWithValue }) => {
     try {
-            const response = await api.get("/siteincharge/attendance/monthly", {
-        params: { month, year, location, isDeleted: false },
+      const response = await api.get("/siteincharge/attendance/monthly", {
+        params: { month, year, location, isDeleted: false, page, limit },
       });
-            return response.data.data || []; // Handle { data: [...] } structure
+      return {
+        attendance: response.data.data || [],
+        pagination: response.data.pagination || {},
+      };
     } catch (error) {
-      (
-        "Fetch monthly attendance error:",
-        error.response?.data || error.message
-      );
+      console.error("Fetch monthly attendance error:", error.response?.data || error.message);
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly attendance"
       );
@@ -157,7 +158,7 @@ export const requestAttendanceEdit = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      ("Requesting attendance edit:", {
+      console.log("Requesting attendance edit:", {
         employeeId,
         location,
         date,
@@ -175,7 +176,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      (
+      console.error(
         "Request attendance edit error:",
         error.response?.data || error.message
       );
@@ -187,21 +188,24 @@ export const requestAttendanceEdit = createAsyncThunk(
 );
 
 export const fetchAttendanceEditRequests = createAsyncThunk(
-  "siteInchargeAttendance/fetchAttendanceEditRequests",
-  async ({ location }, { rejectWithValue }) => {
+  'siteInchargeAttendance/fetchAttendanceEditRequests',
+  async ({ location, page = 1, limit = 5, status = 'all' }, { rejectWithValue }) => {
     try {
-            const response = await api.get("/siteincharge/attendance/requests", {
-        params: { location, isDeleted: false },
+      const response = await api.get('/siteincharge/attendance/requests', {
+        params: { location, isDeleted: false, page, limit, status },
       });
-      return response.data.requests;
+      return {
+        requests: response.data.requests || [],
+        pagination: response.data.pagination || {},
+      };
     } catch (error) {
-      (
-        "Fetch attendance edit requests error:",
+      console.error(
+        'Fetch attendance edit requests error:',
         error.response?.data || error.message
       );
       return rejectWithValue(
         error.response?.data?.message ||
-          "Failed to fetch attendance edit requests"
+          'Failed to fetch attendance edit requests'
       );
     }
   }
@@ -211,7 +215,7 @@ export const calculateSalaryImpact = createAsyncThunk(
   "siteInchargeAttendance/calculateSalaryImpact",
   async ({ month, year, location }, { rejectWithValue }) => {
     try {
-            const response = await api.get(
+      const response = await api.get(
         "/siteincharge/attendance/salary-calculation",
         {
           params: { month, year, location },
@@ -219,7 +223,7 @@ export const calculateSalaryImpact = createAsyncThunk(
       );
       return response.data.salaryCalculations || [];
     } catch (error) {
-      (
+      console.error(
         "Calculate salary impact error:",
         error.response?.data || error.message
       );
@@ -237,6 +241,7 @@ const attendanceSlice = createSlice({
     monthlyAttendance: [],
     attendanceEditRequests: [],
     salaryCalculations: [], 
+    pagination: {},
     loading: false,
     error: null,
   },
@@ -257,7 +262,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(fetchAttendance.fulfilled, (state, action) => {
         state.loading = false;
-        state.attendance = action.payload || [];
+        state.attendance = action.payload.attendance || [];
+        state.pagination = action.payload.pagination || {};
       })
       .addCase(fetchAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -307,7 +313,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(fetchMonthlyAttendance.fulfilled, (state, action) => {
         state.loading = false;
-        state.monthlyAttendance = action.payload || [];
+        state.monthlyAttendance = action.payload.attendance || [];
+        state.pagination = action.payload.pagination || {};
       })
       .addCase(fetchMonthlyAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -330,7 +337,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(fetchAttendanceEditRequests.fulfilled, (state, action) => {
         state.loading = false;
-        state.attendanceEditRequests = action.payload || [];
+        state.attendanceEditRequests = action.payload.requests || [];
+        state.pagination = action.payload.pagination || {};
       })
       .addCase(fetchAttendanceEditRequests.rejected, (state, action) => {
         state.loading = false;

@@ -34,9 +34,16 @@ const Attendance = () => {
   }, []);
 
   useEffect(() => {
+    if (!user || user.role !== 'admin') {
+      toast.error("Unauthorized access. Please log in as an admin.", {
+        duration: 5000,
+      });
+      navigate('/login');
+      return;
+    }
     dispatch(fetchLocations());
-    dispatch(fetchEmployees());
-  }, [dispatch]);
+    dispatch(fetchEmployees({ location }));
+  }, [dispatch, user, navigate, location]);
 
   useEffect(() => {
     if (locationsError || employeesError) {
@@ -109,7 +116,14 @@ const Attendance = () => {
             />
           </TabsContent>
           <TabsContent value="monthly">
-            <MonthlyAttendance />
+            <MonthlyAttendance
+              month={month}
+              year={year}
+              location={location}
+              setLocation={setLocation}
+              setMonth={setMonth}
+              setYear={setYear}
+            />
           </TabsContent>
           <TabsContent value="overview">
             <ViewAttendance />
@@ -131,7 +145,16 @@ const Attendance = () => {
               setYear={setYear}
             />
           )}
-          {activeTab === 'monthly' && <MonthlyAttendance />}
+          {activeTab === 'monthly' && (
+            <MonthlyAttendance
+              month={month}
+              year={year}
+              location={location}
+              setLocation={setLocation}
+              setMonth={setMonth}
+              setYear={setYear}
+            />
+          )}
           {activeTab === 'overview' && <ViewAttendance />}
           {activeTab === 'requests' && <AttendanceRequests locationId={location} />}
         </div>

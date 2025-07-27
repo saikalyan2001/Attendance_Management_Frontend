@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { bulkMarkAttendance, fetchAttendance } from "../redux/attendanceSlice";
-import { fetchEmployees } from "../redux/employeeSlice";
+import { fetchEmployees, setEmployees } from "../redux/employeeSlice";
 import { fetchLocations } from "../redux/locationsSlice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +44,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
-import { format, startOfMonth, formatISO, parse } from "date-fns";
+import { format, startOfMonth, formatISO, parse, subMonths } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import {
   CalendarIcon,
@@ -79,9 +79,12 @@ const MarkAttendance = ({
   const { locations, loading: locationsLoading } = useSelector(
     (state) => state.adminLocations
   );
-  const { loading, attendance } = useSelector((state) => state.adminAttendance);
+  const { loading, attendance, pagination } = useSelector(
+    (state) => state.adminAttendance
+  );
 
-  const getCurrentISTTime = () => format(toZonedTime(new Date(), "Asia/Kolkata"), "HH:mm:ss");
+  const getCurrentISTTime = () =>
+    format(toZonedTime(new Date(), "Asia/Kolkata"), "HH:mm:ss");
   const [selectedTime, setSelectedTime] = useState(getCurrentISTTime());
   const [bulkSelectedEmployees, setBulkSelectedEmployees] = useState([]);
   const [bulkEmployeeStatuses, setBulkEmployeeStatuses] = useState({});
@@ -93,7 +96,42 @@ const MarkAttendance = ({
   });
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 5; // Fixed page size since "Rows per page" is removed
+  const pageSize = 5; // Fixed page size
+
+  const getOCLeaves = (employee, month, year) => {
+    const paidLeavesPerMonth = 2;
+    const monthlyLeaves = Array.isArray(employee.monthlyLeaves)
+      ? employee.monthlyLeaves
+      : [];
+    const monthlyLeave = monthlyLeaves.find(
+      (ml) => ml.year === year && ml.month === month
+    ) || {
+      allocated: paidLeavesPerMonth,
+      available: paidLeavesPerMonth,
+      carriedForward: 0,
+      taken: 0,
+    };
+
+    const openingLeaves =
+      (monthlyLeave.allocated || paidLeavesPerMonth) +
+      (monthlyLeave.carriedForward || 0);
+    const closingLeaves = Math.max(
+      monthlyLeave.available || paidLeavesPerMonth,
+      0
+    );
+
+    console.log(
+      `getOCLeaves for ${employee.name} (${employee.employeeId}), ${month}/${year}:`,
+      {
+        monthlyLeaves: employee.monthlyLeaves,
+        monthlyLeave,
+        openingLeaves,
+        closingLeaves,
+      }
+    );
+
+    return `${openingLeaves.toFixed(1)}/${closingLeaves.toFixed(1)}`;
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -103,6 +141,77 @@ const MarkAttendance = ({
   }, []);
 
   useEffect(() => {
+    const fetchAllEmployees = async () => {
+      try {
+        let allEmployees = [];
+        let page = 1;
+        let hasMore = true;
+
+        // Fetch for current month
+        while (hasMore) {
+          const result = await dispatch(
+            fetchEmployees({ location, month, year, page, limit: 10 })
+          ).unwrap();
+          allEmployees = [...allEmployees, ...result.employees];
+          hasMore = page < result.pagination.totalPages;
+          page += 1;
+        }
+
+        // Fetch for next month if not in the future
+        const currentDate = new Date();
+        const selectedDate = new Date(year, month - 1, 1);
+        const nextMonthDate = new Date(year, month, 1);
+        const nextMonth = nextMonthDate.getMonth() + 1;
+        const nextYear = nextMonthDate.getFullYear();
+        if (nextMonthDate <= currentDate) {
+          page = 1;
+          hasMore = true;
+          while (hasMore) {
+            const result = await dispatch(
+              fetchEmployees({
+                location,
+                month: nextMonth,
+                year: nextYear,
+                page,
+                limit: 10,
+              })
+            ).unwrap();
+            allEmployees = [...allEmployees, ...result.employees];
+            hasMore = page < result.pagination.totalPages;
+            page += 1;
+          }
+        }
+
+        // Merge monthlyLeaves for each employee
+        const employeeMap = new Map();
+        allEmployees.forEach((emp) => {
+          if (employeeMap.has(emp._id)) {
+            const existing = employeeMap.get(emp._id);
+            const mergedLeaves = [
+              ...new Map(
+                [
+                  ...(existing.monthlyLeaves || []),
+                  ...(emp.monthlyLeaves || []),
+                ].map((ml) => [`${ml.year}-${ml.month}`, ml])
+              ).values(),
+            ];
+            employeeMap.set(emp._id, {
+              ...existing,
+              ...emp,
+              monthlyLeaves: mergedLeaves,
+            });
+          } else {
+            employeeMap.set(emp._id, { ...emp });
+          }
+        });
+        const uniqueEmployees = Array.from(employeeMap.values());
+        dispatch(setEmployees(uniqueEmployees));
+      } catch (error) {
+        console.error("Failed to fetch all employees:", error);
+        toast.error("Failed to fetch employees.", { duration: 5000 });
+      }
+    };
+
     if (!user || user.role !== "admin") {
       toast.error("Unauthorized access. Please log in as an admin.", {
         duration: 5000,
@@ -112,7 +221,7 @@ const MarkAttendance = ({
     }
     dispatch(fetchLocations());
     if (location && location !== "all") {
-      dispatch(fetchEmployees({ location, month, year }));
+      fetchAllEmployees();
     }
   }, [dispatch, user, navigate, location, month, year]);
 
@@ -124,6 +233,10 @@ const MarkAttendance = ({
       fetchAttendance({
         date: dateStr,
         location,
+        month,
+        year,
+        page: currentPage,
+        limit: pageSize,
       })
     ).then((result) => {
       if (fetchAttendance.rejected.match(result)) {
@@ -138,6 +251,10 @@ const MarkAttendance = ({
                   fetchAttendance({
                     date: dateStr,
                     location,
+                    month,
+                    year,
+                    page: currentPage,
+                    limit: pageSize,
                   })
                 ),
             },
@@ -146,22 +263,102 @@ const MarkAttendance = ({
         dispatch({ type: "attendance/reset" });
       }
     });
-  }, [dispatch, selectedDate, location]);
+  }, [dispatch, selectedDate, location, month, year, currentPage, pageSize]);
 
-  const filteredEmployees = useMemo(() => {
-    return employees.filter(
-      (emp) =>
-        emp.name.toLowerCase().includes(employeeFilter.toLowerCase()) ||
-        emp.employeeId.toLowerCase().includes(employeeFilter.toLowerCase())
+  const displayData = useMemo(() => {
+    if (!selectedDate || !location || location === "all") {
+      return {
+        records: [],
+        totalPages: 1,
+        totalItems: 0,
+        filteredEmployees: [],
+      };
+    }
+
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const selectedMonth = parseInt(format(selectedDate, "M"));
+    const selectedYear = parseInt(format(selectedDate, "yyyy"));
+    const attendanceMap = new Map(
+      Array.isArray(attendance)
+        ? attendance
+            .filter((record) => record.date && record.date.startsWith(dateStr))
+            .map((record) => [record.employee?._id?.toString(), record])
+        : []
     );
-  }, [employees, employeeFilter]);
 
-  const paginatedEmployees = useMemo(() => {
+    const selectedLocation = locations.find((loc) => loc._id === location);
+    const locationName = selectedLocation?.name;
+
+    const filteredEmployees = Array.isArray(employees)
+      ? employees.filter((emp) => {
+          const matchesLocation =
+            emp.location?._id?.toString() === location ||
+            emp.location?.name === locationName;
+          const matchesFilter = employeeFilter
+            ? emp.name?.toLowerCase().includes(employeeFilter.toLowerCase()) ||
+              emp.employeeId
+                ?.toLowerCase()
+                .includes(employeeFilter.toLowerCase())
+            : true;
+          return matchesLocation && matchesFilter;
+        })
+      : [];
+
+    const totalItems = filteredEmployees.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const startIndex = (currentPage - 1) * pageSize;
-    return filteredEmployees.slice(startIndex, startIndex + pageSize);
-  }, [filteredEmployees, currentPage]);
+    const paginatedEmployees = filteredEmployees.slice(
+      startIndex,
+      startIndex + pageSize
+    );
+    
 
-  const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+    return {
+      records: paginatedEmployees.map((emp) => {
+        const attendanceRecord = attendanceMap.get(emp._id?.toString());
+        const monthlyLeave = Array.isArray(emp.monthlyLeaves)
+          ? emp.monthlyLeaves.find(
+              (leave) =>
+                leave.month === selectedMonth && leave.year === selectedYear
+            )
+          : null;
+        const ocLeaves = getOCLeaves(emp, selectedMonth, selectedYear); // Use getOCLeaves
+        const leavesAvailable = monthlyLeave ? monthlyLeave.available || 0 : 0;
+
+        return {
+          employee: {
+            _id: emp._id || null,
+            name: emp.name || "Unknown",
+            employeeId: emp.employeeId || "Unknown",
+            monthlyLeaves: emp.monthlyLeaves || [],
+            paidLeaves: emp.paidLeaves || {
+              available: 0,
+              used: 0,
+              carriedForward: 0,
+            },
+          },
+          status: attendanceRecord ? attendanceRecord.status : "present",
+          date: attendanceRecord ? attendanceRecord.date : dateStr,
+          ocLeaves,
+          leavesAvailable,
+        };
+      }),
+      totalPages,
+      totalItems,
+      filteredEmployees,
+    };
+  }, [
+    employees,
+    attendance,
+    employeeFilter,
+    selectedDate,
+    location,
+    currentPage,
+    pageSize,
+    locations,
+  ]);
+
+  const totalPages = displayData.totalPages || 1;
 
   const getPageNumbers = () => {
     const maxPagesToShow = 5;
@@ -184,36 +381,28 @@ const MarkAttendance = ({
     if (!Array.isArray(attendance)) return [];
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     return attendance.filter(
-      (record) => record.date.startsWith(dateStr)
+      (record) => record.date && record.date.startsWith(dateStr)
     );
   }, [attendance, selectedDate, location]);
 
   const monthlyLeavesAvailable = useMemo(() => {
     if (!selectedDate || !location || location === "all") return {};
+    const selectedMonth = parseInt(format(selectedDate, "M"));
+    const selectedYear = parseInt(format(selectedDate, "yyyy"));
     const availableLeaves = {};
-    employees.forEach((emp) => {
-      const monthlyRecord = Array.isArray(emp.monthlyLeaves)
+    (Array.isArray(employees) ? employees : []).forEach((emp) => {
+      const monthlyLeave = Array.isArray(emp.monthlyLeaves)
         ? emp.monthlyLeaves.find(
-            (record) => record.month === month && record.year === year
+            (leave) =>
+              leave.month === selectedMonth && leave.year === selectedYear
           )
         : null;
-      availableLeaves[emp._id.toString()] = monthlyRecord?.available || 0;
+      availableLeaves[emp._id?.toString()] = monthlyLeave
+        ? monthlyLeave.available || 0
+        : 0;
     });
     return availableLeaves;
-  }, [employees, month, year, location]);
-
-  const getOCLeaves = (employee) => {
-    const monthlyRecord = Array.isArray(employee.monthlyLeaves)
-      ? employee.monthlyLeaves.find(
-          (record) => record.month === month && record.year === year
-        )
-      : null;
-    const opening = monthlyRecord
-      ? (monthlyRecord.allocated || 0) + (monthlyRecord.carriedForward || 0)
-      : 0;
-    const closing = monthlyRecord ? monthlyRecord.available || 0 : 0;
-    return `${opening.toFixed(1)}/${closing.toFixed(1)}`;
-  };
+  }, [employees, location, selectedDate]);
 
   const handleBulkSelect = (employeeId) => {
     setBulkSelectedEmployees((prev) => {
@@ -244,7 +433,9 @@ const MarkAttendance = ({
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      const allEmployeeIds = paginatedEmployees.map((emp) => emp._id.toString());
+      const allEmployeeIds = displayData.records
+        .map((record) => record.employee._id?.toString())
+        .filter(Boolean);
       setBulkSelectedEmployees((prev) => [
         ...new Set([...prev, ...allEmployeeIds]),
       ]);
@@ -256,7 +447,9 @@ const MarkAttendance = ({
         return newStatuses;
       });
     } else {
-      const allEmployeeIds = paginatedEmployees.map((emp) => emp._id.toString());
+      const allEmployeeIds = displayData.records
+        .map((record) => record.employee._id?.toString())
+        .filter(Boolean);
       setBulkSelectedEmployees((prev) =>
         prev.filter((id) => !allEmployeeIds.includes(id))
       );
@@ -274,7 +467,11 @@ const MarkAttendance = ({
     if (!date || !time) return null;
     const parsedTime = parse(time, "HH:mm:ss", new Date());
     if (isNaN(parsedTime.getTime())) return null;
-    const [hours, minutes, seconds] = [parsedTime.getHours(), parsedTime.getMinutes(), parsedTime.getSeconds()];
+    const [hours, minutes, seconds] = [
+      parsedTime.getHours(),
+      parsedTime.getMinutes(),
+      parsedTime.getSeconds(),
+    ];
     const dateTime = new Date(date);
     dateTime.setHours(hours, minutes, seconds, 0);
     const istTime = toZonedTime(dateTime, "Asia/Kolkata");
@@ -286,7 +483,7 @@ const MarkAttendance = ({
       toast.error("Please select a specific location.");
       return;
     }
-    if (!filteredEmployees.length) {
+    if (!displayData.filteredEmployees.length) {
       toast.error("No employees found for this location or filter.");
       return;
     }
@@ -311,8 +508,9 @@ const MarkAttendance = ({
       status: bulkEmployeeStatuses[employeeId] || "absent",
       location,
     }));
-    const remainingEmployees = filteredEmployees.filter(
-      (emp) => !bulkSelectedEmployees.includes(emp._id.toString())
+
+    const remainingEmployees = displayData.filteredEmployees.filter(
+      (emp) => !bulkSelectedEmployees.includes(emp._id?.toString())
     );
     const remainingRecords = remainingEmployees.map((emp) => ({
       employeeId: emp._id,
@@ -322,7 +520,7 @@ const MarkAttendance = ({
     }));
 
     if (!selectedRecords.length && !remainingRecords.length) {
-      toast.error("No employees selected or available to mark attendance.");
+      toast.error("No employees available to mark attendance.");
       return;
     }
 
@@ -336,6 +534,8 @@ const MarkAttendance = ({
       );
       return;
     }
+
+    console.log({ selectedRecords, remainingRecords }); // Debug log
 
     setBulkConfirmDialog({
       open: true,
@@ -363,7 +563,7 @@ const MarkAttendance = ({
 
     dispatch(bulkMarkAttendance({ attendance: allRecords }))
       .unwrap()
-      .then((response) => {
+      .then(async (response) => {
         const statusCounts = selectedRecords.reduce(
           (acc, record) => ({
             ...acc,
@@ -390,12 +590,81 @@ const MarkAttendance = ({
           remaining: [],
           preview: false,
         });
-        dispatch(fetchEmployees({ location, month, year }));
+
+        // Fetch current and next two months' employee data
+        const currentDate = new Date(year, month - 1, 1);
+        const nextMonthDate = new Date(year, month, 1);
+        const nextNextMonthDate = new Date(year, month + 1, 1);
+        const nextMonth = nextMonthDate.getMonth() + 1;
+        const nextYear = nextMonthDate.getFullYear();
+        const nextNextMonth = nextNextMonthDate.getMonth() + 1;
+        const nextNextYear = nextNextMonthDate.getFullYear();
+
+        const results = await Promise.all([
+          dispatch(
+            fetchEmployees({ location, month, year, page: 1, limit: 10 })
+          ).unwrap(),
+          dispatch(
+            fetchEmployees({
+              location,
+              month: nextMonth,
+              year: nextYear,
+              page: 1,
+              limit: 10,
+            })
+          ).unwrap(),
+          dispatch(
+            fetchEmployees({
+              location,
+              month: nextNextMonth,
+              year: nextNextYear,
+              page: 1,
+              limit: 10,
+            })
+          ).unwrap(),
+        ]);
+
+        // Merge all employees and their monthlyLeaves
+        const allEmployees = results.flatMap((result) => result.employees);
+        const employeeMap = new Map();
+        allEmployees.forEach((emp) => {
+          if (employeeMap.has(emp._id)) {
+            const existing = employeeMap.get(emp._id);
+            const mergedLeaves = [
+              ...new Map(
+                [
+                  ...(existing.monthlyLeaves || []),
+                  ...(emp.monthlyLeaves || []),
+                ].map((ml) => [`${ml.year}-${ml.month}`, ml])
+              ).values(),
+            ];
+            employeeMap.set(emp._id, {
+              ...existing,
+              ...emp,
+              monthlyLeaves: mergedLeaves,
+            });
+          } else {
+            employeeMap.set(emp._id, { ...emp });
+          }
+        });
+        const uniqueEmployees = Array.from(employeeMap.values());
+        dispatch(setEmployees(uniqueEmployees));
+
+        const dateStr = format(selectedDate, "yyyy-MM-dd");
+        dispatch(
+          fetchAttendance({
+            date: dateStr,
+            location,
+            month,
+            year,
+            page: currentPage,
+            limit: pageSize,
+          })
+        );
       })
       .catch((err) => {
         const errorMessage = err?.message || "Failed to mark attendance.";
-        let userFriendlyMessage =
-          "An error occurred while marking attendance.";
+        let userFriendlyMessage = "An error occurred while marking attendance.";
         if (
           errorMessage === "Attendance array is required and must not be empty"
         ) {
@@ -486,7 +755,10 @@ const MarkAttendance = ({
               >
                 Month
               </Label>
-              <Select value={month.toString()} onValueChange={handleMonthChange}>
+              <Select
+                value={month.toString()}
+                onValueChange={handleMonthChange}
+              >
                 <SelectTrigger
                   id="month"
                   className="bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md"
@@ -510,10 +782,7 @@ const MarkAttendance = ({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label
-                htmlFor="year"
-                className="text-sm font-semibold text-body"
-              >
+              <Label htmlFor="year" className="text-sm font-semibold text-body">
                 Year
               </Label>
               <Select
@@ -568,7 +837,10 @@ const MarkAttendance = ({
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent className="bg-body text-body border-complementary">
-                  <SelectItem value="all" className="text-sm hover:bg-accent-light">
+                  <SelectItem
+                    value="all"
+                    className="text-sm hover:bg-accent-light"
+                  >
                     All Locations
                   </SelectItem>
                   {locations.map((loc) => (
@@ -584,10 +856,7 @@ const MarkAttendance = ({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label
-                htmlFor="date"
-                className="text-sm font-semibold text-body"
-              >
+              <Label htmlFor="date" className="text-sm font-semibold text-body">
                 Select Date
               </Label>
               <Popover>
@@ -600,7 +869,9 @@ const MarkAttendance = ({
                   >
                     <CalendarIcon className="mr-2 h-5 w-5 text-complementary flex-shrink-0" />
                     <span className="truncate">
-                      {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+                      {selectedDate
+                        ? format(selectedDate, "PPP")
+                        : "Pick a date"}
                     </span>
                   </Button>
                 </PopoverTrigger>
@@ -612,22 +883,22 @@ const MarkAttendance = ({
                     initialFocus
                     disabled={(date) => date > new Date()}
                     className="border border-complementary rounded-md text-sm"
+                    month={new Date(year, month - 1, 1)} // Set the displayed month
                     modifiers={{
                       selected: selectedDate,
                     }}
                     modifiersClassNames={{
-                      selected: "bg-accent text-body font-bold border-2 border-accent rounded-full",
-                      today: "bg-complementary-light text-body border border-complementary rounded-full",
+                      selected:
+                        "bg-accent text-body font-bold border-2 border-accent rounded-full",
+                      today:
+                        "bg-complementary-light text-body border border-complementary rounded-full",
                     }}
                   />
                 </PopoverContent>
               </Popover>
             </div>
             <div className="space-y-2">
-              <Label
-                htmlFor="time"
-                className="text-sm font-semibold text-body"
-              >
+              <Label htmlFor="time" className="text-sm font-semibold text-body">
                 Current Time
               </Label>
               <Input
@@ -636,7 +907,9 @@ const MarkAttendance = ({
                 value={selectedTime}
                 readOnly
                 className="w-full bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md cursor-default select-none"
-                disabled={location === "all" || locationsLoading || !selectedDate}
+                disabled={
+                  location === "all" || locationsLoading || !selectedDate
+                }
                 aria-label="Current time for marking attendance"
               />
             </div>
@@ -644,7 +917,9 @@ const MarkAttendance = ({
           {existingAttendanceRecords.length > 0 && (
             <Alert className="border-error bg-body text-error rounded-lg p-3 animate-pulse">
               <AlertDescription>
-                Attendance already marked for {existingAttendanceRecords.length} employee(s) on {format(selectedDate, "PPP")}. Please select a different date or review existing records.
+                Attendance already marked for {existingAttendanceRecords.length}{" "}
+                employee(s) on {format(selectedDate, "PPP")}. Please select a
+                different date or review existing records.
               </AlertDescription>
             </Alert>
           )}
@@ -697,7 +972,9 @@ const MarkAttendance = ({
                     </TooltipTrigger>
                     <TooltipContent className="bg-body text-body border-complementary text-sm max-w-xs">
                       <p>
-                        Employees not selected will be marked as Present upon submission. If no employees are selected, all will be marked as Present.
+                        Employees not selected will be marked as Present upon
+                        submission. If no employees are selected, all will be
+                        marked as Present.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -714,7 +991,8 @@ const MarkAttendance = ({
                     locationsLoading ||
                     location === "all" ||
                     !selectedDate ||
-                    !selectedTime
+                    !selectedTime ||
+                    !displayData.filteredEmployees.length
                   }
                   aria-label="Preview bulk attendance changes"
                 >
@@ -730,7 +1008,8 @@ const MarkAttendance = ({
                     locationsLoading ||
                     location === "all" ||
                     !selectedDate ||
-                    !selectedTime
+                    !selectedTime ||
+                    !displayData.filteredEmployees.length
                   }
                   aria-label="Mark attendance for selected employees"
                 >
@@ -749,7 +1028,7 @@ const MarkAttendance = ({
               <div className="flex justify-center py-4">
                 <Loader2 className="h-6 w-6 animate-spin text-accent" />
               </div>
-            ) : filteredEmployees.length > 0 ? (
+            ) : displayData.records.length > 0 ? (
               <div className="space-y-4">
                 <div className="max-h-[400px] overflow-y-auto border border-complementary rounded-lg shadow-sm relative">
                   <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
@@ -760,84 +1039,129 @@ const MarkAttendance = ({
                         <TableHead className="text-body text-sm w-12">
                           <Checkbox
                             checked={
-                              bulkSelectedEmployees.length >= paginatedEmployees.length &&
-                              paginatedEmployees.every((emp) =>
-                                bulkSelectedEmployees.includes(emp._id.toString())
+                              bulkSelectedEmployees.length >=
+                                displayData.records.length &&
+                              displayData.records.every((record) =>
+                                bulkSelectedEmployees.includes(
+                                  record.employee._id?.toString()
+                                )
                               )
                             }
                             onCheckedChange={handleSelectAll}
-                            disabled={location === "all" || locationsLoading}
+                            disabled={
+                              location === "all" ||
+                              locationsLoading ||
+                              !displayData.records.length
+                            }
                             className="h-5 w-5 border-complementary"
                             aria-label="Select all employees on current page for bulk marking"
                           />
                         </TableHead>
-                        <TableHead className="text-body text-sm">Employee Name</TableHead>
-                        <TableHead className="text-body text-sm">Status</TableHead>
-                        <TableHead className="text-body text-sm">O/C Leaves</TableHead>
-                        <TableHead className="text-body text-sm">Leaves Available</TableHead>
+                        <TableHead className="text-body text-sm">
+                          Employee Name
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          O/C Leaves
+                        </TableHead>
+                        <TableHead className="text-body text-sm">
+                          Leaves Available
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedEmployees.map((emp, index) => (
+                      {displayData.records.map((record, index) => (
                         <TableRow
-                          key={emp._id}
+                          key={record.employee._id || `temp-${index}`}
                           className={`${
-                            index % 2 === 0 ? "bg-body" : "bg-complementary-light"
+                            index % 2 === 0
+                              ? "bg-body"
+                              : "bg-complementary-light"
                           } animate-slide-in-row`}
                           style={{ animationDelay: `${index * 0.05}s` }}
                         >
                           <TableCell className="whitespace-nowrap">
                             <Checkbox
                               checked={bulkSelectedEmployees.includes(
-                                emp._id.toString()
+                                record.employee._id?.toString()
                               )}
                               onCheckedChange={() =>
-                                handleBulkSelect(emp._id.toString())
+                                handleBulkSelect(
+                                  record.employee._id?.toString()
+                                )
                               }
-                              disabled={location === "all" || locationsLoading}
+                              disabled={
+                                location === "all" ||
+                                locationsLoading ||
+                                !record.employee._id
+                              }
                               className="h-5 w-5 border-complementary"
-                              aria-label={`Select ${emp.name} for bulk marking`}
+                              aria-label={`Select ${record.employee.name} for bulk marking`}
                             />
                           </TableCell>
                           <TableCell className="text-body text-sm whitespace-nowrap">
-                            {emp.name} ({emp.employeeId})
+                            {record.employee.name} ({record.employee.employeeId}
+                            )
                           </TableCell>
                           <TableCell className="text-body whitespace-nowrap">
                             <Select
                               value={
-                                bulkSelectedEmployees.includes(emp._id.toString())
-                                  ? bulkEmployeeStatuses[emp._id.toString()] || "absent"
-                                  : "present"
+                                bulkSelectedEmployees.includes(
+                                  record.employee._id?.toString()
+                                )
+                                  ? bulkEmployeeStatuses[
+                                      record.employee._id?.toString()
+                                    ] || "absent"
+                                  : record.status || "present"
                               }
                               onValueChange={(value) =>
-                                handleBulkStatusChange(emp._id.toString(), value)
+                                handleBulkStatusChange(
+                                  record.employee._id?.toString(),
+                                  value
+                                )
                               }
                               disabled={
-                                !bulkSelectedEmployees.includes(emp._id.toString()) ||
+                                !bulkSelectedEmployees.includes(
+                                  record.employee._id?.toString()
+                                ) ||
                                 location === "all" ||
-                                locationsLoading
+                                locationsLoading ||
+                                !record.employee._id
                               }
                             >
                               <SelectTrigger
                                 className="w-full sm:w-32 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md"
-                                aria-label={`Select status for ${emp.name}`}
+                                aria-label={`Select status for ${record.employee.name}`}
                               >
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-body text-body border-complementary">
-                                <SelectItem value="present" className="text-sm hover:bg-accent-light">
+                                <SelectItem
+                                  value="present"
+                                  className="text-sm hover:bg-accent-light"
+                                >
                                   Present
                                 </SelectItem>
-                                <SelectItem value="absent" className="text-sm hover:bg-accent-light">
+                                <SelectItem
+                                  value="absent"
+                                  className="text-sm hover:bg-accent-light"
+                                >
                                   Absent
                                 </SelectItem>
-                                <SelectItem value="half-day" className="text-sm hover:bg-accent-light">
+                                <SelectItem
+                                  value="half-day"
+                                  className="text-sm hover:bg-accent-light"
+                                >
                                   Half-Day
                                 </SelectItem>
                                 <SelectItem
                                   value="leave"
                                   disabled={
-                                    monthlyLeavesAvailable[emp._id.toString()] < 1
+                                    monthlyLeavesAvailable[
+                                      record.employee._id?.toString()
+                                    ] < 1
                                   }
                                   className="text-sm hover:bg-accent-light"
                                 >
@@ -847,10 +1171,10 @@ const MarkAttendance = ({
                             </Select>
                           </TableCell>
                           <TableCell className="text-body text-sm whitespace-nowrap">
-                            {getOCLeaves(emp)}
+                            {record.ocLeaves}
                           </TableCell>
                           <TableCell className="text-body text-sm whitespace-nowrap">
-                            {monthlyLeavesAvailable[emp._id.toString()] || 0}
+                            {record.leavesAvailable}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -861,7 +1185,9 @@ const MarkAttendance = ({
                   <div className="flex items-center justify-center gap-2">
                     <Button
                       variant="outline"
-                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(prev - 1, 1))
+                      }
                       disabled={currentPage === 1}
                       className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
                       aria-label="Previous page"
@@ -885,7 +1211,9 @@ const MarkAttendance = ({
                     ))}
                     <Button
                       variant="outline"
-                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
                       disabled={currentPage === totalPages}
                       className="border-complementary text-body hover:bg-complementary-light text-sm p-2"
                       aria-label="Next page"
@@ -897,7 +1225,9 @@ const MarkAttendance = ({
               </div>
             ) : (
               <p className="text-body text-sm text-center py-4">
-                No employees found for this location. Please check the location or add employees.
+                {employees.length > 0
+                  ? "No employees match the current filter. Try clearing the filter or selecting a different location or date."
+                  : "No employees found for this location. Please select a different location."}
               </p>
             )}
           </div>
@@ -941,11 +1271,11 @@ const MarkAttendance = ({
               <TableBody>
                 {bulkConfirmDialog.records.map((record, index) => {
                   const employee = employees.find(
-                    (emp) => emp._id.toString() === record.employeeId
+                    (emp) => emp._id?.toString() === record.employeeId
                   );
                   return (
                     <TableRow
-                      key={record.employeeId}
+                      key={record.employeeId || `temp-${index}`}
                       className={`${
                         index % 2 === 0 ? "bg-body" : "bg-complementary-light"
                       } animate-slide-in-row`}
@@ -961,22 +1291,29 @@ const MarkAttendance = ({
                         {record.status}
                       </TableCell>
                       <TableCell className="text-body text-sm">
-                        {format(toZonedTime(new Date(record.date), "Asia/Kolkata"), "PPP hh:mm:ss a")}
+                        {format(
+                          toZonedTime(new Date(record.date), "Asia/Kolkata"),
+                          "PPP hh:mm:ss a"
+                        )}
                       </TableCell>
                     </TableRow>
                   );
                 })}
                 {bulkConfirmDialog.remaining.map((record, index) => {
                   const employee = employees.find(
-                    (emp) => emp._id.toString() === record.employeeId
+                    (emp) => emp._id?.toString() === record.employeeId
                   );
                   return (
                     <TableRow
-                      key={record.employeeId}
+                      key={record.employeeId || `temp-${index}`}
                       className={`${
                         index % 2 === 0 ? "bg-body" : "bg-complementary-light"
                       } animate-slide-in-row`}
-                      style={{ animationDelay: `${(index + bulkConfirmDialog.records.length) * 0.05}s` }}
+                      style={{
+                        animationDelay: `${
+                          (index + bulkConfirmDialog.records.length) * 0.05
+                        }s`,
+                      }}
                     >
                       <TableCell className="text-body text-sm">
                         {employee
@@ -988,7 +1325,10 @@ const MarkAttendance = ({
                         {record.status}
                       </TableCell>
                       <TableCell className="text-body text-sm">
-                        {format(toZonedTime(new Date(record.date), "Asia/Kolkata"), "PPP hh:mm:ss a")}
+                        {format(
+                          toZonedTime(new Date(record.date), "Asia/Kolkata"),
+                          "PPP hh:mm:ss a"
+                        )}
                       </TableCell>
                     </TableRow>
                   );

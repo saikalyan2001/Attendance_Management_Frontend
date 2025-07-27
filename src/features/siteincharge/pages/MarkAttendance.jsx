@@ -6,7 +6,7 @@ import {
   calculateSalaryImpact,
   undoAttendance,
 } from "../redux/attendanceSlice";
-import { fetchEmployees } from "../redux/employeeSlice";
+import { fetchEmployees, fetchAllEmployees, fetchSettings } from "../redux/employeeSlice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -68,7 +68,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const { employees, loading: empLoading } = useSelector(
+  const { employees, allEmployees, loading: empLoading, pagination } = useSelector(
     (state) => state.siteInchargeEmployee
   );
   const { loading, salaryCalculations } = useSelector(
@@ -98,7 +98,9 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 5;
+  const recordsPerPage = pagination.limit || 10;
+  const { settings } = useSelector((state) => state.siteInchargeEmployee);
+
 
   const getISTTimestamp = (date, time) => {
     if (!date || !time) return null;
@@ -117,26 +119,19 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     });
   };
 
-  const getOCLeaves = (employee, month, year) => {
-    const paidLeavesPerMonth = 2;
-    const monthlyLeaves = Array.isArray(employee.monthlyLeaves)
-      ? employee.monthlyLeaves
-      : [];
-    const monthlyLeave =
-      monthlyLeaves.find((ml) => ml.year === year && ml.month === month) || {
-        allocated: paidLeavesPerMonth,
-        available: 0,
-        carriedForward: 0,
-        taken: 0,
-      };
-
-    const openingLeaves =
-      (monthlyLeave.carriedForward || 0) +
-      (monthlyLeave.allocated || paidLeavesPerMonth);
-    const closingLeaves = Math.max(monthlyLeave.available || 0, 0);
-
-    return `${openingLeaves.toFixed(1)}/${closingLeaves.toFixed(1)}`;
+const getOCLeaves = (employee, month, year) => {
+  const paidLeavesPerMonth = (settings?.paidLeavesPerYear || 24) / 12;
+  const monthlyLeaves = Array.isArray(employee.monthlyLeaves) ? employee.monthlyLeaves : [];
+  const monthlyLeave = monthlyLeaves.find((ml) => ml.year === year && ml.month === month) || {
+    allocated: paidLeavesPerMonth,
+    available: paidLeavesPerMonth, // Default to allocated if no entry exists
+    carriedForward: 0,
+    taken: 0,
   };
+  const openingLeaves = (monthlyLeave.carriedForward || 0) + (monthlyLeave.allocated || paidLeavesPerMonth);
+  const closingLeaves = Math.max(monthlyLeave.available || paidLeavesPerMonth, 0);
+  return `${openingLeaves.toFixed(1)}/${closingLeaves.toFixed(1)}`;
+};
 
   const existingAttendanceRecords = useMemo(() => {
     if (!selectedDate || !locationId) return [];
@@ -151,33 +146,28 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       : [];
   }, [salaryCalculations, selectedDate, locationId]);
 
+ 
   useEffect(() => {
     if (locationId && month && year) {
       setIsFilterLoading(true);
-      Promise.all([
-        dispatch(calculateSalaryImpact({ month, year, location: locationId }))
-          .unwrap()
-          .catch((err) => {
-            console.error("Failed to fetch salary calculations:", err);
-            toast.error("Failed to load attendance data", {
-              id: `salary-calc-error-${Date.now()}`,
-              duration: 5000,
-              position: "top-center",
-            });
-          }),
-        dispatch(fetchEmployees({ location: locationId, month, year, cache: false }))
-          .unwrap()
-          .catch((err) => {
-            console.error("Failed to fetch employees:", err);
-            toast.error("Failed to load employee data", {
-              id: `fetch-employees-error-${Date.now()}`,
-              duration: 5000,
-              position: "top-center",
-            });
-          }),
-      ]).finally(() => setIsFilterLoading(false));
+      // Sequentialize the fetch calls to avoid concurrent updates
+      dispatch(fetchEmployees({ location: locationId, status: 'active', page: currentPage, cache: false }))
+        .unwrap()
+        .then(() => 
+          dispatch(fetchAllEmployees({ location: locationId, status: 'active' }))
+            .unwrap()
+        )
+        .catch((err) => {
+          console.error("Failed to fetch employees or all employees:", err);
+          toast.error("Failed to load employee data", {
+            id: `fetch-employees-error-${Date.now()}`,
+            duration: 5000,
+            position: "top-center",
+          });
+        })
+        .finally(() => setIsFilterLoading(false));
     }
-  }, [dispatch, locationId, month, year]);
+  }, [dispatch, locationId, month, year, currentPage]);
 
   useEffect(() => {
     const newDate = new Date(year, month - 1, 1);
@@ -185,7 +175,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     if (isBefore(today, newDate)) {
       setSelectedDate(today);
       setDisplayMonth(startOfMonth(today));
-      toast.info("Selected month is in the future. Reverted to current date.", {
+      toast.error("Selected month is in the future. Reverted to current date.", {
         id: `future-month-warning-${month}-${year}`,
         duration: 5000,
         position: "top-center",
@@ -224,6 +214,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     }
   }, [dispatch, user, navigate, locationId]);
 
+  useEffect(() => {
+  dispatch(fetchSettings());
+}, [dispatch]);
+
   const filteredEmployees = useMemo(() => {
     return employees.filter(
       (emp) =>
@@ -233,11 +227,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
   }, [employees, employeeFilter]);
 
   const paginatedEmployees = useMemo(() => {
-    const startIndex = (currentPage - 1) * recordsPerPage;
-    return filteredEmployees.slice(startIndex, startIndex + recordsPerPage);
-  }, [filteredEmployees, currentPage]);
+    return filteredEmployees;
+  }, [filteredEmployees]);
 
-  const totalPages = Math.ceil(filteredEmployees.length / recordsPerPage);
+  const totalPages = pagination.totalPages || 1;
 
   const getPageNumbers = () => {
     const maxPagesToShow = 5;
@@ -260,7 +253,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     while (retries < maxRetries) {
       try {
         await dispatch(
-          fetchEmployees({ location: locationId, month, year, cache: false })
+          fetchEmployees({ location: locationId, status: 'active', page: currentPage, cache: false })
         ).unwrap();
         return true;
       } catch (error) {
@@ -271,6 +264,32 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
         );
         if (retries === maxRetries) {
           console.error("Max retries reached for fetching employees");
+          return false;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, 100 * Math.pow(2, retries))
+        );
+      }
+    }
+    return false;
+  };
+
+  const tryFetchAllEmployees = async (maxRetries = 3) => {
+    let retries = 0;
+    while (retries < maxRetries) {
+      try {
+        await dispatch(
+          fetchAllEmployees({ location: locationId, status: 'active' })
+        ).unwrap();
+        return true;
+      } catch (error) {
+        retries++;
+        console.warn(
+          `Failed to fetch all employees, retrying (${retries}/${maxRetries}):`,
+          error
+        );
+        if (retries === maxRetries) {
+          console.error("Max retries reached for fetching all employees");
           return false;
         }
         await new Promise((resolve) =>
@@ -336,8 +355,8 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
     }
   };
 
-  const handleBulkSubmit = (preview = false) => {
-    if (!filteredEmployees.length) {
+  const handleBulkSubmit = async (preview = false) => {
+    if (!allEmployees.length) {
       toast.error("No employees available", {
         id: "no-employees-error",
         duration: 5000,
@@ -372,13 +391,14 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       return;
     }
 
+    // Use allEmployees instead of filteredEmployees
     const selectedRecords = bulkSelectedEmployees.map((employeeId) => ({
       employeeId,
       date: dateStr,
       status: bulkEmployeeStatuses[employeeId] || "absent",
       location: locationId,
     }));
-    const remainingEmployees = filteredEmployees.filter(
+    const remainingEmployees = allEmployees.filter(
       (emp) => !bulkSelectedEmployees.includes(emp._id.toString())
     );
     const remainingRecords = remainingEmployees.map((emp) => ({
@@ -437,7 +457,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
         throw new Error("No attendance records to submit");
 
       const validatedData = attendanceData.map((record) => {
-        const employee = employees.find(
+        const employee = allEmployees.find(
           (emp) => emp._id.toString() === record.employeeId
         );
         if (!employee) throw new Error(`Employee not found: ${record.employeeId}`);
@@ -511,8 +531,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
       dispatch({ type: "siteInchargeEmployee/reset" });
       dispatch({ type: "siteInchargeAttendance/reset" });
 
-      const fetchSuccess = await tryFetchEmployees();
-      if (!fetchSuccess) {
+      const fetchSuccess = await Promise.all([
+        tryFetchEmployees(),
+        tryFetchAllEmployees(),
+      ]);
+      if (!fetchSuccess.every(Boolean)) {
         console.error("Failed to fetch updated employee data after retries");
         toast.warning(
           "Attendance marked, but leave balances may not update in UI. Please refresh.",
@@ -834,6 +857,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   onChange={(e) => {
                     setEmployeeFilter(e.target.value);
                     setCurrentPage(1);
+                    dispatch(fetchEmployees({ location: locationId, status: 'active', page: 1, cache: false }));
                   }}
                   className="w-full pl-10 bg-body text-body border-complementary hover:border-accent focus:border-accent focus:ring-2 focus:ring-accent h-10 rounded-md"
                   disabled={isFilterLoading}
@@ -923,7 +947,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
               <div className="flex justify-center py-4">
                 <Loader2 className="h-6 w-6 animate-spin text-accent" />
               </div>
-            ) : filteredEmployees.length > 0 ? (
+            ) : paginatedEmployees.length > 0 ? (
               <div className="space-y-4">
                 <div className="max-h-[400px] overflow-y-auto border border-complementary rounded-md shadow-sm relative">
                   <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-complementary to-transparent pointer-events-none" />
@@ -1061,7 +1085,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                   <div className="flex items-center justify-center gap-2">
                     <Button
                       variant="outline"
-                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      onClick={() => {
+                        const prevPage = Math.max(currentPage - 1, 1);
+                        setCurrentPage(prevPage);
+                        dispatch(fetchEmployees({ location: locationId, status: 'active', page: prevPage, cache: false }));
+                      }}
                       disabled={currentPage === 1}
                       className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                       aria-label="Previous page"
@@ -1072,7 +1100,10 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                       <Button
                         key={page}
                         variant={currentPage === page ? "default" : "outline"}
-                        onClick={() => setCurrentPage(page)}
+                        onClick={() => {
+                          setCurrentPage(page);
+                          dispatch(fetchEmployees({ location: locationId, status: 'active', page, cache: false }));
+                        }}
                         className={`${
                           currentPage === page
                             ? "bg-accent text-body hover:bg-accent-hover"
@@ -1085,7 +1116,11 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                     ))}
                     <Button
                       variant="outline"
-                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      onClick={() => {
+                        const nextPage = Math.min(currentPage + 1, totalPages);
+                        setCurrentPage(nextPage);
+                        dispatch(fetchEmployees({ location: locationId, status: 'active', page: nextPage, cache: false }));
+                      }}
                       disabled={currentPage === totalPages}
                       className="border-complementary text-body hover:bg-complementary-light text-sm p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                       aria-label="Next page"
@@ -1210,7 +1245,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                       </TableHeader>
                       <TableBody>
                         {bulkConfirmDialog.records.map((record, index) => {
-                          const employee = employees.find(
+                          const employee = allEmployees.find(
                             (emp) => emp._id.toString() === record.employeeId
                           );
                           return (
@@ -1276,7 +1311,7 @@ const MarkAttendance = ({ month, year, setMonth, setYear, locationId }) => {
                       </TableHeader>
                       <TableBody>
                         {bulkConfirmDialog.remaining.map((record, index) => {
-                          const employee = employees.find(
+                          const employee = allEmployees.find(
                             (emp) => emp._id.toString() === record.employeeId
                           );
                           return (

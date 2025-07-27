@@ -1,18 +1,76 @@
 import { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchEmployees, reset as resetEmployees } from "../redux/employeeSlice";
+import {
+  fetchEmployees,
+  fetchDepartments,
+  reset as resetEmployees,
+  deleteEmployee,
+  restoreEmployee,
+} from "../redux/employeeSlice";
 import { fetchSettings } from "../redux/settingsSlice";
-import { fetchLocations, reset as resetLocations } from "../redux/locationsSlice";
+import {
+  fetchLocations,
+  reset as resetLocations,
+} from "../redux/locationsSlice";
 import Layout from "../../../components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Dialog } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, Search, ArrowUpDown, PlusCircle, Users, ChevronLeft, ChevronRight, Truck, Eye, History, UserPlus, LogOut, FilePlus, IndianRupee, Pencil, Filter } from "lucide-react";
+import {
+  Dialog,
+  DialogFooter,
+  DialogHeader,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Loader2,
+  Search,
+  ArrowUpDown,
+  PlusCircle,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  Truck,
+  Eye,
+  History,
+  UserPlus,
+  LogOut,
+  FilePlus,
+  IndianRupee,
+  Pencil,
+  Filter,
+  Trash2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -28,13 +86,26 @@ const Employees = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useSelector((state) => state.auth);
-  const { employees = [], loading: employeesLoading, pagination = {} } = useSelector((state) => state.adminEmployees || {});
-  const { settings = {}, loading: settingsLoading } = useSelector((state) => state.adminSettings || {});
-  const { locations = [], loading: locationsLoading } = useSelector((state) => state.adminLocations || {});
+  const {
+    employees = [],
+    departments = [],
+    loading: employeesLoading,
+    pagination = {},
+    error,
+  } = useSelector((state) => state.adminEmployees || {});
+  const { settings = {}, loading: settingsLoading } = useSelector(
+    (state) => state.adminSettings || {}
+  );
+  const { locations = [], loading: locationsLoading } = useSelector(
+    (state) => state.adminLocations || {}
+  );
 
+  // Initialize states from searchParams
   const initialLocation = searchParams.get("location") || "all";
   const initialStatus = searchParams.get("status") || "all";
   const initialDepartment = searchParams.get("department") || "all";
+  const initialPage = parseInt(searchParams.get("page")) || 1;
+
   const [filterLocation, setFilterLocation] = useState(initialLocation);
   const [filterStatus, setFilterStatus] = useState(initialStatus);
   const [filterDepartment, setFilterDepartment] = useState(initialDepartment);
@@ -47,23 +118,113 @@ const Employees = () => {
   const [openRejoinDialog, setOpenRejoinDialog] = useState(false);
   const [openAddDocumentsDialog, setOpenAddDocumentsDialog] = useState(false);
   const [openUpdateAdvanceDialog, setOpenUpdateAdvanceDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
   const [transferEmployeeId, setTransferEmployeeId] = useState(null);
   const [employeeToRejoin, setEmployeeToRejoin] = useState(null);
   const [addDocumentsEmployeeId, setAddDocumentsEmployeeId] = useState(null);
   const [deactivateEmployeeId, setDeactivateEmployeeId] = useState(null);
+  const [deleteEmployeeId, setDeleteEmployeeId] = useState(null);
   const [employeeToUpdateAdvance, setEmployeeToUpdateAdvance] = useState(null);
-  const [currentPage, setCurrentPage] = useState(pagination.currentPage || 1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [successMessage, setSuccessMessage] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [isFiltering, setIsFiltering] = useState(false);
-  const itemsPerPage = pagination.itemsPerPage || 10;
+  const itemsPerPage = 10;
 
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
-  const departments = useMemo(() => {
-    return [...new Set(employees.map((emp) => emp.department))].sort();
-  }, [employees]);
+  const [openRestoreDialog, setOpenRestoreDialog] = useState(false);
+  const [restoreEmployeeId, setRestoreEmployeeId] = useState(null);
+
+  const handleRestoreClick = (id) => {
+    setRestoreEmployeeId(id);
+    setOpenRestoreDialog(true);
+    setSelectedEmployeeId(id);
+  };
+
+  const handleRestoreConfirm = async () => {
+    try {
+      await dispatch(restoreEmployee(restoreEmployeeId)).unwrap();
+      setSuccessMessage("Employee restored successfully");
+      setOpenRestoreDialog(false);
+      setRestoreEmployeeId(null);
+      dispatch(
+        fetchEmployees({
+          location: filterLocation === "all" ? undefined : filterLocation,
+          department: filterDepartment === "all" ? undefined : filterDepartment,
+          status: filterStatus === "all" ? undefined : filterStatus,
+          page: currentPage,
+          limit: itemsPerPage,
+        })
+      );
+    } catch (err) {
+      toast.error(err.message || "Failed to restore employee");
+    }
+  };
+
+  // Reset delete state on mount
+  useEffect(() => {
+    setOpenDeleteDialog(false);
+    setDeleteEmployeeId(null);
+    dispatch(resetEmployees());
+  }, [dispatch]);
+
+  // Fetch departments, locations, settings, and employees
+  useEffect(() => {
+    dispatch(fetchLocations());
+    dispatch(fetchSettings());
+    dispatch(fetchDepartments({ location: filterLocation }))
+      .unwrap()
+      .catch((err) => {
+        console.error("Fetch departments error:", err);
+        toast.error(err || "Failed to fetch departments");
+      });
+    dispatch(
+      fetchEmployees({
+        location: filterLocation === "all" ? undefined : filterLocation,
+        department: filterDepartment === "all" ? undefined : filterDepartment,
+        status: filterStatus === "all" ? undefined : filterStatus,
+        page: currentPage,
+        limit: itemsPerPage,
+      })
+    )
+      .unwrap()
+      .catch((err) => {
+        console.error("Fetch employees error:", err);
+        toast.error(err || "Failed to fetch employees");
+      });
+
+    const params = {};
+    if (filterLocation !== "all") params.location = filterLocation;
+    if (filterDepartment !== "all") params.department = filterDepartment;
+    if (filterStatus !== "all") params.status = filterStatus;
+    if (currentPage !== 1) params.page = currentPage;
+    setSearchParams(params);
+  }, [
+    dispatch,
+    filterLocation,
+    filterDepartment,
+    filterStatus,
+    currentPage,
+    setSearchParams,
+  ]);
+
+  // Handle success messages
+  useEffect(() => {
+    if (successMessage) {
+      toast.success(successMessage, { duration: 4000 });
+      setSuccessMessage(null);
+    }
+  }, [successMessage]);
+
+  // Adjust current page if it exceeds total pages
+  const totalPages = pagination.totalPages || 1;
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const getCurrentAdvance = (employee) => {
     if (!employee?.advances || !Array.isArray(employee.advances)) return 0;
@@ -77,7 +238,7 @@ const Employees = () => {
   const shouldHighlightEmployee = (employee) => {
     if (!employee.transferTimestamp) return false;
     const transferTime = new Date(employee.transferTimestamp).getTime();
-    const currentTime = new Date("2025-07-03T17:20:00+05:30").getTime();
+    const currentTime = new Date().getTime();
     return currentTime - transferTime <= HIGHLIGHT_DURATION;
   };
 
@@ -89,47 +250,72 @@ const Employees = () => {
           const matchesSearch =
             (emp.name || "").toLowerCase().includes(searchLower) ||
             (emp.employeeId || "").toLowerCase().includes(searchLower);
-          return matchesSearch;
+          const matchesStatus =
+            filterStatus === "all" ||
+            (filterStatus === "deleted"
+              ? emp.isDeleted
+              : !emp.isDeleted && emp.status === filterStatus);
+          return matchesSearch && matchesStatus;
         })
       : [];
     setTimeout(() => setIsFiltering(false), 100);
     return result;
-  }, [employees, search]);
+  }, [employees, search, filterStatus]);
 
-  const sortedEmployees = useMemo(() => {
-    return [...filteredEmployees].sort((a, b) => {
-      let aValue, bValue;
-      if (sortField === "salary") {
-        aValue = a[sortField] || 0;
-        bValue = b[sortField] || 0;
-      } else if (sortField === "advance") {
-        aValue = getCurrentAdvance(a);
-        bValue = getCurrentAdvance(b);
-      } else if (sortField === "location") {
-        aValue = (typeof a.location === "object" ? a.location?.name : a.location) || "N/A";
-        bValue = (typeof b.location === "object" ? b.location?.name : b.location) || "N/A";
-        aValue = aValue.toLowerCase();
-        bValue = bValue.toLowerCase();
-      } else if (sortField === "leaves") {
-        aValue = a.paidLeaves?.available || 0;
-        bValue = b.paidLeaves?.available || 0;
-      } else if (sortField === "status") {
-        aValue = a.status || "";
-        bValue = b.status || "";
-        aValue = aValue.toLowerCase();
-        bValue = bValue.toLowerCase();
-      } else {
-        aValue = (a[sortField] || "").toLowerCase();
-        bValue = (b[sortField] || "").toLowerCase();
+ const sortedEmployees = useMemo(() => {
+  return [...filteredEmployees].sort((a, b) => {
+    let aValue, bValue;
+    if (sortField === "employeeId") {
+      // Handle employeeId sorting
+      aValue = a.employeeId || "";
+      bValue = b.employeeId || "";
+      
+      // If IDs are purely numeric or have a numeric suffix (e.g., "EMP001")
+      const aNum = parseInt(aValue.match(/\d+$/)?.[0] || aValue, 10);
+      const bNum = parseInt(bValue.match(/\d+$/)?.[0] || bValue, 10);
+      
+      // If both are valid numbers, compare numerically
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return sortOrder === "asc" ? aNum - bNum : bNum - aNum;
       }
-      if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [filteredEmployees, sortField, sortOrder]);
+      
+      // Fallback to string comparison for non-numeric IDs
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    } else if (sortField === "salary") {
+      aValue = a[sortField] || 0;
+      bValue = b[sortField] || 0;
+    } else if (sortField === "advance") {
+      aValue = getCurrentAdvance(a);
+      bValue = getCurrentAdvance(b);
+    } else if (sortField === "location") {
+      aValue =
+        (typeof a.location === "object" ? a.location?.name : a.location) ||
+        "N/A";
+      bValue =
+        (typeof b.location === "object" ? b.location?.name : b.location) ||
+        "N/A";
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    } else if (sortField === "leaves") {
+      aValue = a.paidLeaves?.available || 0;
+      bValue = b.paidLeaves?.available || 0;
+    } else if (sortField === "status") {
+      aValue = a.status || "";
+      bValue = b.status || "";
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    } else {
+      aValue = (a[sortField] || "").toLowerCase();
+      bValue = (b[sortField] || "").toLowerCase();
+    }
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
+}, [filteredEmployees, sortField, sortOrder]);
 
   const totalItems = pagination.totalItems || 0;
-  const totalPages = pagination.totalPages || 1;
   const paginatedEmployees = sortedEmployees;
 
   const getLocationName = (id) => {
@@ -138,39 +324,13 @@ const Employees = () => {
     return location ? location.name || location.city || "Unknown" : id;
   };
 
-  const getDepartmentName = (dept) => dept === "all" ? "All Departments" : dept;
+  const getDepartmentName = (dept) =>
+    dept === "all" ? "All Departments" : dept;
 
   const getStatusName = (status) => {
     if (status === "all") return "All Statuses";
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
-
-  useEffect(() => {
-    dispatch(fetchLocations());
-    dispatch(fetchSettings());
-    dispatch(
-      fetchEmployees({
-        location: filterLocation === "all" ? undefined : filterLocation,
-        department: filterDepartment === "all" ? undefined : filterDepartment,
-        status: filterStatus === "all" ? undefined : filterStatus,
-        page: currentPage,
-        limit: itemsPerPage,
-      })
-    );
-  }, [dispatch, filterLocation, filterDepartment, filterStatus, currentPage]);
-
-  useEffect(() => {
-    if (successMessage) {
-      toast.success(successMessage, { duration: 4000 });
-      setSuccessMessage(null);
-    }
-  }, [successMessage]);
 
   const handleEditClick = (employee) => {
     setEditEmployee(employee);
@@ -179,9 +339,13 @@ const Employees = () => {
   };
 
   const handleTransferClick = (employee) => {
-    setTransferEmployeeId(employee._id);
-    setOpenTransferDialog(true);
-    setSelectedEmployeeId(employee._id);
+    const id = String(employee._id);
+    console.log("Transferring employee with ID:", id);
+    setTransferEmployeeId(id);
+    setSelectedEmployeeId(id);
+    setTimeout(() => {
+      setOpenTransferDialog(true);
+    }, 0);
   };
 
   const handleRejoinClick = (employee) => {
@@ -204,6 +368,12 @@ const Employees = () => {
   const handleDeactivateClick = (id) => {
     setDeactivateEmployeeId(id);
     setOpenDeactivateDialog(true);
+    setSelectedEmployeeId(id);
+  };
+
+  const handleDeleteClick = (id) => {
+    setDeleteEmployeeId(id);
+    setOpenDeleteDialog(true);
     setSelectedEmployeeId(id);
   };
 
@@ -230,36 +400,37 @@ const Employees = () => {
       setSortOrder("asc");
     }
     setCurrentPage(1);
+    setSearchParams({ ...Object.fromEntries(searchParams), page: 1 });
   };
 
   const handleFilterLocationChange = (value) => {
     setFilterLocation(value);
-    const params = {};
+    setFilterDepartment("all");
+    setCurrentPage(1);
+    const params = { page: 1 };
     if (value !== "all") params.location = value;
-    if (filterDepartment !== "all") params.department = filterDepartment;
     if (filterStatus !== "all") params.status = filterStatus;
     setSearchParams(params);
-    setCurrentPage(1);
   };
 
   const handleFilterDepartmentChange = (value) => {
     setFilterDepartment(value);
-    const params = {};
+    setCurrentPage(1);
+    const params = { page: 1 };
     if (filterLocation !== "all") params.location = filterLocation;
     if (value !== "all") params.department = value;
     if (filterStatus !== "all") params.status = filterStatus;
     setSearchParams(params);
-    setCurrentPage(1);
   };
 
   const handleFilterStatusChange = (value) => {
     setFilterStatus(value);
-    const params = {};
+    setCurrentPage(1);
+    const params = { page: 1 };
     if (filterLocation !== "all") params.location = filterLocation;
     if (filterDepartment !== "all") params.department = filterDepartment;
     if (value !== "all") params.status = value;
     setSearchParams(params);
-    setCurrentPage(1);
   };
 
   const handleClearFilters = () => {
@@ -267,15 +438,37 @@ const Employees = () => {
     setFilterDepartment("all");
     setFilterStatus("all");
     setSearch("");
-    setSearchParams({});
     setCurrentPage(1);
     setSelectedEmployeeId(null);
+    setSearchParams({ page: 1 });
   };
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
       setSelectedEmployeeId(null);
+      const params = { ...Object.fromEntries(searchParams), page };
+      setSearchParams(params);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await dispatch(deleteEmployee(deleteEmployeeId)).unwrap();
+      setSuccessMessage("Employee deleted successfully");
+      setOpenDeleteDialog(false);
+      setDeleteEmployeeId(null);
+      dispatch(
+        fetchEmployees({
+          location: filterLocation === "all" ? undefined : filterLocation,
+          department: filterDepartment === "all" ? undefined : filterDepartment,
+          status: filterStatus === "all" ? undefined : filterStatus,
+          page: currentPage,
+          limit: itemsPerPage,
+        })
+      );
+    } catch (err) {
+      toast.error(err || "Failed to delete employee");
     }
   };
 
@@ -318,10 +511,15 @@ const Employees = () => {
                       value={filterLocation}
                       onValueChange={handleFilterLocationChange}
                       disabled={locationsLoading || locations.length === 0}
-                      aria-label={`Location filter set to ${getLocationName(filterLocation)}`}
+                      aria-label={`Location filter set to ${getLocationName(
+                        filterLocation
+                      )}`}
                     >
                       <SelectTrigger className="min-w-[140px] sm:min-w-[180px] sm:max-w-[240px] h-9 sm:h-10 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm sm:text-base truncate max-sm:w-full cursor-pointer disabled:cursor-not-allowed">
-                        <SelectValue placeholder="Filter by location" className="truncate" />
+                        <SelectValue
+                          placeholder="Filter by location"
+                          className="truncate"
+                        />
                       </SelectTrigger>
                       <SelectContent className="bg-complementary text-body">
                         <SelectItem value="all" className="text-sm">
@@ -329,7 +527,11 @@ const Employees = () => {
                         </SelectItem>
                         {locations.length > 0 ? (
                           locations.map((loc) => (
-                            <SelectItem key={loc._id} value={loc._id} className="text-sm">
+                            <SelectItem
+                              key={loc._id}
+                              value={loc._id}
+                              className="text-sm"
+                            >
                               {loc.name || loc.city || "Unknown"}
                             </SelectItem>
                           ))
@@ -361,13 +563,18 @@ const Employees = () => {
                   <DropdownMenuLabel>Additional Filters</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <div className="px-4 py-2">
-                    <label className="text-xs font-semibold block mb-1">Department</label>
+                    <label className="text-xs font-semibold block mb-1">
+                      Department
+                    </label>
                     <Select
                       value={filterDepartment}
                       onValueChange={handleFilterDepartmentChange}
-                      aria-label={`Department filter set to ${getDepartmentName(filterDepartment)}`}
+                      disabled={employeesLoading || departments.length === 0}
+                      aria-label={`Department filter set to ${getDepartmentName(
+                        filterDepartment
+                      )}`}
                     >
-                      <SelectTrigger className="w-full h-9 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm cursor-pointer">
+                      <SelectTrigger className="w-full h-9 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm cursor-pointer disabled:cursor-not-allowed">
                         <SelectValue placeholder="Filter by department" />
                       </SelectTrigger>
                       <SelectContent className="bg-complementary text-body">
@@ -376,7 +583,11 @@ const Employees = () => {
                         </SelectItem>
                         {departments.length > 0 ? (
                           departments.map((dept) => (
-                            <SelectItem key={dept} value={dept} className="text-sm">
+                            <SelectItem
+                              key={dept}
+                              value={dept}
+                              className="text-sm"
+                            >
                               {dept}
                             </SelectItem>
                           ))
@@ -389,11 +600,15 @@ const Employees = () => {
                     </Select>
                   </div>
                   <div className="px-4 py-2">
-                    <label className="text-xs font-semibold block mb-1">Status</label>
+                    <label className="text-xs font-semibold block mb-1">
+                      Status
+                    </label>
                     <Select
                       value={filterStatus}
                       onValueChange={handleFilterStatusChange}
-                      aria-label={`Status filter set to ${getStatusName(filterStatus)}`}
+                      aria-label={`Status filter set to ${getStatusName(
+                        filterStatus
+                      )}`}
                     >
                       <SelectTrigger className="w-full h-9 bg-complementary text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-md text-sm cursor-pointer">
                         <SelectValue placeholder="Filter by status" />
@@ -407,6 +622,9 @@ const Employees = () => {
                         </SelectItem>
                         <SelectItem value="inactive" className="text-sm">
                           Inactive
+                        </SelectItem>
+                        <SelectItem value="deleted" className="text-sm">
+                          Deleted
                         </SelectItem>
                       </SelectContent>
                     </Select>
@@ -438,9 +656,7 @@ const Employees = () => {
               <Table className="w-full border-collapse">
                 <TableHeader className="sticky top-0 z-10 bg-complementary shadow-sm">
                   <TableRow className="hover:bg-accent/10">
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold sticky left-0 bg-complementary shadow-sm z-20"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold sticky left-0 bg-complementary shadow-sm z-20">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("employeeId")}
@@ -451,14 +667,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "employeeId" && sortOrder === "desc" && "rotate-180"
+                            sortField === "employeeId" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[120px] text-center font-semibold sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-20"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[120px] text-center font-semibold sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-20">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("name")}
@@ -469,14 +685,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "name" && sortOrder === "desc" && "rotate-180"
+                            sortField === "name" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("designation")}
@@ -487,14 +703,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "designation" && sortOrder === "desc" && "rotate-180"
+                            sortField === "designation" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("department")}
@@ -505,14 +721,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "department" && sortOrder === "desc" && "rotate-180"
+                            sortField === "department" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[140px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[100px] sm:min-w-[140px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("location")}
@@ -523,14 +739,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "location" && sortOrder === "desc" && "rotate-180"
+                            sortField === "location" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("salary")}
@@ -541,14 +757,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "salary" && sortOrder === "desc" && "rotate-180"
+                            sortField === "salary" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("advance")}
@@ -559,14 +775,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "advance" && sortOrder === "desc" && "rotate-180"
+                            sortField === "advance" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold hidden sm:table-cell"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold hidden sm:table-cell">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("leaves")}
@@ -577,14 +793,14 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "leaves" && sortOrder === "desc" && "rotate-180"
+                            sortField === "leaves" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[80px] sm:min-w-[100px] text-center font-semibold">
                       <Button
                         variant="ghost"
                         onClick={() => handleSort("status")}
@@ -595,28 +811,42 @@ const Employees = () => {
                         <ArrowUpDown
                           className={cn(
                             "h-4 w-4 transition-transform",
-                            sortField === "status" && sortOrder === "desc" && "rotate-180"
+                            sortField === "status" &&
+                              sortOrder === "desc" &&
+                              "rotate-180"
                           )}
                         />
                       </Button>
                     </TableHead>
-                    <TableHead
-                      className="text-body px-1 sm:px-3 py-2 min-w-[120px] sm:min-w-[160px] text-center font-semibold"
-                    >
+                    <TableHead className="text-body px-1 sm:px-3 py-2 min-w-[120px] sm:min-w-[160px] text-center font-semibold">
                       Actions
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedEmployees.map((employee) => {
-                    const openingLeaves = Math.max(employee.paidLeaves?.available || 0, 0);
-                    const leavesAccrued = Math.max(employee.paidLeaves?.carriedForward || 0, 0);
-                    const leavesTaken = Math.max(employee.paidLeaves?.used || 0, 0);
-                    const closingLeaves = Math.max(openingLeaves + leavesAccrued - leavesTaken, 0);
+                    const openingLeaves = Math.max(
+                      employee.paidLeaves?.available || 0,
+                      0
+                    );
+                    const leavesAccrued = Math.max(
+                      employee.paidLeaves?.carriedForward || 0,
+                      0
+                    );
+                    const leavesTaken = Math.max(
+                      employee.paidLeaves?.used || 0,
+                      0
+                    );
+                    const closingLeaves = Math.max(
+                      openingLeaves + leavesAccrued - leavesTaken,
+                      0
+                    );
 
                     const isHighlighted = shouldHighlightEmployee(employee);
                     if (employee.paidLeaves?.carriedForward < 0) {
-                      console.warn(`Negative carriedForward for employee ${employee.employeeId}: ${employee.paidLeaves.carriedForward}`);
+                      console.warn(
+                        `Negative carriedForward for employee ${employee.employeeId}: ${employee.paidLeaves.carriedForward}`
+                      );
                     }
 
                     return (
@@ -629,172 +859,222 @@ const Employees = () => {
                         )}
                         onClick={() => handleRowClick(employee._id)}
                         tabIndex={0}
-                        onKeyDown={(e) => e.key === "Enter" && handleViewClick(employee._id)}
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && handleViewClick(employee._id)
+                        }
                       >
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-0 bg-complementary shadow-sm z-10"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-0 bg-complementary shadow-sm z-10">
                           {employee.employeeId}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-10"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center sticky left-[80px] sm:left-[100px] bg-complementary shadow-sm z-10">
                           {employee.name}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal">
                           {employee.designation}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal">
                           {employee.department}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center whitespace-normal">
                           {employee.location?.name || "N/A"}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center">
                           ₹{employee.salary?.toFixed(2)}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center">
                           ₹{getCurrentAdvance(employee).toFixed(2)}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center hidden sm:table-cell"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center hidden sm:table-cell">
                           {openingLeaves}/{closingLeaves}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center">
                           {employee.status}
                         </TableCell>
-                        <TableCell
-                          className="px-1 sm:px-3 py-2 text-sm sm:text-base flex justify-center items-center space-x-1 sm:space-x-2"
-                        >
+                        <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base flex justify-center items-center space-x-1 sm:space-x-2">
                           <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewClick(employee._id)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`View employee ${employee.name}`}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEditClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Edit employee ${employee.name}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Edit Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleTransferClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
-                                  disabled={employee.status !== "active"}
-                                  aria-label={`Transfer employee ${employee.name}`}
-                                >
-                                  <Truck className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Transfer Employee</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleHistoryClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`View history for employee ${employee.name}`}
-                                >
-                                  <History className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View History</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleAddDocumentsClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Add documents for employee ${employee.name}`}
-                                >
-                                  <FilePlus className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Add Documents</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleUpdateAdvanceClick(employee)}
-                                  className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                  aria-label={`Update advance for employee ${employee.name}`}
-                                >
-                                  <IndianRupee className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Update Advance</TooltipContent>
-                            </Tooltip>
-                            {employee.status === "active" ? (
+                            {employee.isDeleted ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDeactivateClick(employee._id)}
-                                    className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
-                                    aria-label={`Deactivate employee ${employee.name}`}
-                                  >
-                                    <LogOut className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Deactivate Employee</TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRejoinClick(employee)}
+                                    onClick={() =>
+                                      handleRestoreClick(employee._id)
+                                    }
                                     className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
-                                    aria-label={`Rejoin employee ${employee.name}`}
+                                    aria-label={`Restore employee ${employee.name}`}
                                   >
                                     <UserPlus className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Rejoin Employee</TooltipContent>
+                                <TooltipContent>
+                                  Restore Employee
+                                </TooltipContent>
                               </Tooltip>
+                            ) : (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleViewClick(employee._id)
+                                      }
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`View employee ${employee.name}`}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View Employee</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditClick(employee)}
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Edit employee ${employee.name}`}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit Employee</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleTransferClick(employee)
+                                      }
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
+                                      disabled={employee.status !== "active"}
+                                      aria-label={`Transfer employee ${employee.name}`}
+                                    >
+                                      <Truck className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Transfer Employee
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleHistoryClick(employee)
+                                      }
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`View history for employee ${employee.name}`}
+                                    >
+                                      <History className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View History</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleAddDocumentsClick(employee)
+                                      }
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Add documents for employee ${employee.name}`}
+                                    >
+                                      <FilePlus className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Add Documents</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleUpdateAdvanceClick(employee)
+                                      }
+                                      className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Update advance for employee ${employee.name}`}
+                                    >
+                                      <IndianRupee className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Update Advance
+                                  </TooltipContent>
+                                </Tooltip>
+                                {employee.status === "active" ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleDeactivateClick(employee._id)
+                                        }
+                                        className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
+                                        aria-label={`Deactivate employee ${employee.name}`}
+                                      >
+                                        <LogOut className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Deactivate Employee
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleRejoinClick(employee)
+                                        }
+                                        className="text-accent hover:text-accent-hover transition-transform hover:scale-105 cursor-pointer"
+                                        aria-label={`Rejoin employee ${employee.name}`}
+                                      >
+                                        <UserPlus className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Rejoin Employee
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleDeleteClick(employee._id)
+                                      }
+                                      className="text-error hover:text-error-hover transition-transform hover:scale-105 cursor-pointer"
+                                      aria-label={`Delete employee ${employee.name}`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Delete Employee
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipContent>
+                                    Delete Employee
+                                  </TooltipContent>
+                                </Tooltip>
+                              </>
                             )}
                           </TooltipProvider>
                         </TableCell>
@@ -803,41 +1083,44 @@ const Employees = () => {
                   })}
                 </TableBody>
               </Table>
-              {totalPages > 1 && (
+              {!employeesLoading && totalPages > 1 && (
                 <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-2 mt-4">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
+                    disabled={currentPage === 1 || employeesLoading}
                     className="border-complementary text-body hover:bg-complementary/10 rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
                     aria-label="Previous page"
                   >
                     <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handlePageChange(page)}
-                      className={cn(
-                        currentPage === page
-                          ? "bg-accent text-body"
-                          : "border-complementary text-body hover:bg-complementary/10",
-                        "rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer"
-                      )}
-                      aria-label={`Go to page ${page}`}
-                    >
-                      {page}
-                    </Button>
-                  ))}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handlePageChange(page)}
+                        disabled={employeesLoading}
+                        className={cn(
+                          currentPage === page
+                            ? "bg-accent text-body"
+                            : "border-complementary text-body hover:bg-complementary/10",
+                          "rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
+                        )}
+                        aria-label={`Go to page ${page}`}
+                      >
+                        {page}
+                      </Button>
+                    )
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-sm py-1 sm:py-2 px-2 sm:px dietro3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
+                    disabled={currentPage === totalPages || employeesLoading}
+                    className="border-complementary text-body hover:bg-complementary/10 rounded-md text-sm py-1 sm:py-2 px-2 sm:px-3 min-w-[32px] sm:min-w-[40px] transition-all hover:scale-105 cursor-pointer disabled:cursor-not-allowed"
                     aria-label="Next page"
                   >
                     <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -868,9 +1151,14 @@ const Employees = () => {
                   onClick={() =>
                     dispatch(
                       fetchEmployees({
-                        location: filterLocation === "all" ? undefined : filterLocation,
-                        department: filterDepartment === "all" ? undefined : filterDepartment,
-                        status: filterStatus === "all" ? undefined : filterStatus,
+                        location:
+                          filterLocation === "all" ? undefined : filterLocation,
+                        department:
+                          filterDepartment === "all"
+                            ? undefined
+                            : filterDepartment,
+                        status:
+                          filterStatus === "all" ? undefined : filterStatus,
                         page: currentPage,
                         limit: itemsPerPage,
                       })
@@ -913,7 +1201,10 @@ const Employees = () => {
         />
       </Dialog>
 
-      <Dialog open={openAddDocumentsDialog} onOpenChange={setOpenAddDocumentsDialog}>
+      <Dialog
+        open={openAddDocumentsDialog}
+        onOpenChange={setOpenAddDocumentsDialog}
+      >
         <AddDocumentsDialog
           open={openAddDocumentsDialog}
           onOpenChange={setOpenAddDocumentsDialog}
@@ -922,7 +1213,10 @@ const Employees = () => {
         />
       </Dialog>
 
-      <Dialog open={openDeactivateDialog} onOpenChange={setOpenDeactivateDialog}>
+      <Dialog
+        open={openDeactivateDialog}
+        onOpenChange={setOpenDeactivateDialog}
+      >
         <DeactivateEmployeeDialog
           open={openDeactivateDialog}
           onOpenChange={setOpenDeactivateDialog}
@@ -931,13 +1225,72 @@ const Employees = () => {
         />
       </Dialog>
 
-      <Dialog open={openUpdateAdvanceDialog} onOpenChange={setOpenUpdateAdvanceDialog}>
+      <Dialog
+        open={openUpdateAdvanceDialog}
+        onOpenChange={setOpenUpdateAdvanceDialog}
+      >
         <UpdateAdvanceDialog
           open={openUpdateAdvanceDialog}
           onOpenChange={setOpenUpdateAdvanceDialog}
           employee={employeeToUpdateAdvance}
           setSuccessMessage={setSuccessMessage}
         />
+      </Dialog>
+
+      <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
+        <DialogContent className="bg-complementary text-body rounded-md shadow-lg max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this employee? This action will
+              mark the employee as deleted and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setOpenDeleteDialog(false)}
+              className="border-complementary text-body hover:bg-accent/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              className="bg-error hover:bg-error-hover"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openRestoreDialog} onOpenChange={setOpenRestoreDialog}>
+        <DialogContent className="bg-complementary text-body rounded-md shadow-lg max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Confirm Restore</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to restore this employee? This will make the
+              employee visible again in the employee list.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setOpenRestoreDialog(false)}
+              className="border-complementary text-body hover:bg-accent/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleRestoreConfirm}
+              className="bg-accent hover:bg-accent-hover"
+            >
+              Restore
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </Layout>
   );

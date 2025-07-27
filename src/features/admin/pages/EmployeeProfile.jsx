@@ -1,14 +1,38 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchEmployeeById, fetchEmployeeAttendance, addEmployeeDocuments, updateEmployee, reset as resetEmployees } from '../redux/employeeSlice';
+import {
+  fetchEmployeeById,
+  fetchEmployeeAttendance,
+  addEmployeeDocuments,
+  updateEmployee,
+  reset as resetEmployees,
+  fetchEmployeeAdvances,
+} from '../redux/employeeSlice';
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Loader2, X, AlertCircle, Copy, ArrowLeft } from 'lucide-react';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Loader2,
+  X,
+  Copy,
+  ArrowLeft,
+} from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -20,7 +44,6 @@ import EmployeeAttendanceSection from './EmployeeAttendanceSection';
 import EmployeeDocumentsSection from './EmployeeDocumentsSection';
 import EmployeeAdvancesSection from './EmployeeAdvancesSection';
 import { Input } from '@/components/ui/input';
-import { format } from 'date-fns';
 
 // Define validation schemas
 const bankDetailsSchema = z.object({
@@ -43,10 +66,10 @@ const bankDetailsSchema = z.object({
 );
 
 const editEmployeeSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  name: z.string().min(1, 'Name is required').max(50, 'Name must be 50 characters or less'),
   email: z.string().email('Invalid email address'),
-  designation: z.string().min(1, 'Designation is required'),
-  department: z.string().min(1, 'Department is required'),
+  designation: z.string().min(1, 'Designation is required').max(50, 'Designation must be 50 characters or less'),
+  department: z.string().min(1, 'Department is required').max(50, 'Department must be 50 characters or less'),
   salary: z.string().min(1, 'Salary is required').refine((val) => {
     const num = Number(val);
     return !isNaN(num) && num >= 1000;
@@ -54,19 +77,21 @@ const editEmployeeSchema = z.object({
   phone: z.string().optional().refine((val) => !val || /^\d{10}$/.test(val), { message: 'Invalid phone number' }),
   dob: z.string().optional().refine((val) => !val || (new Date(val) <= new Date() && !isNaN(new Date(val))), { message: 'Invalid date of birth' }),
   bankDetails: bankDetailsSchema,
+  paidLeaves: z.object({
+    available: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Available leaves must be a non-negative number',
+    }),
+    used: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Used leaves must be a non-negative number',
+    }),
+    carriedForward: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: 'Carried forward leaves must be a non-negative number',
+    }),
+  }).refine((data) => Number(data.available) >= Number(data.used), {
+    message: 'Available leaves cannot be less than used leaves',
+    path: ['paidLeaves.available'],
+  }),
 });
-
-const parseServerError = (error) => {
-  if (!error) return { message: 'An unknown error occurred', fields: {} };
-  if (typeof error === 'string') return { message: error, fields: {} };
-  const message = error.message || 'Operation failed';
-  const fields = error.field ? { [error.field]: error.message } : 
-    (error.errors?.reduce((acc, err) => {
-      acc[err.field] = err.message;
-      return acc;
-    }, {}) || {});
-  return { message, fields };
-};
 
 // Reusable CopyButton component
 const CopyButton = ({ text, fieldId }) => {
@@ -104,17 +129,24 @@ const EmployeeProfile = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useSelector((state) => state.auth);
-  const { currentEmployee, attendance, loading, error } = useSelector((state) => state.adminEmployees);
-  const { settings, loadingFetch: loadingSettings, error: settingsError } = useSelector((state) => state.adminSettings);
+  const {
+    currentEmployee,
+    attendance,
+    attendancePagination,
+    advances,
+    advancesPagination,
+    loading,
+    error,
+  } = useSelector((state) => state.adminEmployees);
+  const { settings, loading: loadingSettings, error: settingsError } = useSelector(
+    (state) => state.adminSettings
+  );
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [formErrors, setFormErrors] = useState([]);
-  const [serverError, setServerError] = useState(null);
-  const [showErrorAlert, setShowErrorAlert] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isHighlighted, setIsHighlighted] = useState(false);
   const [advancesSortField, setAdvancesSortField] = useState('year');
@@ -122,6 +154,16 @@ const EmployeeProfile = () => {
   const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState('profile');
   const autoDismissDuration = 5000;
+  const ITEMS_PER_PAGE = 10; // For attendance and documents
+  const ADVANCES_ITEMS_PER_PAGE = 5; // For advances
+
+  // Define tabs for navigation
+  const tabs = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'attendance', label: 'Attendance' },
+    { id: 'advances', label: 'Advances' },
+    { id: 'documents', label: 'Documents' },
+  ];
 
   const editForm = useForm({
     resolver: zodResolver(editEmployeeSchema),
@@ -139,10 +181,15 @@ const EmployeeProfile = () => {
         bankName: '',
         accountHolder: '',
       },
+      paidLeaves: {
+        available: '0',
+        used: '0',
+        carriedForward: '0',
+      },
     },
   });
 
-  const totalYearblyPaidLeaves = useMemo(() => {
+  const totalYearlyPaidLeaves = useMemo(() => {
     if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
       return settings?.paidLeavesPerYear || 0;
     }
@@ -161,36 +208,75 @@ const EmployeeProfile = () => {
   }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
 
   useEffect(() => {
-    if (user?.role !== 'admin') navigate('/login');
-    dispatch(fetchEmployeeById(id));
-    dispatch(fetchEmployeeAttendance({ employeeId: id, month: monthFilter, year: yearFilter }));
+    if (user?.role !== 'admin') {
+      navigate('/login');
+      return;
+    }
+
+    // Validate id format
+    const employeeId = String(id); // Ensure string
+    if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
+      console.error("Invalid employee ID format:", employeeId);
+      toast.error("Invalid employee ID format", { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
+      navigate('/admin/employees');
+      return;
+    }
+
+    console.log("Fetching employee with ID:", employeeId);
+    dispatch(fetchEmployeeById(employeeId)); // Pass string ID
+    dispatch(
+      fetchEmployeeAttendance({
+        employeeId,
+        month: monthFilter,
+        year: yearFilter,
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        sortField,
+        sortOrder,
+      })
+    );
+    if (activeTab === 'advances') {
+      dispatch(
+        fetchEmployeeAdvances({
+          id: employeeId,
+          page: advancesCurrentPage,
+          limit: ADVANCES_ITEMS_PER_PAGE,
+          sortField: advancesSortField,
+          sortOrder: advancesSortOrder,
+        })
+      );
+    }
     dispatch(fetchSettings());
+
     return () => {
       dispatch(resetEmployees());
     };
-  }, [dispatch, id, user, navigate, monthFilter, yearFilter]);
+  }, [
+    dispatch,
+    id,
+    user,
+    navigate,
+    monthFilter,
+    yearFilter,
+    currentPage,
+    activeTab,
+    advancesCurrentPage,
+    advancesSortField,
+    advancesSortOrder,
+    sortField,
+    sortOrder,
+  ]);
 
   useEffect(() => {
     if (settingsError) {
       toast.dismiss();
-      setServerError({ message: settingsError, fields: {} });
-      setShowErrorAlert(true);
       toast.error(settingsError, {
         id: 'settings-error',
         duration: autoDismissDuration,
         position: 'top-center',
       });
-
-      const errorTimer = setTimeout(() => {
-        setShowErrorAlert(false);
-        setServerError(null);
-        dispatch(resetEmployees());
-        toast.dismiss();
-      }, autoDismissDuration);
-
-      return () => clearTimeout(errorTimer);
     }
-  }, [settingsError, dispatch]);
+  }, [settingsError]);
 
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
 
@@ -221,55 +307,15 @@ const EmployeeProfile = () => {
   }, [currentEmployee, HIGHLIGHT_DURATION]);
 
   useEffect(() => {
-    if (error || formErrors.length > 0) {
+    if (error) {
       toast.dismiss();
-      const parsedError = error ? parseServerError(error) : { message: 'Form validation failed', fields: {} };
-      setServerError(parsedError);
-      setShowErrorAlert(true);
-      toast.error(parsedError.message, {
+      toast.error(error.message || 'Operation failed', {
         id: 'form-error',
         duration: autoDismissDuration,
         position: 'top-center',
       });
-
-      const errorTimer = setTimeout(() => {
-        setShowErrorAlert(false);
-        setServerError(null);
-        setFormErrors([]);
-        if (error) dispatch(resetEmployees());
-        toast.dismiss();
-      }, autoDismissDuration);
-
-      return () => clearTimeout(errorTimer);
     }
-  }, [error, formErrors, dispatch]);
-
-  const sortedAttendance = useMemo(() => {
-    const filteredAttendance = attendance.filter(
-      (record) => record && record.employee && record.employee._id && record.employee._id.toString() === id
-    );
-
-    const uniqueAttendance = [];
-    const seenKeys = new Set();
-    filteredAttendance.forEach((record) => {
-      const dateKey = `${record.employee._id}_${format(new Date(record.date), 'yyyy-MM-dd')}`;
-      if (!seenKeys.has(dateKey)) {
-        seenKeys.add(dateKey);
-        uniqueAttendance.push(record);
-      }
-    });
-
-    return uniqueAttendance.sort((a, b) => {
-      const aValue = sortField === 'date' ? new Date(a.date) : a.status;
-      const bValue = sortField === 'date' ? new Date(b.date) : b.status;
-      if (sortField === 'date') {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-      return sortOrder === 'asc'
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    });
-  }, [attendance, sortField, sortOrder, id]);
+  }, [error]);
 
   const handleMonthChange = (value) => {
     setMonthFilter(parseInt(value));
@@ -288,20 +334,12 @@ const EmployeeProfile = () => {
       setSortField(field);
       setSortOrder('asc');
     }
+    setCurrentPage(1); // Reset to first page on sort change
   };
 
   const handleEditSubmit = async (data) => {
     try {
-      setFormErrors([]);
-      setServerError(null);
-      setShowErrorAlert(false);
       toast.dismiss();
-
-      const isValid = await editForm.trigger();
-      if (!isValid) {
-        return;
-      }
-
       const employeeData = {
         name: data.name,
         email: data.email,
@@ -311,113 +349,24 @@ const EmployeeProfile = () => {
         phone: data.phone || undefined,
         dob: data.dob || undefined,
         bankDetails: data.bankDetails,
+        paidLeaves: {
+          available: Number(data.paidLeaves.available),
+          used: Number(data.paidLeaves.used),
+          carriedForward: Number(data.paidLeaves.carriedForward),
+        },
       };
 
       await dispatch(updateEmployee({ id, data: employeeData })).unwrap();
-      toast.dismiss();
-      toast.success('Employee updated successfully', { id: 'edit-success', duration: autoDismissDuration, position: 'top-center' });
+      toast.success('Employee updated successfully', {
+        id: 'edit-success',
+        duration: autoDismissDuration,
+        position: 'top-center',
+      });
       setEditDialogOpen(false);
-      setTimeout(() => {
-        dispatch(resetEmployees());
-        toast.dismiss();
-      }, autoDismissDuration);
     } catch (err) {
       console.error('Submit error:', err);
       toast.dismiss();
-      const parsedError = parseServerError(err);
-      setServerError(parsedError);
-      setShowErrorAlert(true);
-      toast.error(parsedError.message, { id: 'form-submit-error', duration: autoDismissDuration, position: 'top-center' });
-      Object.entries(parsedError.fields).forEach(([field, message], index) => {
-        setTimeout(() => {
-          toast.error(message, { id: `server-error-${field}-${index}`, duration: autoDismissDuration, position: 'top-center' });
-        }, (index + 1) * 500);
-      });
-      const firstErrorFieldName = Object.keys(parsedError.fields)[0];
-      if (firstErrorFieldName) {
-        const fieldElement = document.querySelector(`[name="${firstErrorFieldName}"]`);
-        if (fieldElement) {
-          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          fieldElement.focus();
-        }
-      }
-    }
-  };
-
-  const handleEditSaveClick = async () => {
-    try {
-      toast.dismiss();
-      const isValid = await editForm.trigger();
-      if (!isValid) {
-        const errors = [];
-        const fieldLabels = {
-          name: 'Name',
-          email: 'Email',
-          designation: 'Designation',
-          department: 'Department',
-          salary: 'Salary',
-          phone: 'Phone number',
-          dob: 'Date of birth',
-          'bankDetails.accountNo': 'Account number',
-          'bankDetails.ifscCode': 'IFSC code',
-          'bankDetails.bankName': 'Bank name',
-          'bankDetails.accountHolder': 'Account holder',
-          bankDetails: 'Bank details',
-        };
-
-        const addError = (field, message) => {
-          if (message && !errors.some((e) => e.field === field)) {
-            const fieldLabel = fieldLabels[field] || field;
-            const displayMessage = message.includes('is required') ? `${fieldLabel} is required` : message;
-            errors.push({ field, message: displayMessage });
-          }
-        };
-
-        const fieldOrder = [
-          'name',
-          'email',
-          'designation',
-          'department',
-          'salary',
-          'phone',
-          'dob',
-          'bankDetails.accountNo',
-          'bankDetails.ifscCode',
-          'bankDetails.bankName',
-          'bankDetails.accountHolder',
-          'bankDetails',
-        ];
-
-        for (const field of fieldOrder) {
-          const error = editForm.formState.errors[field.split('.')[0]]?.[field.split('.')[1]] || editForm.formState.errors[field];
-          addError(field, error?.message);
-        }
-
-        if (editForm.formState.errors.bankDetails && editForm.formState.errors.bankDetails.message) {
-          addError('bankDetails', editForm.formState.errors.bankDetails.message);
-        }
-
-        if (errors.length > 0) {
-          const firstError = errors[0];
-          toast.error(firstError.message, {
-            id: `validation-error-${firstError.field.replace('.', '-')}`,
-            duration: autoDismissDuration,
-            position: 'top-center',
-          });
-          const firstErrorField = document.querySelector(`[name="${firstError.field}"]`);
-          if (firstErrorField) {
-            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            firstErrorField.focus();
-          }
-          return;
-        }
-      }
-
-      await editForm.handleSubmit(handleEditSubmit)();
-    } catch (error) {
-      console.error('handleEditSaveClick error:', error);
-      toast.dismiss();
-      toast.error('Error submitting form, please try again', {
+      toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
         duration: autoDismissDuration,
         position: 'top-center',
@@ -425,20 +374,85 @@ const EmployeeProfile = () => {
     }
   };
 
-  const handleDismissErrors = () => {
-    setShowErrorAlert(false);
-    setServerError(null);
-    setFormErrors([]);
-    dispatch(resetEmployees());
+  const handleEditSaveClick = async () => {
+  try {
     toast.dismiss();
-  };
+    const isValid = await editForm.trigger();
+    if (!isValid) {
+      const errors = editForm.formState.errors;
+      const fieldLabels = {
+        name: 'Name',
+        email: 'Email',
+        designation: 'Designation',
+        department: 'Department',
+        salary: 'Salary',
+        phone: 'Phone number',
+        dob: 'Date of birth',
+        'bankDetails.accountNo': 'Account number',
+        'bankDetails.ifscCode': 'IFSC code',
+        'bankDetails.bankName': 'Bank name',
+        'bankDetails.accountHolder': 'Account holder',
+        bankDetails: 'Bank details',
+        'paidLeaves.available': 'Available Leaves',
+        'paidLeaves.used': 'Used Leaves',
+        'paidLeaves.carriedForward': 'Carried Forward Leaves',
+      };
+
+      // Find the first error, handling nested fields
+      let errorField = '';
+      let errorMessage = 'Please fill in all required fields';
+      
+      const findFirstError = (errors, prefix = '') => {
+        for (const [key, value] of Object.entries(errors)) {
+          if (value.message) {
+            return { field: prefix ? `${prefix}.${key}` : key, message: value.message };
+          }
+          if (typeof value === 'object' && value !== null) {
+            const nestedError = findFirstError(value, prefix ? `${prefix}.${key}` : key);
+            if (nestedError) return nestedError;
+          }
+        }
+        return null;
+      };
+
+      const firstError = findFirstError(errors);
+      if (firstError) {
+        errorField = firstError.field;
+        const fieldLabel = fieldLabels[errorField] || errorField;
+        errorMessage = firstError.message || `${fieldLabel} is invalid`;
+      }
+
+      toast.error(errorMessage, {
+        id: `validation-error-${errorField.replace('.', '-')}`,
+        duration: autoDismissDuration,
+        position: 'top-center',
+      });
+
+      // Focus the first invalid field
+      if (errorField) {
+        const firstErrorField = document.querySelector(`[name="${errorField}"]`);
+        if (firstErrorField) {
+          firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstErrorField.focus();
+        }
+      }
+      return;
+    }
+
+    await editForm.handleSubmit(handleEditSubmit)();
+  } catch (error) {
+    console.error('handleEditSaveClick error:', error);
+    toast.dismiss();
+    toast.error('Error submitting form, please try again', {
+      id: 'form-submit-error',
+      duration: autoDismissDuration,
+      position: 'top-center',
+    });
+  }
+};
 
   const openEditDialog = (emp) => {
-    setFormErrors([]);
-    setServerError(null);
-    setShowErrorAlert(false);
     toast.dismiss();
-
     editForm.reset({
       name: emp.name,
       email: emp.email,
@@ -446,12 +460,17 @@ const EmployeeProfile = () => {
       department: emp.department,
       salary: emp.salary.toString(),
       phone: emp.phone || '',
-      dob: emp.dob ? new Date(emp.dob).toISOString().split('T')[0] : '',
+      dob: emp.dob && !isNaN(new Date(emp.dob).getTime()) ? new Date(emp.dob).toISOString().split('T')[0] : '',
       bankDetails: {
         accountNo: emp.bankDetails?.accountNo || '',
         ifscCode: emp.bankDetails?.ifscCode || '',
         bankName: emp.bankDetails?.bankName || '',
         accountHolder: emp.bankDetails?.accountHolder || '',
+      },
+      paidLeaves: {
+        available: emp.paidLeaves?.available?.toString() || '0',
+        used: emp.paidLeaves?.used?.toString() || '0',
+        carriedForward: emp.paidLeaves?.carriedForward?.toString() || '0',
       },
     });
     setEditDialogOpen(true);
@@ -462,14 +481,6 @@ const EmployeeProfile = () => {
     label: new Date(0, i).toLocaleString('default', { month: 'long' }),
   }));
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
-  const ITEMS_PER_PAGE = 10;
-
-  const tabs = [
-    { id: 'profile', label: 'Profile' },
-    { id: 'attendance', label: 'Attendance' },
-    { id: 'advances', label: 'Advances' },
-    { id: 'documents', label: 'Documents' },
-  ];
 
   if (loading || !currentEmployee || loadingSettings) {
     return (
@@ -489,40 +500,6 @@ const EmployeeProfile = () => {
   return (
     <Layout title="Employee Profile">
       <Toaster position="top-center" />
-      {serverError && showErrorAlert && (
-        <Alert
-          variant="destructive"
-          className={cn(
-            'fixed top-2 right-2 w-[calc(100%-1rem)] sm:w-80 md:w-96 z-[100] border-error text-error rounded-lg shadow-md bg-complementary-light',
-            showErrorAlert ? 'animate-fade-in' : 'animate-fade-out'
-          )}
-        >
-          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-          <AlertTitle className="text-xs sm:text-sm md:text-base font-bold">Error</AlertTitle>
-          <AlertDescription className="text-xs sm:text-sm md:text-base">
-            <p>{serverError.message}</p>
-            {Object.keys(serverError.fields).length > 0 && (
-              <div className="mt-1 sm:mt-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
-                <ul className="list-disc pl-4 sm:pl-5 space-y-1">
-                  {Object.entries(serverError.fields).map(([field, message], index) => (
-                    <li key={index}>{message} (Field: {field})</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </AlertDescription>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDismissErrors}
-            className="absolute top-1 right-1 sm:top-2 sm:right-2 text-error hover:text-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2"
-            aria-label="Dismiss error alert"
-          >
-            <X className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
-        </Alert>
-      )}
-
       <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Button
           variant="outline"
@@ -574,24 +551,21 @@ const EmployeeProfile = () => {
             <EmployeeProfileSection
               currentEmployee={currentEmployee}
               isHighlighted={isHighlighted}
-              totalYearlyPaidLeaves={totalYearblyPaidLeaves}
+              totalYearlyPaidLeaves={totalYearlyPaidLeaves}
               openEditDialog={openEditDialog}
               CopyButton={CopyButton}
             />
           )}
           {activeTab === 'attendance' && (
             <EmployeeAttendanceSection
-              attendance={sortedAttendance}
+              attendance={attendance}
               monthFilter={monthFilter}
               yearFilter={yearFilter}
               months={months}
               years={years}
               currentPage={currentPage}
-              totalPages={Math.ceil(sortedAttendance.length / ITEMS_PER_PAGE)}
-              paginatedAttendance={sortedAttendance.slice(
-                (currentPage - 1) * ITEMS_PER_PAGE,
-                currentPage * ITEMS_PER_PAGE
-              )}
+              totalPages={attendancePagination.totalPages}
+              paginatedAttendance={attendance}
               sortField={sortField}
               sortOrder={sortOrder}
               handleMonthChange={handleMonthChange}
@@ -599,11 +573,14 @@ const EmployeeProfile = () => {
               handleSort={handleSort}
               setCurrentPage={setCurrentPage}
               employeeName={currentEmployee.name}
+              isLoading={loading}
+                      employeeId={id} // Pass employeeId
+
             />
           )}
           {activeTab === 'advances' && (
             <EmployeeAdvancesSection
-              advances={currentEmployee?.advances || []}
+              advances={advances}
               currentPage={advancesCurrentPage}
               setCurrentPage={setAdvancesCurrentPage}
               sortField={advancesSortField}
@@ -611,6 +588,11 @@ const EmployeeProfile = () => {
               sortOrder={advancesSortOrder}
               setSortOrder={setAdvancesSortOrder}
               employeeName={currentEmployee.name}
+              totalPages={advancesPagination.totalPages}
+              isLoading={loading}
+              dispatch={dispatch}
+              id={id}
+              itemsPerPage={ADVANCES_ITEMS_PER_PAGE}
             />
           )}
           {activeTab === 'documents' && (
@@ -619,30 +601,38 @@ const EmployeeProfile = () => {
               dispatch={dispatch}
               id={id}
               employeeName={currentEmployee.name}
+              isLoading={loading}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              itemsPerPage={ITEMS_PER_PAGE}
             />
           )}
         </div>
 
         {/* Edit Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="bg-complementary text-body rounded-lg max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary p-4 sm:p-6">
+          <DialogContent className="bg-complementary text-body rounded-lg max-h-[90vh] max-w-[90vw] xs:max-w-[85vw] sm:max-w-2xl mx-auto px-2 xs:px-3 sm:px-4 py-2 xs:py-3 sm:py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
             <DialogHeader>
-              <DialogTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-body">Edit Employee</DialogTitle>
+              <DialogTitle className="text-base xs:text-lg sm:text-xl md:text-2xl font-semibold text-body">Edit Employee</DialogTitle>
             </DialogHeader>
             <Form {...editForm}>
-              <form className="space-y-4 sm:space-y-6">
-                <div className="grid grid-cols-1 gap-4 sm:gap-6">
+              <form className="space-y-3 xs:space-y-4 sm:space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
                   <FormField
                     control={editForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Name *</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee name"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.name && <p className="text-error text-xs sm:text-sm">{serverError.fields.name}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -651,12 +641,17 @@ const EmployeeProfile = () => {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Email *</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Email *</FormLabel>
                         <FormControl>
-                          <Input {...field} type="email" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            type="email"
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee email"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.email && <p className="text-error text-xs sm:text-sm">{serverError.fields.email}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -665,12 +660,16 @@ const EmployeeProfile = () => {
                     name="designation"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Designation *</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Designation *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee designation"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.designation && <p className="text-error text-xs sm:text-sm">{serverError.fields.designation}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -679,12 +678,16 @@ const EmployeeProfile = () => {
                     name="department"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Department *</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Department *</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee department"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.department && <p className="text-error text-xs sm:text-sm">{serverError.fields.department}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -693,12 +696,17 @@ const EmployeeProfile = () => {
                     name="salary"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Salary *</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Salary *</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            type="text"
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee salary"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.salary && <p className="text-error text-xs sm:text-sm">{serverError.fields.salary}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -707,12 +715,16 @@ const EmployeeProfile = () => {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Phone</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Phone</FormLabel>
                         <FormControl>
-                          <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee phone"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.phone && <p className="text-error text-xs sm:text-sm">{serverError.fields.phone}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
@@ -721,30 +733,39 @@ const EmployeeProfile = () => {
                     name="dob"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Date of Birth</FormLabel>
+                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Date of Birth</FormLabel>
                         <FormControl>
-                          <Input {...field} type="date" className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                          <Input
+                            type="date"
+                            {...field}
+                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                            disabled={editForm.formState.isSubmitting}
+                            aria-label="Employee date of birth"
+                          />
                         </FormControl>
-                        <FormMessage className="text-error text-xs sm:text-sm" />
-                        {serverError?.fields?.dob && <p className="text-error text-xs sm:text-sm">{serverError.fields.dob}</p>}
+                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                       </FormItem>
                     )}
                   />
                 </div>
-                <div className="space-y-3 sm:space-y-4">
-                  <FormLabel className="text-sm sm:text-base md:text-lg font-semibold text-body">Bank Details</FormLabel>
-                  <div className="grid grid-cols-1 gap-4 sm:gap-6">
+                <div className="space-y-3 xs:space-y-4 sm:space-y-6">
+                  <FormLabel className="text-2xs xs:text-xs sm:text-base md:text-lg font-semibold text-body">Bank Details</FormLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
                     <FormField
                       control={editForm.control}
                       name="bankDetails.accountNo"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Account Number</FormLabel>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Account Number</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                            <Input
+                              {...field}
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Bank account number"
+                            />
                           </FormControl>
-                          <FormMessage className="text-error text-xs sm:text-sm" />
-                          {serverError?.fields?.['bankDetails.accountNo'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.accountNo']}</p>}
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                         </FormItem>
                       )}
                     />
@@ -753,12 +774,16 @@ const EmployeeProfile = () => {
                       name="bankDetails.ifscCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">IFSC Code</FormLabel>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">IFSC Code</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                            <Input
+                              {...field}
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Bank IFSC code"
+                            />
                           </FormControl>
-                          <FormMessage className="text-error text-xs sm:text-sm" />
-                          {serverError?.fields?.['bankDetails.ifscCode'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.ifscCode']}</p>}
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                         </FormItem>
                       )}
                     />
@@ -767,12 +792,16 @@ const EmployeeProfile = () => {
                       name="bankDetails.bankName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Bank Name</FormLabel>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Bank Name</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                            <Input
+                              {...field}
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Bank name"
+                            />
                           </FormControl>
-                          <FormMessage className="text-error text-xs sm:text-sm" />
-                          {serverError?.fields?.['bankDetails.bankName'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.bankName']}</p>}
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                         </FormItem>
                       )}
                     />
@@ -781,23 +810,90 @@ const EmployeeProfile = () => {
                       name="bankDetails.accountHolder"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs sm:text-sm md:text-base font-semibold text-body">Account Holder</FormLabel>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Account Holder</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-body text-body border-complementary focus:border-accent rounded-lg text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2" />
+                            <Input
+                              {...field}
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Bank account holder"
+                            />
                           </FormControl>
-                          <FormMessage className="text-error text-xs sm:text-sm" />
-                          {serverError?.fields?.['bankDetails.accountHolder'] && <p className="text-error text-xs sm:text-sm">{serverError.fields['bankDetails.accountHolder']}</p>}
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
                         </FormItem>
                       )}
                     />
                   </div>
                 </div>
-                <DialogFooter className="mt-4 sm:mt-6">
+                <div className="space-y-3 xs:space-y-4 sm:space-y-6">
+                  <FormLabel className="text-2xs xs:text-xs sm:text-base md:text-lg font-semibold text-body">Paid Leaves</FormLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
+                    <FormField
+                      control={editForm.control}
+                      name="paidLeaves.available"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Available Leaves</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="text"
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Available leaves"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="paidLeaves.used"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Used Leaves</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="text"
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Used leaves"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="paidLeaves.carriedForward"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Carried Forward Leaves</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="text"
+                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                              disabled={editForm.formState.isSubmitting}
+                              aria-label="Carried forward leaves"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="mt-3 xs:mt-4 sm:mt-6">
                   <Button
                     variant="outline"
                     onClick={() => setEditDialogOpen(false)}
-                    className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                    aria-label="Cancel edit"
+                    className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-1.5 xs:px-2 py-0.5 xs:py-1 sm:px-4 sm:py-2 text-2xs xs:text-xs sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    disabled={editForm.formState.isSubmitting}
+                    aria-label="Cancel edit employee"
                   >
                     Cancel
                   </Button>
@@ -805,11 +901,11 @@ const EmployeeProfile = () => {
                     type="button"
                     onClick={handleEditSaveClick}
                     disabled={editForm.formState.isSubmitting}
-                    className="bg-accent text-body hover:bg-accent-hover rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                    aria-label="Save employee"
+                    className="bg-accent text-body hover:bg-accent-hover rounded-lg px-1.5 xs:px-2 py-0.5 xs:py-1 sm:px-4 sm:py-2 text-2xs xs:text-xs sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    aria-label="Save employee details"
                   >
                     {editForm.formState.isSubmitting ? (
-                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                      <Loader2 className="h-2.5 w-2.5 xs:h-3 xs:w-3 sm:h-5 sm:w-5 animate-spin" />
                     ) : (
                       'Save'
                     )}
