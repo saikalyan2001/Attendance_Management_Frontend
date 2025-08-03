@@ -1,4 +1,3 @@
-// src/redux/slices/authSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../utils/api';
 
@@ -14,16 +13,14 @@ export const login = createAsyncThunk(
       console.log('Login error:', error.response?.data || error.message);
       const errorMessage = error.response?.data?.message || 'Login failed';
       console.log('Backend error message:', errorMessage);
-      // Handle role-specific errors
       if (
         errorMessage &&
         (errorMessage.includes('Role does not match') ||
           errorMessage.includes('Invalid role') ||
-          (errorMessage.includes('Invalid email or role') && email && password)) // Assume valid email/password if provided
+          (errorMessage.includes('Invalid email or role') && email && password))
       ) {
         return rejectWithValue('Invalid role or Invalid email');
       }
-      // Handle email/password errors
       if (
         errorMessage &&
         (errorMessage.includes('User not found') ||
@@ -39,7 +36,6 @@ export const login = createAsyncThunk(
   }
 );
 
-// ... rest of the file unchanged
 export const signup = createAsyncThunk(
   'auth/signup',
   async ({ email, password, name, phone, role, locations }, { rejectWithValue }) => {
@@ -51,6 +47,19 @@ export const signup = createAsyncThunk(
     } catch (error) {
       console.log('Signup error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Signup failed');
+    }
+  }
+);
+
+export const createUserBySuperAdmin = createAsyncThunk(
+  'auth/createUserBySuperAdmin',
+  async ({ email, password, name, phone, role, locations }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/signup', { email, password, name, phone, role, locations });
+      return response.data.user; // Return only user data, no token storage
+    } catch (error) {
+      console.log('createUserBySuperAdmin error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to create user');
     }
   }
 );
@@ -71,6 +80,26 @@ export const createSiteIncharge = createAsyncThunk(
     } catch (error) {
       console.log('createSiteIncharge error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to create site incharge');
+    }
+  }
+);
+
+export const createSuperAdmin = createAsyncThunk(
+  'auth/createSuperAdmin',
+  async ({ email, password, name, phone, locations }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/create-superadmin', {
+        email,
+        password,
+        name,
+        phone,
+        role: 'super_admin',
+        locations,
+      });
+      return response.data.user;
+    } catch (error) {
+      console.log('createSuperAdmin error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to create super admin');
     }
   }
 );
@@ -98,7 +127,7 @@ export const fetchMe = createAsyncThunk(
     } catch (error) {
       console.error('FetchMe error:', error.response?.data || error.message);
       localStorage.removeItem('token');
-      return rejectWithValue(null); // Suppress fetchMe errors
+      return rejectWithValue(null);
     }
   }
 );
@@ -154,6 +183,19 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload;
       })
+      .addCase(createUserBySuperAdmin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createUserBySuperAdmin.fulfilled, (state) => {
+        state.loading = false;
+        state.isLoading = false;
+      })
+      .addCase(createUserBySuperAdmin.rejected, (state, action) => {
+        state.loading = false;
+        state.isLoading = false;
+        state.error = action.payload;
+      })
       .addCase(createSiteIncharge.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -163,6 +205,19 @@ const authSlice = createSlice({
         state.isLoading = false;
       })
       .addCase(createSiteIncharge.rejected, (state, action) => {
+        state.loading = false;
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(createSuperAdmin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createSuperAdmin.fulfilled, (state) => {
+        state.loading = false;
+        state.isLoading = false;
+      })
+      .addCase(createSuperAdmin.rejected, (state, action) => {
         state.loading = false;
         state.isLoading = false;
         state.error = action.payload;

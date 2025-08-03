@@ -13,6 +13,12 @@ import adminLocationsReducer from '../features/admin/redux/locationsSlice';
 import adminSettingsReducer from '../features/admin/redux/settingsSlice';
 import adminEmployeesReducer from '../features/admin/redux/employeeSlice';
 import adminProfileReducer from '../features/admin/redux/profileSlice';
+import superAdminDashboardReducer from '../features/superadmin/redux/superAdminDashboardSlice';
+import superAdminLocationsReducer from '../features/superadmin/redux/locationsSlice';
+import superAdminSettingsReducer from '../features/superadmin/redux/settingsSlice';
+import superadminEmployeeReducer from '../features/superadmin/redux/superadminEmployeeSlice';
+import superadminAttendanceReducer from '../features/superadmin/redux/superAdminAttendanceSlice';
+import superadminReportsReducer from '../features/superadmin/redux/superAdminReportsSlice';
 
 const store = configureStore({
   reducer: {
@@ -30,6 +36,12 @@ const store = configureStore({
     adminSettings: adminSettingsReducer,
     adminEmployees: adminEmployeesReducer,
     adminProfile: adminProfileReducer,
+    superAdminDashboard: superAdminDashboardReducer,
+    superAdminLocations: superAdminLocationsReducer, 
+    superAdminSettings: superAdminSettingsReducer, 
+    superadminEmployees: superadminEmployeeReducer,
+    superAdminAttendance: superadminAttendanceReducer,
+    superAdminReports: superadminReportsReducer,
   },
 });
 

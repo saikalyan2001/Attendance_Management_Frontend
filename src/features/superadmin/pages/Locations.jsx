@@ -1,3 +1,4 @@
+// src/features/superadmin/pages/Locations.jsx
 import { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations, addLocation, editLocation, deleteLocation } from '../redux/locationsSlice';
@@ -26,11 +27,11 @@ const locationSchema = z.object({
   state: z.string().min(1, 'State is required'),
 });
 
-const Locations = () => {
+const SuperAdminLocations = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const { locations, loading, error } = useSelector((state) => state.adminLocations);
+  const { locations, loading, error } = useSelector((state) => state.superAdminLocations);
   const [sortOrder, setSortOrder] = useState('asc');
   const [locationSearch, setLocationSearch] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -54,7 +55,7 @@ const Locations = () => {
   });
 
   useEffect(() => {
-    if (user?.role !== 'admin') {
+    if (user?.role !== 'super_admin') {
       navigate('/login');
     }
     dispatch(fetchLocations());
@@ -67,7 +68,7 @@ const Locations = () => {
         duration: 6000,
         position: 'top-center',
       });
-      dispatch({ type: 'adminLocations/reset' });
+      dispatch({ type: 'superAdminLocations/reset' });
     }
   }, [error, dispatch]);
 
@@ -83,7 +84,7 @@ const Locations = () => {
       setAddOpen(false);
       addForm.reset();
     } catch (err) {
-      // Remove toast.error to avoid duplication
+      // Remove toast.error from here to avoid duplication
     } finally {
       setActionLoading((prev) => ({ ...prev, add: false }));
     }
@@ -115,7 +116,7 @@ const Locations = () => {
       }
       await addForm.handleSubmit(handleAddSubmit)();
     } catch (error) {
-      // Remove toast.error to avoid duplication
+      // Remove toast.error from here to avoid duplication
     }
   };
 
@@ -138,7 +139,7 @@ const Locations = () => {
       setEditLocationState(null);
       editForm.reset();
     } catch (err) {
-      // Remove toast.error to avoid duplication
+      // Remove toast.error from here to avoid duplication
     } finally {
       setActionLoading((prev) => ({ ...prev, edit: false }));
     }
@@ -170,7 +171,7 @@ const Locations = () => {
       }
       await editForm.handleSubmit(handleEditSubmit)();
     } catch (error) {
-      // Remove toast.error to avoid duplication
+      // Remove toast.error from here to avoid duplication
     }
   };
 
@@ -202,7 +203,7 @@ const Locations = () => {
   };
 
   const handleViewEmployees = (locationId) => {
-    navigate(`/admin/employees?location=${locationId}`);
+    navigate(`/superadmin/employees?location=${locationId}`);
   };
 
   const handleSort = () => {
@@ -220,11 +221,11 @@ const Locations = () => {
   const sortedLocations = [...filteredLocations].sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
-    return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameB);
   });
 
   return (
-    <Layout title="Locations">
+    <Layout title="Superadmin Locations" role="super_admin">
       {error && (
         <Alert
           variant="destructive"
@@ -237,7 +238,7 @@ const Locations = () => {
       <Card className="bg-complementary text-body max-w-7xl mx-auto shadow-xl rounded-xl border border-accent/20 animate-fade-in">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <span className="text-xl md:text-2xl font-bold">Location Management</span>
+            <span className="text-xl md:text-2xl font-bold">Superadmin Location Management</span>
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-body h-5 w-5" />
@@ -662,4 +663,4 @@ const Locations = () => {
   );
 };
 
-export default Locations;
+export default SuperAdminLocations;

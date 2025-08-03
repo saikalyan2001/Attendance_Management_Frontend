@@ -1,9 +1,9 @@
-// src/App.jsx (only ProtectedRoute component updated)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useState, useEffect, useCallback } from 'react';
 import Login from './components/auth/Login';
 import CreateSiteIncharge from './components/auth/CreateSiteIncharge';
+import CreateUserBySuperAdmin from './features/superadmin/pages/CreateUserBySuperAdmin';
 import Dashboard from './features/siteincharge/pages/Dashboard';
 import Attendance from './features/siteincharge/pages/Attendance';
 import RegisterEmployee from './features/siteincharge/pages/RegisterEmployee';
@@ -17,14 +17,25 @@ import AdminReports from './features/admin/pages/Reports';
 import AdminAttendance from './features/admin/pages/Attendance';
 import AdminEmployees from './features/admin/pages/Employees';
 import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
-import AdminProfile from './features/admin/pages/Profile';
-import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
 import AdminEmployeeProfile from './features/admin/pages/EmployeeProfile';
+import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
 import EmployeeHistory from './features/admin/pages/EmployeeHistory';
+import AdminProfile from './features/admin/pages/Profile';
 import SiteInchargeEmployeeHistory from './features/siteincharge/pages/SiteInchargeEmployeeHistory';
+import SuperAdminDashboard from './features/superadmin/pages/Dashboard';
+import SuperAdminUserManagement from './features/superadmin/pages/UserManagement';
+import SuperAdminLocations from './features/superadmin/pages/Locations';
+import SuperAdminSettings from './features/superadmin/pages/Settings';
+import SuperadminRegisterEmployee from './features/superadmin/pages/SuperAdminRegisterEmployee';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { cn } from '@/lib/utils';
-import { useTheme } from './components/common/ThemeToggle'; // Assuming ThemeToggle exports useTheme
+import { useTheme } from './components/common/ThemeToggle';
+import SuperAdminEmployees from './features/superadmin/pages/SuperAdminEmployees';
+import SuperAdminEmployeeProfile from './features/superadmin/pages/SuperAdminEmployeeProfile';
+import SuperAdminEmployeeHistory from './features/superadmin/pages/SuperAdminEmployeeHistory';
+import SuperAdminAttendance from './features/superadmin/pages/SuperAdminAttendance';
+import SuperAdminReports from './features/superadmin/pages/SuperAdminReports';
+
 
 const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." }) => {
   const { user, isLoading, error } = useSelector((state) => state.auth);
@@ -78,11 +89,9 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
     );
   }
 
-  if (error || !user || !user.role || !allowedRoles.includes(user.role)) {
+  if (error || !user || !user.role || (!allowedRoles.includes(user.role))) {
     const redirectState = {
       from: window.location.pathname,
-      // Remove the error message to prevent the toast
-      // error: 'Please log in to access this page',
     };
 
     return (
@@ -97,7 +106,6 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
   return children;
 };
 
-// Rest of App.jsx remains unchanged
 const App = () => {
   return (
     <Routes>
@@ -105,8 +113,16 @@ const App = () => {
       <Route
         path="/admin/create-siteincharge"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading sign up...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading sign up...">
             <CreateSiteIncharge />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/create-user"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading user creation...">
+            <CreateUserBySuperAdmin />
           </ProtectedRoute>
         }
       />
@@ -177,7 +193,7 @@ const App = () => {
       <Route
         path="/admin/locations"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading locations...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading locations...">
             <Locations />
           </ProtectedRoute>
         }
@@ -185,15 +201,23 @@ const App = () => {
       <Route
         path="/admin/settings"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading settings...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading settings...">
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/profile"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading settings...">
+            <AdminProfile />
           </ProtectedRoute>
         }
       />
       <Route
         path="/admin/dashboard"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading admin dashboard...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading admin dashboard...">
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -201,7 +225,7 @@ const App = () => {
       <Route
         path="/admin/reports"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading admin reports...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading admin reports...">
             <AdminReports />
           </ProtectedRoute>
         }
@@ -209,7 +233,7 @@ const App = () => {
       <Route
         path="/admin/attendance"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading attendance data...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading attendance data...">
             <AdminAttendance />
           </ProtectedRoute>
         }
@@ -217,7 +241,7 @@ const App = () => {
       <Route
         path="/admin/employees"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading employees...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading employees...">
             <AdminEmployees />
           </ProtectedRoute>
         }
@@ -225,7 +249,7 @@ const App = () => {
       <Route
         path="/admin/register-employee"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading employee registration...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading employee registration...">
             <AdminEmployeeRegister />
           </ProtectedRoute>
         }
@@ -233,24 +257,97 @@ const App = () => {
       <Route
         path="/admin/employees/:id"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading employee details...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading employee details...">
             <AdminEmployeeProfile />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/profile"
-        element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading profile...">
-            <AdminProfile />
           </ProtectedRoute>
         }
       />
       <Route
         path="/admin/employees/:employeeId/history"
         element={
-          <ProtectedRoute allowedRoles={['admin']} loadingMessage="Loading employee history...">
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']} loadingMessage="Loading employee history...">
             <EmployeeHistory />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/dashboard"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading super admin dashboard...">
+            <SuperAdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/users"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading user management...">
+            <SuperAdminUserManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/locations"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading superadmin locations...">
+            <SuperAdminLocations />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/settings"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading superadmin settings...">
+            <SuperAdminSettings />
+          </ProtectedRoute>
+        }
+      />
+      {/* New Superadmin Employee Routes */}
+      <Route
+        path="/superadmin/employees"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employees...">
+            <SuperAdminEmployees />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/register-employee"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee registration...">
+            <SuperadminRegisterEmployee />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/employees/:id"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee details...">
+            <SuperAdminEmployeeProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/employees/:employeeId/history"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee history...">
+            <SuperAdminEmployeeHistory />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/attendance"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading attendance...">
+            <SuperAdminAttendance />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/reports"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading reports...">
+            <SuperAdminReports />
           </ProtectedRoute>
         }
       />
@@ -358,3 +455,5 @@ export const PageLoadingWrapper = ({
 };
 
 export default App;
+
+

@@ -1,9 +1,11 @@
+// src/components/layout/Layout.jsx
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../../redux/slices/authSlice';
 import AdminSidebar from '../../features/admin/components/Sidebar';
 import SiteInchargeSidebar from '../../features/siteincharge/components/Sidebar';
+import SuperAdminSidebar from '../../features/superadmin/components/Sidebar'; // New import
 import { ThemeToggle } from '../common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
@@ -19,7 +21,7 @@ const Layout = ({ children, title, role: propRole }) => {
 
   const role = propRole || user?.role || 'siteincharge';
   
-  const Sidebar = role === 'siteincharge' ? SiteInchargeSidebar : AdminSidebar;
+  const Sidebar = role === 'siteincharge' ? SiteInchargeSidebar : role === 'super_admin' ? SuperAdminSidebar : AdminSidebar;
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
@@ -28,7 +30,7 @@ const Layout = ({ children, title, role: propRole }) => {
   const handleLogout = () => {
     dispatch(logout()).then(() => {
       toast.success('Logged out successfully', {
-        id: 'logout-success', // Unique ID
+        id: 'logout-success',
         position: 'top-center',
         duration: 5000,
       });

@@ -25,7 +25,9 @@ const Login = () => {
         duration: 5000,
         position: 'top-center',
       });
-      const redirectPath = user.role === 'admin' ? '/admin/dashboard' : '/siteincharge/dashboard';
+      const redirectPath = user.role === 'admin' ? '/admin/dashboard' :
+                         user.role === 'super_admin' ? '/superadmin/dashboard' :
+                         '/siteincharge/dashboard';
       navigate(redirectPath, { replace: true });
       setRole('');
     }
@@ -86,6 +88,9 @@ const Login = () => {
                 </SelectItem>
                 <SelectItem value="admin" className="text-sm sm:text-base">
                   Admin
+                </SelectItem>
+                <SelectItem value="super_admin" className="text-sm sm:text-base">
+                  Super Admin
                 </SelectItem>
               </SelectContent>
             </Select>

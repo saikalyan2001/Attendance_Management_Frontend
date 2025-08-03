@@ -5,7 +5,7 @@ import {
   registerEmployee,
   registerEmployeesFromExcel,
   reset as resetEmployees,
-} from "../redux/employeeSlice";
+} from "../redux/superadminEmployeeSlice";
 import {
   fetchLocations,
   reset as resetLocations,
@@ -21,13 +21,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2, Trash2, Plus, FileText, Image, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -38,8 +31,15 @@ import { cn } from "@/lib/utils";
 import toast, { Toaster } from "react-hot-toast";
 import { File as FileIcon } from "lucide-react";
 import * as XLSX from "xlsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-// Define employeeSchema for form validation
+// Define superadmin employee schema without organization and role
 const employeeSchema = z.object({
   employeeId: z
     .string()
@@ -122,7 +122,6 @@ const employeeSchema = z.object({
 });
 
 const parseServerError = (error) => {
-  console.log("Raw server error:", error);
   if (!error)
     return { message: "An unknown error occurred", fields: {}, errors: [] };
   if (error instanceof TypeError) {
@@ -156,7 +155,7 @@ const parseServerError = (error) => {
   if (error.message?.includes("Location not found")) {
     return {
       message: error.message,
-      fields: { locationName: error.message },
+      fields: { location: error.message },
       errors: error.errors || [],
     };
   }
@@ -319,7 +318,7 @@ const validateExcelFile = async (file) => {
   }
 };
 
-const RegisterEmployee = () => {
+const SuperadminRegisterEmployee = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
@@ -329,12 +328,12 @@ const RegisterEmployee = () => {
     errorType,
     success,
     successType,
-  } = useSelector((state) => state.adminEmployees);
+  } = useSelector((state) => state.superadminEmployees);
   const {
     locations,
     loading: locationsLoading,
     error: locationsError,
-  } = useSelector((state) => state.adminLocations);
+  } = useSelector((state) => state.superAdminLocations);
   const [serverError, setServerError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [removingIndices, setRemovingIndices] = useState([]);
@@ -427,11 +426,11 @@ const RegisterEmployee = () => {
         setIsSubmitting(false);
       }
     },
-    [dispatch, user]
+    [dispatch, user, retryCount]
   );
 
   useEffect(() => {
-    if (user?.role !== "admin") {
+    if (user?.role !== "super_admin") {
       navigate("/login");
     }
     dispatch(fetchLocations());
@@ -447,7 +446,6 @@ const RegisterEmployee = () => {
 
   useEffect(() => {
     if (employeesError && errorType === "single" && employeesError !== lastError) {
-      console.log("Raw server error:", employeesError);
       toast.dismiss(); // Dismiss all toasts to prevent overlap
       const parsedError = parseServerError(employeesError);
       setServerError(parsedError);
@@ -508,7 +506,7 @@ const RegisterEmployee = () => {
         setExcelFile(null);
         setRegistrationMode(null);
         toast.dismiss("success");
-        navigate("/admin/employees");
+        navigate("/superadmin/employees");
       }, autoDismissDuration);
       return () => clearTimeout(successTimer);
     }
@@ -523,7 +521,7 @@ const RegisterEmployee = () => {
   const handleExcelSubmit = async () => {
     if (!excelFile) {
       toast.error("Please select an Excel file", {
-        id: `excel-no-file-${Date.now()}`,
+        id: "excel-no-file",
         duration: 5000,
         position: "top-center",
       });
@@ -533,7 +531,7 @@ const RegisterEmployee = () => {
     const validation = await validateExcelFile(excelFile);
     if (!validation.isValid) {
       toast.error(validation.error, {
-        id: `excel-validation-error-${Date.now()}`,
+        id: "excel-validation-error",
         duration: 5000,
         position: "top-center",
       });
@@ -541,13 +539,6 @@ const RegisterEmployee = () => {
     }
 
     try {
-      console.log("Submitting Excel file:", {
-        name: excelFile.name,
-        type: excelFile.type,
-        size: excelFile.size,
-        lastModified: excelFile.lastModified,
-      });
-
       await dispatch(registerEmployeesFromExcel({ excelFile })).unwrap();
       setExcelFile(null);
     } catch (error) {
@@ -691,7 +682,7 @@ const RegisterEmployee = () => {
     if (documentFields.length >= 5) {
       toast.dismiss();
       toast.error("Cannot add more than 5 documents", {
-        id: `max-documents-${Date.now()}`,
+        id: "max-documents",
         duration: autoDismissDuration,
         position: "top-center",
       });
@@ -754,12 +745,6 @@ const RegisterEmployee = () => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file) {
-      console.log("Dropped Excel file:", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified,
-      });
       setExcelFile(file);
     }
     setExcelDragState(false);
@@ -768,12 +753,6 @@ const RegisterEmployee = () => {
   const handleExcelFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      console.log("Selected Excel file:", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified,
-      });
       setExcelFile(file);
     }
   };
@@ -809,7 +788,7 @@ const RegisterEmployee = () => {
       <form className="space-y-6 sm:space-y-8" ref={formRef}>
         <div>
           <h3 className="text-sm sm:text-base xl:text-lg font-semibold mb-3 sm:mb-4 text-body">
-            Personal Information
+            Identification
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <FormField
@@ -835,6 +814,13 @@ const RegisterEmployee = () => {
                 </FormItem>
               )}
             />
+          </div>
+        </div>
+        <div>
+          <h3 className="text-sm sm:text-base xl:text-lg font-semibold mb-3 sm:mb-4 text-body">
+            Personal Information
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <FormField
               control={form.control}
               name="name"
@@ -853,6 +839,29 @@ const RegisterEmployee = () => {
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
                     {serverError?.fields?.name || form.formState.errors.name?.message}
+                  </FormMessage>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
+                    Email *
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      {...field}
+                      placeholder="e.g., alice@example.com"
+                      className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
+                      disabled={employeesLoading || locationsLoading || isSubmitting}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
+                    {serverError?.fields?.email || form.formState.errors.email?.message}
                   </FormMessage>
                 </FormItem>
               )}
@@ -1026,30 +1035,6 @@ const RegisterEmployee = () => {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Email *
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      {...field}
-                      placeholder="e.g., alice@example.com"
-                      className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
-                    {serverError?.fields?.email ||
-                      form.formState.errors.email?.message}
-                  </FormMessage>
-                </FormItem>
-              )}
-            />
           </div>
         </div>
         <div>
@@ -1171,9 +1156,12 @@ const RegisterEmployee = () => {
                     <div
                       className={cn(
                         "relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300",
-                        dragStates[index] ? "border-accent bg-accent/10" : "border-complementary",
+                        dragStates[index]
+                          ? "border-accent bg-accent/10"
+                          : "border-complementary",
                         fieldProps.value ? "bg-body" : "bg-complementary/10",
-                        (employeesLoading || locationsLoading || isSubmitting) && "opacity-50 cursor-not-allowed"
+                        (employeesLoading || locationsLoading || isSubmitting) &&
+                          "opacity-50 cursor-not-allowed"
                       )}
                       onDragOver={(e) => handleDragOver(e, index)}
                       onDragLeave={() => handleDragLeave(index)}
@@ -1212,7 +1200,9 @@ const RegisterEmployee = () => {
                           <div className="flex gap-2">
                             <Button
                               type="button"
-                              onClick={() => document.getElementById(`file-input-${index}`).click()}
+                              onClick={() =>
+                                document.getElementById(`file-input-${index}`).click()
+                              }
                               className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
                               disabled={employeesLoading || locationsLoading || isSubmitting}
                             >
@@ -1254,12 +1244,20 @@ const RegisterEmployee = () => {
                                 rel="noopener noreferrer"
                                 className={cn(
                                   "p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full",
-                                  (employeesLoading || locationsLoading || isSubmitting || !previews[index]) &&
+                                  (employeesLoading ||
+                                    locationsLoading ||
+                                    isSubmitting ||
+                                    !previews[index]) &&
                                     "opacity-50 cursor-not-allowed"
                                 )}
                                 aria-label={`Preview document ${fieldProps.value.name}`}
                                 onClick={(e) => {
-                                  if (employeesLoading || locationsLoading || isSubmitting || !previews[index]) {
+                                  if (
+                                    employeesLoading ||
+                                    locationsLoading ||
+                                    isSubmitting ||
+                                    !previews[index]
+                                  ) {
                                     e.preventDefault();
                                   }
                                 }}
@@ -1356,7 +1354,8 @@ const RegisterEmployee = () => {
           "relative border-2 border-dashed rounded-md p-4 sm:p-6 text-center transition-all duration-300",
           excelDragState ? "border-accent bg-accent/10" : "border-complementary",
           excelFile ? "bg-body" : "bg-complementary/10",
-          (employeesLoading || locationsLoading || isSubmitting) && "opacity-50 cursor-not-allowed"
+          (employeesLoading || locationsLoading || isSubmitting) &&
+            "opacity-50 cursor-not-allowed"
         )}
         onDragOver={handleExcelDragOver}
         onDragLeave={handleExcelDragLeave}
@@ -1462,12 +1461,12 @@ const RegisterEmployee = () => {
   );
 
   return (
-    <Layout title="Register Employee">
+    <Layout title="Register Employee (Superadmin)">
       <Toaster position="top-center" />
       <Card className="bg-complementary text-body max-w-full sm:max-w-3xl xl:max-w-4xl mx-auto shadow-lg rounded-lg border border-accent/10 animate-fade-in">
         <CardHeader>
           <CardTitle className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold text-center">
-            Register Employee
+            Register Employee (Superadmin)
           </CardTitle>
         </CardHeader>
         <CardContent className="p-3 sm:p-4 md:p-6">
@@ -1484,4 +1483,4 @@ const RegisterEmployee = () => {
   );
 };
 
-export default RegisterEmployee;
+export default SuperadminRegisterEmployee;
