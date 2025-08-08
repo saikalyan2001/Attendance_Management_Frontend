@@ -285,7 +285,17 @@ export const addEmployeeDocuments = createAsyncThunk(
           params: { page, limit },
         }
       );
-      return response.data;
+      return {
+        documents: response.data.employee.documents || [],
+        pagination: response.data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        },
+        employee: response.data.employee, // Include employee for state updates
+        message: response.data.message || "Documents added successfully",
+      };
     } catch (error) {
       console.error(
         "Add employee documents error:",
@@ -439,6 +449,36 @@ export const restoreEmployee = createAsyncThunk(
   }
 );
 
+
+export const fetchEmployeeDocuments = createAsyncThunk(
+  "superadminEmployees/fetchEmployeeDocuments",
+  async ({ id, page, limit, searchQuery = "" }, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/superadmin/employees/${id}/documents`, {
+        params: { page, limit, searchQuery },
+      });
+      // Adjust the response to match the expected structure
+      return {
+        documents: response.data.employee.documents || [],
+        pagination: response.data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        },
+      };
+    } catch (error) {
+      console.error(
+        "Fetch employee documents error:",
+        error.response?.data || error.message
+      );
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch employee documents"
+      );
+    }
+  }
+);
+
 export const superadminEmployeeSlice = createSlice({
   name: "superadminEmployees",
   initialState: {
@@ -446,6 +486,14 @@ export const superadminEmployeeSlice = createSlice({
     monthlyLeaves: [],
     currentEmployee: null,
     history: null,
+    documents: [], // Add documents array to store paginated documents
+    documentsPagination: {
+      // Add documents-specific pagination state
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      itemsPerPage: 5,
+    },
     attendance: [],
     attendancePagination: {
       currentPage: 1,
@@ -737,12 +785,12 @@ export const superadminEmployeeSlice = createSlice({
         state.success = false;
         state.successMessage = null;
       })
-      .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
+           .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
         state.successMessage =
           action.payload.message || "Documents added successfully";
-        const employee = action.payload.employee || action.payload; // Handle both { employee: {...} } and direct employee object
+        const employee = action.payload.employee || action.payload;
         const index = state.employees.findIndex(
           (emp) => emp._id === employee._id
         );
@@ -750,13 +798,15 @@ export const superadminEmployeeSlice = createSlice({
         if (state.currentEmployee?._id === employee._id) {
           state.currentEmployee = employee;
         }
-        state.pagination = action.payload.pagination || {
+        // Update documents and pagination
+        state.documents = employee.documents || [];
+        state.documentsPagination = action.payload.pagination || {
           currentPage: 1,
           totalPages: Math.ceil(
-            (employee.documents?.length || 0) / state.pagination.itemsPerPage
+            (employee.documents?.length || 0) / state.documentsPagination.itemsPerPage
           ),
           totalItems: employee.documents?.length || 0,
-          itemsPerPage: state.pagination.itemsPerPage || 5,
+          itemsPerPage: state.documentsPagination.itemsPerPage || 5,
         };
       })
       .addCase(addEmployeeDocuments.rejected, (state, action) => {
@@ -917,7 +967,33 @@ export const superadminEmployeeSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
         state.success = false;
-      });
+      })
+      .addCase(fetchEmployeeDocuments.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.documents = [];
+      })
+      .addCase(fetchEmployeeDocuments.fulfilled, (state, action) => {
+        state.loading = false;
+        state.documents = action.payload.documents || [];
+        state.documentsPagination = action.payload.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
+      })
+      .addCase(fetchEmployeeDocuments.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.documents = [];
+        state.documentsPagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 5,
+        };
+      })
   },
 });
 

@@ -7,6 +7,7 @@ import {
   updateEmployee,
   reset as resetEmployees,
   fetchEmployeeAdvances,
+  fetchEmployeeDocuments,
 } from '../redux/superadminEmployeeSlice';
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
@@ -135,6 +136,8 @@ const SuperAdminEmployeeProfile = () => {
     attendancePagination,
     advances,
     advancesPagination,
+    documents,
+    documentsPagination,
     loading,
     error,
   } = useSelector((state) => state.superadminEmployees);
@@ -152,10 +155,15 @@ const SuperAdminEmployeeProfile = () => {
   const [advancesSortField, setAdvancesSortField] = useState('year');
   const [advancesSortOrder, setAdvancesSortOrder] = useState('desc');
   const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
-  const [activeTab, setActiveTab] = useState('profile');
+    const [documentsCurrentPage, setDocumentsCurrentPage] = useState(1);
+      const [documentsSearchQuery, setDocumentsSearchQuery] = useState(''); // New state for document search
+        const [activeTab, setActiveTab] = useState('profile');
+
   const autoDismissDuration = 5000;
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 2;
   const ADVANCES_ITEMS_PER_PAGE = 5;
+    const DOCUMENTS_ITEMS_PER_PAGE = 3;
+
 
   const tabs = [
     { id: 'profile', label: 'Profile' },
@@ -206,7 +214,7 @@ const SuperAdminEmployeeProfile = () => {
     return settings.paidLeavesPerYear;
   }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
 
-  useEffect(() => {
+ useEffect(() => {
     if (user?.role !== 'super_admin') {
       navigate('/login');
       return;
@@ -243,6 +251,16 @@ const SuperAdminEmployeeProfile = () => {
         })
       );
     }
+    if (activeTab === 'documents') {
+      dispatch(
+        fetchEmployeeDocuments({
+          id: employeeId,
+          page: documentsCurrentPage,
+          limit: DOCUMENTS_ITEMS_PER_PAGE,
+          searchQuery: documentsSearchQuery,
+        })
+      );
+    }
     dispatch(fetchSettings());
 
     return () => {
@@ -260,9 +278,13 @@ const SuperAdminEmployeeProfile = () => {
     advancesCurrentPage,
     advancesSortField,
     advancesSortOrder,
+    documentsCurrentPage,
+    documentsSearchQuery,
     sortField,
     sortOrder,
   ]);
+
+
 
   useEffect(() => {
     if (settingsError) {
@@ -596,9 +618,11 @@ const SuperAdminEmployeeProfile = () => {
               id={id}
               employeeName={currentEmployee.name}
               isLoading={loading}
-              currentPage={currentPage}
-              setCurrentPage={setCurrentPage}
-              itemsPerPage={ITEMS_PER_PAGE}
+              currentPage={documentsCurrentPage}
+              setCurrentPage={setDocumentsCurrentPage}
+                searchQuery={documentsSearchQuery} // Pass searchQuery
+              setSearchQuery={setDocumentsSearchQuery} // Pass setSearchQuery
+              itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
             />
           )}
         </div>

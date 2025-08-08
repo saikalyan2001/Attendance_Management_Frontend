@@ -1,13 +1,12 @@
-import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
-import { createSiteIncharge } from "../../../redux/slices/authSlice";
-import { fetchLocations } from "../redux/locationsSlice";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { createSiteIncharge } from '../../redux/slices/authSlice';
+import { fetchLocations } from '../../redux/locationsSlice';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Form,
   FormControl,
@@ -15,27 +14,26 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
+} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import Layout from "@/components/layout/Layout";
+} from '@/components/ui/select';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import Layout from '@/components/layout/Layout';
 
 const siteInchargeSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  name: z.string().min(1, "Name is required"),
+  email: z.string().email('Invalid email address'),
+  name: z.string().min(1, 'Name is required'),
   phone: z.string().optional(),
-  locations: z.array(z.string()).min(1, "At least one location is required"),
+  locations: z.array(z.string()).min(1, 'At least one location is required'),
 });
 
 const CreateSiteIncharge = () => {
@@ -47,10 +45,9 @@ const CreateSiteIncharge = () => {
   const form = useForm({
     resolver: zodResolver(siteInchargeSchema),
     defaultValues: {
-      email: "",
-      password: "",
-      name: "",
-      phone: "",
+      email: '',
+      name: '',
+      phone: '',
       locations: [],
     },
   });
@@ -67,15 +64,15 @@ const CreateSiteIncharge = () => {
 
   const handleSubmit = (data) => {
     dispatch(createSiteIncharge(data)).then((result) => {
-      if (result.meta.requestStatus === "fulfilled") {
-        toast.success(`Site Incharge ${data.name} created successfully`);
-        navigate("/admin/dashboard");
+      if (result.meta.requestStatus === 'fulfilled') {
+        toast.success(`Site Incharge ${data.name} created successfully. A password setup link has been sent to ${data.email}.`);
+        navigate('/admin/dashboard');
       }
     });
   };
 
   return (
-    <Layout title="create-siteincharge-account">
+    <Layout title="Create Site Incharge Account">
       <div className="min-h-screen flex items-center justify-center bg-body text-body">
         <Card className="w-full max-w-md bg-complementary text-body">
           <CardHeader>
@@ -83,15 +80,9 @@ const CreateSiteIncharge = () => {
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(handleSubmit)}
-                className="space-y-4"
-              >
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 {error && (
-                  <Alert
-                    variant="destructive"
-                    className="border-error text-error"
-                  >
+                  <Alert variant="destructive" className="border-error text-error">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
@@ -105,24 +96,6 @@ const CreateSiteIncharge = () => {
                         <Input
                           {...field}
                           type="email"
-                          className="bg-complementary text-body border-accent"
-                          disabled={loading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password *</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="password"
                           className="bg-complementary text-body border-accent"
                           disabled={loading}
                         />
@@ -173,7 +146,7 @@ const CreateSiteIncharge = () => {
                       <FormLabel>Locations *</FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange([value])}
-                        value={field.value[0] || ""}
+                        value={field.value[0] || ''}
                         disabled={loading || locations.length === 0}
                       >
                         <FormControl>
@@ -181,8 +154,8 @@ const CreateSiteIncharge = () => {
                             <SelectValue
                               placeholder={
                                 locations.length === 0
-                                  ? "No locations available"
-                                  : "Select location"
+                                  ? 'No locations available'
+                                  : 'Select location'
                               }
                             />
                           </SelectTrigger>
@@ -212,7 +185,7 @@ const CreateSiteIncharge = () => {
                   {loading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    "Create Site Incharge"
+                    'Create Site Incharge'
                   )}
                 </Button>
               </form>

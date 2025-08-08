@@ -7,6 +7,7 @@ import {
   updateEmployee,
   reset as resetEmployees,
   fetchEmployeeAdvances,
+  fetchEmployeeDocuments,
 } from '../redux/employeeSlice';
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
@@ -133,6 +134,8 @@ const EmployeeProfile = () => {
     currentEmployee,
     attendance,
     attendancePagination,
+    documents,
+    documentsPagination,
     advances,
     advancesPagination,
     loading,
@@ -148,16 +151,18 @@ const EmployeeProfile = () => {
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [documentsCurrentPage, setDocumentsCurrentPage] = useState(1);
+  const [documentsSearchQuery, setDocumentsSearchQuery] = useState('');
   const [isHighlighted, setIsHighlighted] = useState(false);
   const [advancesSortField, setAdvancesSortField] = useState('year');
   const [advancesSortOrder, setAdvancesSortOrder] = useState('desc');
   const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState('profile');
   const autoDismissDuration = 5000;
-  const ITEMS_PER_PAGE = 10; // For attendance and documents
-  const ADVANCES_ITEMS_PER_PAGE = 5; // For advances
+  const ITEMS_PER_PAGE = 10;
+  const DOCUMENTS_ITEMS_PER_PAGE = 4;
+  const ADVANCES_ITEMS_PER_PAGE = 5;
 
-  // Define tabs for navigation
   const tabs = [
     { id: 'profile', label: 'Profile' },
     { id: 'attendance', label: 'Attendance' },
@@ -213,8 +218,7 @@ const EmployeeProfile = () => {
       return;
     }
 
-    // Validate id format
-    const employeeId = String(id); // Ensure string
+    const employeeId = String(id);
     if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
       console.error("Invalid employee ID format:", employeeId);
       toast.error("Invalid employee ID format", { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
@@ -223,7 +227,7 @@ const EmployeeProfile = () => {
     }
 
     console.log("Fetching employee with ID:", employeeId);
-    dispatch(fetchEmployeeById(employeeId)); // Pass string ID
+    dispatch(fetchEmployeeById(employeeId));
     dispatch(
       fetchEmployeeAttendance({
         employeeId,
@@ -235,6 +239,16 @@ const EmployeeProfile = () => {
         sortOrder,
       })
     );
+    if (activeTab === 'documents') {
+      dispatch(
+        fetchEmployeeDocuments({
+          id: employeeId,
+          page: documentsCurrentPage,
+          limit: DOCUMENTS_ITEMS_PER_PAGE,
+          searchQuery: documentsSearchQuery,
+        })
+      );
+    }
     if (activeTab === 'advances') {
       dispatch(
         fetchEmployeeAdvances({
@@ -260,6 +274,8 @@ const EmployeeProfile = () => {
     yearFilter,
     currentPage,
     activeTab,
+    documentsCurrentPage,
+    documentsSearchQuery,
     advancesCurrentPage,
     advancesSortField,
     advancesSortOrder,
@@ -334,7 +350,7 @@ const EmployeeProfile = () => {
       setSortField(field);
       setSortOrder('asc');
     }
-    setCurrentPage(1); // Reset to first page on sort change
+    setCurrentPage(1);
   };
 
   const handleEditSubmit = async (data) => {
@@ -375,81 +391,79 @@ const EmployeeProfile = () => {
   };
 
   const handleEditSaveClick = async () => {
-  try {
-    toast.dismiss();
-    const isValid = await editForm.trigger();
-    if (!isValid) {
-      const errors = editForm.formState.errors;
-      const fieldLabels = {
-        name: 'Name',
-        email: 'Email',
-        designation: 'Designation',
-        department: 'Department',
-        salary: 'Salary',
-        phone: 'Phone number',
-        dob: 'Date of birth',
-        'bankDetails.accountNo': 'Account number',
-        'bankDetails.ifscCode': 'IFSC code',
-        'bankDetails.bankName': 'Bank name',
-        'bankDetails.accountHolder': 'Account holder',
-        bankDetails: 'Bank details',
-        'paidLeaves.available': 'Available Leaves',
-        'paidLeaves.used': 'Used Leaves',
-        'paidLeaves.carriedForward': 'Carried Forward Leaves',
-      };
+    try {
+      toast.dismiss();
+      const isValid = await editForm.trigger();
+      if (!isValid) {
+        const errors = editForm.formState.errors;
+        const fieldLabels = {
+          name: 'Name',
+          email: 'Email',
+          designation: 'Designation',
+          department: 'Department',
+          salary: 'Salary',
+          phone: 'Phone number',
+          dob: 'Date of birth',
+          'bankDetails.accountNo': 'Account number',
+          'bankDetails.ifscCode': 'IFSC code',
+          'bankDetails.bankName': 'Bank name',
+          'bankDetails.accountHolder': 'Account holder',
+          bankDetails: 'Bank details',
+          'paidLeaves.available': 'Available Leaves',
+          'paidLeaves.used': 'Used Leaves',
+          'paidLeaves.carriedForward': 'Carried Forward Leaves',
+        };
 
-      // Find the first error, handling nested fields
-      let errorField = '';
-      let errorMessage = 'Please fill in all required fields';
-      
-      const findFirstError = (errors, prefix = '') => {
-        for (const [key, value] of Object.entries(errors)) {
-          if (value.message) {
-            return { field: prefix ? `${prefix}.${key}` : key, message: value.message };
+        let errorField = '';
+        let errorMessage = 'Please fill in all required fields';
+        
+        const findFirstError = (errors, prefix = '') => {
+          for (const [key, value] of Object.entries(errors)) {
+            if (value.message) {
+              return { field: prefix ? `${prefix}.${key}` : key, message: value.message };
+            }
+            if (typeof value === 'object' && value !== null) {
+              const nestedError = findFirstError(value, prefix ? `${prefix}.${key}` : key);
+              if (nestedError) return nestedError;
+            }
           }
-          if (typeof value === 'object' && value !== null) {
-            const nestedError = findFirstError(value, prefix ? `${prefix}.${key}` : key);
-            if (nestedError) return nestedError;
+          return null;
+        };
+
+        const firstError = findFirstError(errors);
+        if (firstError) {
+          errorField = firstError.field;
+          const fieldLabel = fieldLabels[errorField] || errorField;
+          errorMessage = firstError.message || `${fieldLabel} is invalid`;
+        }
+
+        toast.error(errorMessage, {
+          id: `validation-error-${errorField.replace('.', '-')}`,
+          duration: autoDismissDuration,
+          position: 'top-center',
+        });
+
+        if (errorField) {
+          const firstErrorField = document.querySelector(`[name="${errorField}"]`);
+          if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstErrorField.focus();
           }
         }
-        return null;
-      };
-
-      const firstError = findFirstError(errors);
-      if (firstError) {
-        errorField = firstError.field;
-        const fieldLabel = fieldLabels[errorField] || errorField;
-        errorMessage = firstError.message || `${fieldLabel} is invalid`;
+        return;
       }
 
-      toast.error(errorMessage, {
-        id: `validation-error-${errorField.replace('.', '-')}`,
+      await editForm.handleSubmit(handleEditSubmit)();
+    } catch (error) {
+      console.error('handleEditSaveClick error:', error);
+      toast.dismiss();
+      toast.error('Error submitting form, please try again', {
+        id: 'form-submit-error',
         duration: autoDismissDuration,
         position: 'top-center',
       });
-
-      // Focus the first invalid field
-      if (errorField) {
-        const firstErrorField = document.querySelector(`[name="${errorField}"]`);
-        if (firstErrorField) {
-          firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          firstErrorField.focus();
-        }
-      }
-      return;
     }
-
-    await editForm.handleSubmit(handleEditSubmit)();
-  } catch (error) {
-    console.error('handleEditSaveClick error:', error);
-    toast.dismiss();
-    toast.error('Error submitting form, please try again', {
-      id: 'form-submit-error',
-      duration: autoDismissDuration,
-      position: 'top-center',
-    });
-  }
-};
+  };
 
   const openEditDialog = (emp) => {
     toast.dismiss();
@@ -574,8 +588,7 @@ const EmployeeProfile = () => {
               setCurrentPage={setCurrentPage}
               employeeName={currentEmployee.name}
               isLoading={loading}
-                      employeeId={id} // Pass employeeId
-
+              employeeId={id}
             />
           )}
           {activeTab === 'advances' && (
@@ -602,9 +615,11 @@ const EmployeeProfile = () => {
               id={id}
               employeeName={currentEmployee.name}
               isLoading={loading}
-              currentPage={currentPage}
-              setCurrentPage={setCurrentPage}
-              itemsPerPage={ITEMS_PER_PAGE}
+              currentPage={documentsCurrentPage}
+              setCurrentPage={setDocumentsCurrentPage}
+              searchQuery={documentsSearchQuery}
+              setSearchQuery={setDocumentsSearchQuery}
+              itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
             />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { addEmployeeDocuments, fetchEmployeeById, reset as resetEmployees } from '../redux/superadminEmployeeSlice';
+import { addEmployeeDocuments, fetchEmployeeDocuments } from '../redux/superadminEmployeeSlice';
 import { parseServerError } from '../../../utils/errorUtils';
 
 // File icon component
@@ -104,15 +104,15 @@ const formatUploadedAt = (uploadedAt) => {
 };
 
 const SuperAdminEmployeeDocumentsSection = ({
-  currentEmployee,
-  dispatch,
   id,
   employeeName,
-  isLoading = false,
   currentPage,
   setCurrentPage,
-  itemsPerPage,
+  searchQuery,
+  setSearchQuery,
+  itemsPerPage = 5,
 }) => {
+  const dispatch = useDispatch();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
@@ -121,12 +121,22 @@ const SuperAdminEmployeeDocumentsSection = ({
   const [previewUrls, setPreviewUrls] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isTableOpen, setIsTableOpen] = useState(true);
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const autoDismissDuration = 5000;
   const formRef = useRef(null);
 
-  const { pagination } = useSelector((state) => state.superadminEmployees);
+  const { documents, documentsPagination, loading, error } = useSelector(
+    (state) => state.superadminEmployees,
+    (prev, next) =>
+      prev.documents === next.documents &&
+      prev.documentsPagination?.currentPage === next.documentsPagination?.currentPage &&
+      prev.documentsPagination?.itemsPerPage === next.documentsPagination?.itemsPerPage &&
+      prev.documentsPagination?.totalItems === next.documentsPagination?.totalItems &&
+      prev.documentsPagination?.totalPages === next.documentsPagination?.totalPages &&
+      prev.loading === next.loading &&
+      prev.error === next.error
+  );
 
   const uploadForm = useForm({
     resolver: zodResolver(uploadDocumentSchema),
@@ -140,39 +150,7 @@ const SuperAdminEmployeeDocumentsSection = ({
     name: 'documents',
   });
 
-  // Apply search filter and validate documents
-  const filteredDocuments = useMemo(() => {
-    if (!currentEmployee?.documents || !Array.isArray(currentEmployee.documents)) {
-      return [];
-    }
-    return currentEmployee.documents
-      .filter((doc) => {
-        if (!doc || typeof doc !== 'object' || !doc.name || typeof doc.name !== 'string' || !doc.path || typeof doc.path !== 'string') {
-          console.warn('Skipping invalid document entry:', doc);
-          return false;
-        }
-        return searchQuery
-          ? doc.name.toLowerCase().includes(searchQuery.toLowerCase())
-          : true;
-      })
-      .map((doc) => ({
-        ...doc,
-        normalizedPath: normalizeDocPath(doc.path),
-      }))
-      .filter((doc) => doc.normalizedPath && doc.normalizedPath.startsWith('/Uploads/documents'));
-  }, [currentEmployee?.documents, searchQuery]);
-
-  // Use backend pagination metadata
-  const totalItems = pagination?.totalItems || filteredDocuments.length;
-  const totalPages = pagination?.totalPages || Math.ceil(totalItems / itemsPerPage);
-  const paginatedDocuments = filteredDocuments;
-
-  const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
-
+  // Clean up preview URLs
   useEffect(() => {
     return () => {
       Object.values(previewUrls).forEach((url) => {
@@ -182,70 +160,123 @@ const SuperAdminEmployeeDocumentsSection = ({
     };
   }, [previewUrls, previewUrl]);
 
-const handleDocumentSubmit = async (data) => {
-  try {
-    setIsSubmitting(true);
-    setServerError(null);
-    toast.dismiss();
+  const handleSearchChange = (e) => {
+    setLocalSearchQuery(e.target.value);
+  };
 
-    if (!data.documents || data.documents.length === 0) {
-      toast.error('Please upload at least one document to proceed', {
-        id: `no-documents-error-${Date.now()}`,
-        position: 'top-center',
-        duration: autoDismissDuration,
-        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
-      });
-      return;
+  const handleSearchSubmit = () => {
+    if (localSearchQuery !== searchQuery) {
+      setSearchQuery(localSearchQuery);
+      setCurrentPage(1);
+      dispatch(
+        fetchEmployeeDocuments({
+          id,
+          page: 1,
+          limit: itemsPerPage,
+          searchQuery: localSearchQuery,
+        })
+      )
+        .unwrap()
+        .catch((err) => {
+          const parsedError = parseServerError(err);
+          toast.error(parsedError.message, {
+            id: 'documents-search-error',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+        });
     }
+  };
 
-    await dispatch(addEmployeeDocuments({ id, documents: data.documents, page: 1, limit: itemsPerPage })).unwrap();
-    await dispatch(fetchEmployeeById(id)).unwrap(); // Force refetch to update currentEmployee
-    toast.success('Documents uploaded successfully', {
-      id: 'upload-success',
-      duration: autoDismissDuration,
-      position: 'top-center',
-      style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
-    });
-    setUploadDialogOpen(false);
-    setPreviewOpen(false);
-    setPreviewDocument(null);
-    setPreviewUrl(null);
-    setDragStates({});
-    setPreviewUrls({});
-    setCurrentPage(1);
-  } catch (err) {
-    console.error('Submit error:', err);
-    toast.dismiss();
-    const parsedError = parseServerError(err);
-    setServerError(parsedError);
-    toast.error(parsedError.message, {
-      id: `form-submit-error-${Date.now()}`,
-      position: 'top-center',
-      duration: autoDismissDuration,
-      style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
-    });
-    Object.entries(parsedError.fields).forEach(([field, message], index) => {
-      setTimeout(() => {
-        toast.error(message, {
-          id: `server-error-${field}-${index}-${Date.now()}`,
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= documentsPagination.totalPages) {
+      setCurrentPage(page);
+      dispatch(
+        fetchEmployeeDocuments({
+          id,
+          page,
+          limit: itemsPerPage,
+          searchQuery,
+        })
+      )
+        .unwrap()
+        .catch((err) => {
+          const parsedError = parseServerError(err);
+          toast.error(parsedError.message, {
+            id: 'documents-page-error',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+        });
+    }
+  };
+
+  const handleDocumentSubmit = async (data) => {
+    try {
+      setIsSubmitting(true);
+      setServerError(null);
+      toast.dismiss();
+
+      if (!data.documents || data.documents.length === 0) {
+        toast.error('Please upload at least one document to proceed', {
+          id: `no-documents-error-${Date.now()}`,
           position: 'top-center',
           duration: autoDismissDuration,
           style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
         });
-      }, (index + 1) * 500);
-    });
-    const firstErrorFieldName = Object.keys(parsedError.fields)[0];
-    if (firstErrorFieldName) {
-      const fieldElement = document.querySelector(`[name="${firstErrorFieldName}"]`);
-      if (fieldElement) {
-        fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        fieldElement.focus();
+        return;
       }
+
+      await dispatch(addEmployeeDocuments({ id, documents: data.documents, page: 1, limit: itemsPerPage })).unwrap();
+      await dispatch(fetchEmployeeDocuments({ id, page: 1, limit: itemsPerPage, searchQuery })).unwrap();
+      toast.success('Documents uploaded successfully', {
+        id: 'upload-success',
+        duration: autoDismissDuration,
+        position: 'top-center',
+        style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
+      });
+      setUploadDialogOpen(false);
+      setPreviewOpen(false);
+      setPreviewDocument(null);
+      setPreviewUrl(null);
+      setDragStates({});
+      setPreviewUrls({});
+      setCurrentPage(1);
+    } catch (err) {
+      console.error('Submit error:', err);
+      toast.dismiss();
+      const parsedError = parseServerError(err);
+      setServerError(parsedError);
+      toast.error(parsedError.message, {
+        id: `form-submit-error-${Date.now()}`,
+        position: 'top-center',
+        duration: autoDismissDuration,
+        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+      });
+      Object.entries(parsedError.fields).forEach(([field, message], index) => {
+        setTimeout(() => {
+          toast.error(message, {
+            id: `server-error-${field}-${index}-${Date.now()}`,
+            position: 'top-center',
+            duration: autoDismissDuration,
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+        }, (index + 1) * 500);
+      });
+      const firstErrorFieldName = Object.keys(parsedError.fields)[0];
+      if (firstErrorFieldName) {
+        const fieldElement = document.querySelector(`[name="${firstErrorFieldName}"]`);
+        if (fieldElement) {
+          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          fieldElement.focus();
+        }
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const handleDocumentSaveClick = async () => {
     try {
@@ -384,8 +415,7 @@ const handleDocumentSubmit = async (data) => {
 
       const blob = await response.blob();
       const file = new File([blob], docName || 'document', { type: blob.type });
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
+      setPreviewDocument(file);
       handlePreviewDocument(file);
     } catch (err) {
       console.error('Preview error:', err);
@@ -521,6 +551,15 @@ const handleDocumentSubmit = async (data) => {
     }
   };
 
+  const paginatedDocuments = useMemo(
+    () =>
+      documents.map((doc) => ({
+        ...doc,
+        normalizedPath: normalizeDocPath(doc.path),
+      })).filter((doc) => doc.normalizedPath && doc.normalizedPath.startsWith('/Uploads/documents')),
+    [documents]
+  );
+
   return (
     <>
       <Card
@@ -547,12 +586,25 @@ const handleDocumentSubmit = async (data) => {
                   <div className="flex items-center max-w-xs sm:max-w-sm">
                     <Input
                       placeholder="Search documents..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      value={localSearchQuery}
+                      onChange={handleSearchChange}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSearchSubmit();
+                        }
+                      }}
                       className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-lg text-xs xs:text-sm sm:text-base"
                       aria-label="Search documents"
                     />
-                    <Search className="h-5 w-5 ml-2 xs:ml-3 text-body" />
+                    <Button
+                      variant="ghost"
+                      onClick={handleSearchSubmit}
+                      className="ml-2 xs:ml-3 text-body hover:text-accent"
+                      aria-label="Submit search"
+                    >
+                      <Search className="h-5 w-5" />
+                    </Button>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
@@ -598,7 +650,7 @@ const handleDocumentSubmit = async (data) => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading ? (
+                    {loading ? (
                       Array.from({ length: 3 }).map((_, index) => (
                         <TableRow key={`skeleton-${index}`}>
                           <TableCell className="px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left">
@@ -612,7 +664,16 @@ const handleDocumentSubmit = async (data) => {
                           </TableCell>
                         </TableRow>
                       ))
-                    ) : filteredDocuments.length === 0 ? (
+                    ) : error ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={3}
+                          className="text-center text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 bg-accent/5 border border-accent/20 rounded-lg"
+                        >
+                          {error}
+                        </TableCell>
+                      </TableRow>
+                    ) : paginatedDocuments.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={3}
@@ -689,7 +750,7 @@ const handleDocumentSubmit = async (data) => {
                   </TableBody>
                 </Table>
               </div>
-              {totalPages > 1 && !isLoading && (
+              {documentsPagination.totalPages > 1 && !loading && (
                 <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
                   <TooltipProvider>
                     <Tooltip>
@@ -697,7 +758,7 @@ const handleDocumentSubmit = async (data) => {
                         <Button
                           variant="outline"
                           onClick={() => handlePageChange(currentPage - 1)}
-                          disabled={currentPage === 1 || isLoading}
+                          disabled={currentPage === 1 || loading}
                           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-4 py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                           aria-label="Go to previous page"
                         >
@@ -710,14 +771,14 @@ const handleDocumentSubmit = async (data) => {
                     </Tooltip>
                   </TooltipProvider>
                   <div className="flex flex-wrap justify-center items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    {Array.from({ length: documentsPagination.totalPages }, (_, i) => i + 1).map((page) => (
                       <TooltipProvider key={page}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant={currentPage === page ? 'default' : 'outline'}
                               onClick={() => handlePageChange(page)}
-                              disabled={isLoading}
+                              disabled={loading}
                               className={cn(
                                 currentPage === page
                                   ? 'bg-accent text-body'
@@ -742,7 +803,7 @@ const handleDocumentSubmit = async (data) => {
                         <Button
                           variant="outline"
                           onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={currentPage === totalPages || isLoading}
+                          disabled={currentPage === documentsPagination.totalPages || loading}
                           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-4 py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                           aria-label="Go to next page"
                         >
@@ -787,7 +848,7 @@ const handleDocumentSubmit = async (data) => {
                               'relative border-2 border-dashed rounded-md p-3 xs:p-4 sm:p-6 text-center transition-all duration-300',
                               dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
                               formField.value ? 'bg-body' : 'bg-complementary/10',
-                              (isLoading || isSubmitting) && 'opacity-50 cursor-not-allowed'
+                              (isSubmitting || loading) && 'opacity-50 cursor-not-allowed'
                             )}
                             onDragOver={(e) => handleDragOver(e, index)}
                             onDragLeave={() => handleDragLeave(index)}
@@ -808,7 +869,7 @@ const handleDocumentSubmit = async (data) => {
                               accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
                               onChange={(e) => handleFileChange(index, e.target.files[0], formField.onChange)}
                               className="hidden"
-                              disabled={isLoading || isSubmitting}
+                              disabled={isSubmitting || loading}
                             />
                             {!formField.value ? (
                               <div className="flex flex-col items-center space-y-1 xs:space-y-2">
@@ -821,7 +882,7 @@ const handleDocumentSubmit = async (data) => {
                                     type="button"
                                     onClick={() => document.getElementById(`add-document-${index}`).click()}
                                     className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                                    disabled={isLoading || isSubmitting}
+                                    disabled={isSubmitting || loading}
                                     aria-label={`Choose file for document ${index + 1}`}
                                   >
                                     Choose File
@@ -831,7 +892,7 @@ const handleDocumentSubmit = async (data) => {
                                     variant="outline"
                                     onClick={() => handleRemoveDocument(index)}
                                     className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                                    disabled={isLoading || isSubmitting}
+                                    disabled={isSubmitting || loading}
                                     aria-label={`Cancel document ${index + 1} upload`}
                                   >
                                     Cancel
@@ -862,10 +923,10 @@ const handleDocumentSubmit = async (data) => {
                                       onClick={() => handlePreviewDocument(formField.value)}
                                       className={cn(
                                         'p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full',
-                                        (isLoading || isSubmitting || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
+                                        (isSubmitting || loading || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
                                       )}
                                       aria-label={`Preview document ${formField.value.name}`}
-                                      disabled={isLoading || isSubmitting || !previewUrls[index]}
+                                      disabled={isSubmitting || loading || !previewUrls[index]}
                                     >
                                       <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
                                     </Button>
@@ -874,7 +935,7 @@ const handleDocumentSubmit = async (data) => {
                                       variant="ghost"
                                       onClick={() => handleRemoveDocument(index)}
                                       className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full p-1"
-                                      disabled={isLoading || isSubmitting}
+                                      disabled={isSubmitting || loading}
                                       aria-label={`Remove document ${formField.value.name}`}
                                     >
                                       <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -911,7 +972,7 @@ const handleDocumentSubmit = async (data) => {
                   type="button"
                   onClick={addDocumentField}
                   className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                  disabled={documentFields.length >= 5 || isLoading || isSubmitting}
+                  disabled={documentFields.length >= 5 || isSubmitting || loading}
                   aria-label="Add another document"
                 >
                   <FilePlus className="h-4 w-4 xs:h-5 xs:w-5 mr-1 xs:mr-2" />
@@ -927,7 +988,7 @@ const handleDocumentSubmit = async (data) => {
                 variant="outline"
                 onClick={() => setUploadDialogOpen(false)}
                 className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting || loading}
                 aria-label="Cancel document upload"
               >
                 Cancel
@@ -936,10 +997,10 @@ const handleDocumentSubmit = async (data) => {
                 type="button"
                 onClick={handleDocumentSaveClick}
                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting || loading}
                 aria-label="Save documents"
               >
-                {isSubmitting || isLoading ? (
+                {isSubmitting || loading ? (
                   <Loader2 className="h-4 w-4 xs:h-5 xs:w-5 animate-spin" />
                 ) : (
                   'Save'

@@ -1,12 +1,12 @@
-import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
-import { createUserBySuperAdmin } from "../../../redux/slices/authSlice";
-import { fetchLocations } from "../redux/locationsSlice";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { createUserBySuperAdmin } from '../../../redux/slices/authSlice';
+import { fetchLocations } from '../redux/locationsSlice';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Form,
   FormControl,
@@ -14,52 +14,54 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
+} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import Layout from "@/components/layout/Layout";
-import { Link } from "react-router-dom";
+} from '@/components/ui/select';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import Layout from '@/components/layout/Layout';
+import { Link } from 'react-router-dom';
 
-const userSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  name: z.string().min(1, "Name is required"),
-  phone: z.string().optional(),
-  role: z.enum(["admin", "siteincharge"], { required_error: "Role is required" }),
-  locations: z.array(z.string()).optional(),
-}).refine(
-  (data) => {
-    if (data.role === "siteincharge") {
-      return data.locations && data.locations.length > 0;
+const userSchema = z
+  .object({
+    email: z.string().email('Invalid email address'),
+    name: z.string().min(1, 'Name is required'),
+    phone: z.string().optional(),
+    role: z.enum(['admin', 'siteincharge'], { required_error: 'Role is required' }),
+    locations: z.array(z.string()).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.role === 'siteincharge') {
+        return data.locations && data.locations.length > 0;
+      }
+      return true;
+    },
+    {
+      message: 'At least one location is required for Site Incharge',
+      path: ['locations'],
     }
-    return true;
-  },
-  {
-    message: "At least one location is required for Site Incharge",
-    path: ["locations"],
-  }
-).refine(
-  (data) => {
-    if (data.role === "admin") {
-      return !data.locations || data.locations.length === 0;
+  )
+  .refine(
+    (data) => {
+      if (data.role === 'admin') {
+        return !data.locations || data.locations.length === 0;
+      }
+      return true;
+    },
+    {
+      message: 'Admins cannot be assigned locations',
+      path: ['locations'],
     }
-    return true;
-  },
-  {
-    message: "Admins cannot be assigned locations",
-    path: ["locations"],
-  }
-);
+  );
 
 const CreateUserBySuperAdmin = () => {
   const dispatch = useDispatch();
@@ -70,11 +72,10 @@ const CreateUserBySuperAdmin = () => {
   const form = useForm({
     resolver: zodResolver(userSchema),
     defaultValues: {
-      email: "",
-      password: "",
-      name: "",
-      phone: "",
-      role: "admin",
+      email: '',
+      name: '',
+      phone: '',
+      role: 'admin',
       locations: [],
     },
   });
@@ -85,8 +86,8 @@ const CreateUserBySuperAdmin = () => {
 
   useEffect(() => {
     if (error) {
-      if (error.includes("Forbidden: Insufficient role")) {
-        toast.error("Insufficient permissions. Please contact support.");
+      if (error.includes('Forbidden: Insufficient role')) {
+        toast.error('Insufficient permissions. Please contact support.');
       } else {
         toast.error(error);
       }
@@ -95,17 +96,19 @@ const CreateUserBySuperAdmin = () => {
 
   const handleSubmit = (data) => {
     dispatch(createUserBySuperAdmin(data)).then((result) => {
-      if (result.meta.requestStatus === "fulfilled") {
-        toast.success(`${data.role === "admin" ? "Admin" : "Site Incharge"} ${data.name} created successfully`);
-        navigate("/superadmin/users"); // Navigate to user management page
+      if (result.meta.requestStatus === 'fulfilled') {
+        toast.success(
+          `${data.role === 'admin' ? 'Admin' : 'Site Incharge'} ${data.name} created successfully. A password setup link has been sent to ${data.email}.`
+        );
+        navigate('/superadmin/users');
       }
     });
   };
 
-  const selectedRole = form.watch("role");
+  const selectedRole = form.watch('role');
 
   return (
-    <Layout title="create-user-account">
+    <Layout title="Create User Account">
       <div className="min-h-screen flex items-center justify-center bg-body text-body">
         <Card className="w-full max-w-md bg-complementary text-body">
           <CardHeader>
@@ -113,16 +116,14 @@ const CreateUserBySuperAdmin = () => {
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(handleSubmit)}
-                className="space-y-4"
-              >
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 {error && (
-                  <Alert
-                    variant="destructive"
-                    className="border-error text-error"
-                  >
-                    <AlertDescription>{error.includes("Forbidden: Insufficient role") ? "Insufficient permissions. Please contact support." : error}</AlertDescription>
+                  <Alert variant="destructive" className="border-error text-error">
+                    <AlertDescription>
+                      {error.includes('Forbidden: Insufficient role')
+                        ? 'Insufficient permissions. Please contact support.'
+                        : error}
+                    </AlertDescription>
                   </Alert>
                 )}
                 <FormField
@@ -135,24 +136,6 @@ const CreateUserBySuperAdmin = () => {
                         <Input
                           {...field}
                           type="email"
-                          className="bg-complementary text-body border-accent"
-                          disabled={loading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password *</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="password"
                           className="bg-complementary text-body border-accent"
                           disabled={loading}
                         />
@@ -201,11 +184,7 @@ const CreateUserBySuperAdmin = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Role *</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={loading}
-                      >
+                      <Select onValueChange={field.onChange} value={field.value} disabled={loading}>
                         <FormControl>
                           <SelectTrigger className="bg-complementary text-body border-accent">
                             <SelectValue placeholder="Select role" />
@@ -225,21 +204,23 @@ const CreateUserBySuperAdmin = () => {
                   name="locations"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Locations {selectedRole === "siteincharge" ? "*" : "(Not applicable)"}</FormLabel>
+                      <FormLabel>
+                        Locations {selectedRole === 'siteincharge' ? '*' : '(Not applicable)'}
+                      </FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange([value])}
-                        value={field.value[0] || ""}
-                        disabled={loading || locations.length === 0 || selectedRole === "admin"}
+                        value={field.value[0] || ''}
+                        disabled={loading || locations.length === 0 || selectedRole === 'admin'}
                       >
                         <FormControl>
                           <SelectTrigger className="bg-complementary text-body border-accent">
                             <SelectValue
                               placeholder={
                                 locations.length === 0
-                                  ? "No locations available. Add locations first."
-                                  : selectedRole === "admin"
-                                    ? "Not applicable for Admins"
-                                    : "Select location"
+                                  ? 'No locations available. Add locations first.'
+                                  : selectedRole === 'admin'
+                                  ? 'Not applicable for Admins'
+                                  : 'Select location'
                               }
                             />
                           </SelectTrigger>
@@ -254,13 +235,13 @@ const CreateUserBySuperAdmin = () => {
                       </Select>
                       {locations.length === 0 && (
                         <p className="text-sm text-error">
-                          No locations available. Please{" "}
+                          No locations available. Please{' '}
                           <Link
                             to="/superadmin/locations"
                             className="underline text-accent hover:text-accent-hover"
                           >
                             add locations
-                          </Link>{" "}
+                          </Link>{' '}
                           first.
                         </p>
                       )}
@@ -271,12 +252,12 @@ const CreateUserBySuperAdmin = () => {
                 <Button
                   type="submit"
                   className="w-full bg-accent text-body hover:bg-accent-hover"
-                  disabled={loading || (selectedRole === "siteincharge" && locations.length === 0)}
+                  disabled={loading || (selectedRole === 'siteincharge' && locations.length === 0)}
                 >
                   {loading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    "Create User"
+                    'Create User'
                   )}
                 </Button>
               </form>

@@ -39,6 +39,9 @@ const SuperAdminEmployeeAdvancesSection = ({
       prev.isLoading === next.isLoading &&
       prev.error === next.error
   );
+
+  console.log("advancesPagination", advancesPagination);
+  
   const [isTableOpen, setIsTableOpen] = useState(true);
   const autoDismissDuration = 5000;
 

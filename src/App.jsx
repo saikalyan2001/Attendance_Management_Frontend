@@ -35,7 +35,8 @@ import SuperAdminEmployeeProfile from './features/superadmin/pages/SuperAdminEmp
 import SuperAdminEmployeeHistory from './features/superadmin/pages/SuperAdminEmployeeHistory';
 import SuperAdminAttendance from './features/superadmin/pages/SuperAdminAttendance';
 import SuperAdminReports from './features/superadmin/pages/SuperAdminReports';
-
+import SetPassword from './components/auth/SetPassword';
+import ForgotPassword from './components/auth/ForgotPassword'; // New import
 
 const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." }) => {
   const { user, isLoading, error } = useSelector((state) => state.auth);
@@ -110,6 +111,8 @@ const App = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/set-password" element={<SetPassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} /> {/* New route */}
       <Route
         path="/admin/create-siteincharge"
         element={
@@ -302,7 +305,6 @@ const App = () => {
           </ProtectedRoute>
         }
       />
-      {/* New Superadmin Employee Routes */}
       <Route
         path="/superadmin/employees"
         element={
@@ -455,5 +457,3 @@ export const PageLoadingWrapper = ({
 };
 
 export default App;
-
-

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { useSelector } from 'react-redux';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,8 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { addEmployeeDocuments, reset as resetEmployees } from '../redux/employeeSlice';
-import { parseServerError } from '@/utils/errorUtils';
+import { addEmployeeDocuments, fetchEmployeeDocuments } from '../redux/employeeSlice';
+import { parseServerError } from '../../../utils/errorUtils';
 
 // File icon component
 const FileIcon = () => <svg className="h-5 w-5 text-body" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
@@ -42,7 +42,7 @@ const getFileIcon = (fileName) => {
 const normalizeDocPath = (docPath) => {
   if (!docPath || typeof docPath !== 'string' || docPath.trim() === '') {
     console.warn('Invalid or missing document path:', docPath);
-    return null; // Return null for invalid paths
+    return null;
   }
   let normalized = docPath.replace(/\\/g, '/');
   const uploadsIndex = normalized.indexOf('Uploads/documents');
@@ -111,8 +111,21 @@ const EmployeeDocumentsSection = ({
   isLoading = false,
   currentPage,
   setCurrentPage,
+  searchQuery,
+  setSearchQuery,
   itemsPerPage,
 }) => {
+  const { documents, documentsPagination, loading, error } = useSelector(
+    (state) => state.adminEmployees,
+    (prev, next) =>
+      prev.documents === next.documents &&
+      prev.documentsPagination?.currentPage === next.documentsPagination?.currentPage &&
+      prev.documentsPagination?.itemsPerPage === next.documentsPagination?.itemsPerPage &&
+      prev.documentsPagination?.totalItems === next.documentsPagination?.totalItems &&
+      prev.documentsPagination?.totalPages === next.documentsPagination?.totalPages &&
+      prev.loading === next.loading &&
+      prev.error === next.error
+  );
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
@@ -121,12 +134,10 @@ const EmployeeDocumentsSection = ({
   const [previewUrls, setPreviewUrls] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isTableOpen, setIsTableOpen] = useState(true);
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery || ''); // Added localSearchQuery
   const autoDismissDuration = 5000;
   const formRef = useRef(null);
-
-  const { pagination } = useSelector((state) => state.adminEmployees);
 
   const uploadForm = useForm({
     resolver: zodResolver(uploadDocumentSchema),
@@ -140,39 +151,12 @@ const EmployeeDocumentsSection = ({
     name: 'documents',
   });
 
-  // Apply search filter and validate documents
-  const filteredDocuments = useMemo(() => {
-    if (!currentEmployee?.documents || !Array.isArray(currentEmployee.documents)) {
-      return [];
-    }
-    return currentEmployee.documents
-      .filter((doc) => {
-        if (!doc || typeof doc !== 'object' || !doc.name || typeof doc.name !== 'string' || !doc.path || typeof doc.path !== 'string') {
-          console.warn('Skipping invalid document entry:', doc);
-          return false;
-        }
-        return searchQuery
-          ? doc.name.toLowerCase().includes(searchQuery.toLowerCase())
-          : true;
-      })
-      .map((doc) => ({
-        ...doc,
-        normalizedPath: normalizeDocPath(doc.path),
-      }))
-      .filter((doc) => doc.normalizedPath && doc.normalizedPath.startsWith('/Uploads/documents'));
-  }, [currentEmployee?.documents, searchQuery]);
+  // Sync localSearchQuery with searchQuery when it changes externally
+  useEffect(() => {
+    setLocalSearchQuery(searchQuery || '');
+  }, [searchQuery]);
 
-  // Use backend pagination metadata
-  const totalItems = pagination?.totalItems || filteredDocuments.length;
-  const totalPages = pagination?.totalPages || Math.ceil(totalItems / itemsPerPage);
-  const paginatedDocuments = filteredDocuments;
-
-  const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
-
+  // Clean up preview URLs
   useEffect(() => {
     return () => {
       Object.values(previewUrls).forEach((url) => {
@@ -181,6 +165,83 @@ const EmployeeDocumentsSection = ({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrls, previewUrl]);
+
+  // Handle search trigger on Enter key or search icon click
+  const handleSearchTrigger = useCallback(() => {
+    if (localSearchQuery.trim() === '' || localSearchQuery.length >= 3) {
+      setSearchQuery(localSearchQuery); // Update parent searchQuery
+      setCurrentPage(1);
+      dispatch(
+        fetchEmployeeDocuments({
+          id,
+          page: 1,
+          limit: itemsPerPage,
+          searchQuery: localSearchQuery,
+        })
+      ).catch((err) => {
+        const parsedError = parseServerError(err);
+        toast.error(parsedError.message, {
+          id: 'search-error',
+          duration: autoDismissDuration,
+          position: 'top-center',
+          style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+        });
+      });
+    }
+  }, [dispatch, id, itemsPerPage, localSearchQuery, setSearchQuery]);
+
+  // Handle Enter key press for search
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearchTrigger();
+    }
+  };
+
+  // Update local search query on input change
+  const handleSearchChange = (e) => {
+    setLocalSearchQuery(e.target.value);
+  };
+
+  // Use raw documents with normalization
+  const paginatedDocuments = useMemo(
+    () =>
+      documents
+        .map((doc) => ({
+          ...doc,
+          normalizedPath: normalizeDocPath(doc.path),
+        }))
+        .filter(
+          (doc) =>
+            doc.normalizedPath && doc.normalizedPath.startsWith('/Uploads/documents')
+        ),
+    [documents]
+  );
+
+  // Handle page change
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= documentsPagination.totalPages) {
+      setCurrentPage(page);
+      dispatch(
+        fetchEmployeeDocuments({
+          id,
+          page,
+          limit: itemsPerPage,
+          searchQuery,
+        })
+      )
+        .unwrap()
+        .catch((err) => {
+          const parsedError = parseServerError(err);
+          toast.error(parsedError.message, {
+            id: 'documents-page-error',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+        });
+    }
+  };
 
   const handleDocumentSubmit = async (data) => {
     try {
@@ -199,7 +260,7 @@ const EmployeeDocumentsSection = ({
       }
 
       await dispatch(addEmployeeDocuments({ id, documents: data.documents, page: 1, limit: itemsPerPage })).unwrap();
-      toast.dismiss();
+      await dispatch(fetchEmployeeDocuments({ id, page: 1, limit: itemsPerPage, searchQuery })).unwrap();
       toast.success('Documents uploaded successfully', {
         id: 'upload-success',
         duration: autoDismissDuration,
@@ -213,10 +274,6 @@ const EmployeeDocumentsSection = ({
       setDragStates({});
       setPreviewUrls({});
       setCurrentPage(1);
-      setTimeout(() => {
-        dispatch(resetEmployees());
-        toast.dismiss();
-      }, autoDismissDuration);
     } catch (err) {
       console.error('Submit error:', err);
       toast.dismiss();
@@ -388,8 +445,7 @@ const EmployeeDocumentsSection = ({
 
       const blob = await response.blob();
       const file = new File([blob], docName || 'document', { type: blob.type });
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
+      setPreviewDocument(file);
       handlePreviewDocument(file);
     } catch (err) {
       console.error('Preview error:', err);
@@ -551,12 +607,20 @@ const EmployeeDocumentsSection = ({
                   <div className="flex items-center max-w-xs sm:max-w-sm">
                     <Input
                       placeholder="Search documents..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      value={localSearchQuery} // Use localSearchQuery
+                      onChange={handleSearchChange}
+                      onKeyDown={handleSearchKeyDown}
                       className="bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent rounded-lg text-xs xs:text-sm sm:text-base"
                       aria-label="Search documents"
                     />
-                    <Search className="h-5 w-5 ml-2 xs:ml-3 text-body" />
+                    <Button
+                      variant="ghost"
+                      onClick={handleSearchTrigger}
+                      className="ml-2 xs:ml-3 text-body hover:text-accent focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                      aria-label="Search documents"
+                    >
+                      <Search className="h-5 w-5" />
+                    </Button>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
@@ -602,7 +666,7 @@ const EmployeeDocumentsSection = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading ? (
+                    {loading ? (
                       Array.from({ length: 3 }).map((_, index) => (
                         <TableRow key={`skeleton-${index}`}>
                           <TableCell className="px-2 xs:px-3 sm:px-4 py-2 xs:py-3 min-w-[120px] max-w-[150px] text-left">
@@ -616,7 +680,16 @@ const EmployeeDocumentsSection = ({
                           </TableCell>
                         </TableRow>
                       ))
-                    ) : filteredDocuments.length === 0 ? (
+                    ) : error ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={3}
+                          className="text-center text-xs xs:text-sm sm:text-base px-2 xs:px-3 sm:px-4 py-2 xs:py-3 bg-accent/5 border border-accent/20 rounded-lg"
+                        >
+                          {error}
+                        </TableCell>
+                      </TableRow>
+                    ) : paginatedDocuments.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={3}
@@ -693,7 +766,7 @@ const EmployeeDocumentsSection = ({
                   </TableBody>
                 </Table>
               </div>
-              {totalPages > 1 && !isLoading && (
+              {documentsPagination.totalPages > 1 && !loading && (
                 <div className="flex justify-between items-center mt-4 xs:mt-5 sm:mt-6">
                   <TooltipProvider>
                     <Tooltip>
@@ -701,7 +774,7 @@ const EmployeeDocumentsSection = ({
                         <Button
                           variant="outline"
                           onClick={() => handlePageChange(currentPage - 1)}
-                          disabled={currentPage === 1 || isLoading}
+                          disabled={currentPage === 1 || loading}
                           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-4 py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                           aria-label="Go to previous page"
                         >
@@ -714,14 +787,14 @@ const EmployeeDocumentsSection = ({
                     </Tooltip>
                   </TooltipProvider>
                   <div className="flex flex-wrap justify-center items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    {Array.from({ length: documentsPagination.totalPages }, (_, i) => i + 1).map((page) => (
                       <TooltipProvider key={page}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant={currentPage === page ? 'default' : 'outline'}
                               onClick={() => handlePageChange(page)}
-                              disabled={isLoading}
+                              disabled={loading}
                               className={cn(
                                 currentPage === page
                                   ? 'bg-accent text-body'
@@ -746,7 +819,7 @@ const EmployeeDocumentsSection = ({
                         <Button
                           variant="outline"
                           onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={currentPage === totalPages || isLoading}
+                          disabled={currentPage === documentsPagination.totalPages || loading}
                           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-4 py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
                           aria-label="Go to next page"
                         >
@@ -783,19 +856,19 @@ const EmployeeDocumentsSection = ({
                   <FormField
                     control={uploadForm.control}
                     name={`documents.${index}.file`}
-                    render={({ field }) => (
+                    render={({ field: formField }) => (
                       <FormItem className="p-2 xs:p-3 sm:p-4">
                         <FormControl>
                           <div
                             className={cn(
                               'relative border-2 border-dashed rounded-md p-3 xs:p-4 sm:p-6 text-center transition-all duration-300',
                               dragStates[index] ? 'border-accent bg-accent/10' : 'border-complementary',
-                              field.value ? 'bg-body' : 'bg-complementary/10',
-                              (isLoading || isSubmitting) && 'opacity-50 cursor-not-allowed'
+                              formField.value ? 'bg-body' : 'bg-complementary/10',
+                              (isSubmitting || loading) && 'opacity-50 cursor-not-allowed'
                             )}
                             onDragOver={(e) => handleDragOver(e, index)}
                             onDragLeave={() => handleDragLeave(index)}
-                            onDrop={(e) => handleDrop(e, index, field.onChange)}
+                            onDrop={(e) => handleDrop(e, index, formField.onChange)}
                             role="region"
                             aria-label={`Upload document ${index + 1}`}
                             tabIndex={0}
@@ -810,11 +883,11 @@ const EmployeeDocumentsSection = ({
                               id={`add-document-${index}`}
                               type="file"
                               accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-                              onChange={(e) => handleFileChange(index, e.target.files[0], field.onChange)}
+                              onChange={(e) => handleFileChange(index, e.target.files[0], formField.onChange)}
                               className="hidden"
-                              disabled={isLoading || isSubmitting}
+                              disabled={isSubmitting || loading}
                             />
-                            {!field.value ? (
+                            {!formField.value ? (
                               <div className="flex flex-col items-center space-y-1 xs:space-y-2">
                                 <FileIcon className="h-6 w-6 xs:h-8 xs:w-8 sm:h-10 sm:w-10 text-body/60" />
                                 <p className="text-[9px] xs:text-xs sm:text-sm text-body/60">
@@ -825,7 +898,7 @@ const EmployeeDocumentsSection = ({
                                     type="button"
                                     onClick={() => document.getElementById(`add-document-${index}`).click()}
                                     className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                                    disabled={isLoading || isSubmitting}
+                                    disabled={isSubmitting || loading}
                                     aria-label={`Choose file for document ${index + 1}`}
                                   >
                                     Choose File
@@ -835,7 +908,7 @@ const EmployeeDocumentsSection = ({
                                     variant="outline"
                                     onClick={() => handleRemoveDocument(index)}
                                     className="border-complementary text-body hover:bg-complementary/10 rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                                    disabled={isLoading || isSubmitting}
+                                    disabled={isSubmitting || loading}
                                     aria-label={`Cancel document ${index + 1} upload`}
                                   >
                                     Cancel
@@ -849,13 +922,13 @@ const EmployeeDocumentsSection = ({
                               <div className="flex flex-col space-y-1 xs:space-y-2">
                                 <div className="flex items-center justify-between space-x-2">
                                   <div className="flex items-center space-x-1 xs:space-x-2 truncate">
-                                    {getFileIcon(field.value.name)}
+                                    {getFileIcon(formField.value.name)}
                                     <div className="truncate">
                                       <span className="text-xs xs:text-sm sm:text-base text-body truncate">
-                                        {field.value.name}
+                                        {formField.value.name}
                                       </span>
                                       <span className="text-[8px] xs:text-[9px] sm:text-xs text-body/60 block">
-                                        ({(field.value.size / 1024 / 1024).toFixed(2)} MB)
+                                        ({(formField.value.size / 1024 / 1024).toFixed(2)} MB)
                                       </span>
                                     </div>
                                   </div>
@@ -863,13 +936,13 @@ const EmployeeDocumentsSection = ({
                                     <Button
                                       type="button"
                                       variant="ghost"
-                                      onClick={() => handlePreviewDocument(field.value)}
+                                      onClick={() => handlePreviewDocument(formField.value)}
                                       className={cn(
                                         'p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full',
-                                        (isLoading || isSubmitting || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
+                                        (isSubmitting || loading || !previewUrls[index]) && 'opacity-50 cursor-not-allowed'
                                       )}
-                                      aria-label={`Preview document ${field.value.name}`}
-                                      disabled={isLoading || isSubmitting || !previewUrls[index]}
+                                      aria-label={`Preview document ${formField.value.name}`}
+                                      disabled={isSubmitting || loading || !previewUrls[index]}
                                     >
                                       <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
                                     </Button>
@@ -878,18 +951,18 @@ const EmployeeDocumentsSection = ({
                                       variant="ghost"
                                       onClick={() => handleRemoveDocument(index)}
                                       className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full p-1"
-                                      disabled={isLoading || isSubmitting}
-                                      aria-label={`Remove document ${field.value.name}`}
+                                      disabled={isSubmitting || loading}
+                                      aria-label={`Remove document ${formField.value.name}`}
                                     >
                                       <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
                                     </Button>
                                   </div>
                                 </div>
-                                {isImageFile(field.value) && previewUrls[index] && (
+                                {isImageFile(formField.value) && previewUrls[index] && (
                                   <div className="mt-2">
                                     <img
                                       src={previewUrls[index]}
-                                      alt={`Preview of ${field.value.name}`}
+                                      alt={`Preview of ${formField.value.name}`}
                                       className="max-w-full h-auto rounded-md max-h-40 object-contain"
                                     />
                                   </div>
@@ -915,7 +988,7 @@ const EmployeeDocumentsSection = ({
                   type="button"
                   onClick={addDocumentField}
                   className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 hover:shadow-md min-h-[32px] xs:min-h-[36px]"
-                  disabled={documentFields.length >= 5 || isLoading || isSubmitting}
+                  disabled={documentFields.length >= 5 || isSubmitting || loading}
                   aria-label="Add another document"
                 >
                   <FilePlus className="h-4 w-4 xs:h-5 xs:w-5 mr-1 xs:mr-2" />
@@ -931,7 +1004,7 @@ const EmployeeDocumentsSection = ({
                 variant="outline"
                 onClick={() => setUploadDialogOpen(false)}
                 className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting || loading}
                 aria-label="Cancel document upload"
               >
                 Cancel
@@ -940,10 +1013,10 @@ const EmployeeDocumentsSection = ({
                 type="button"
                 onClick={handleDocumentSaveClick}
                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting || loading}
                 aria-label="Save documents"
               >
-                {isSubmitting || isLoading ? (
+                {isSubmitting || loading ? (
                   <Loader2 className="h-4 w-4 xs:h-5 xs:w-5 animate-spin" />
                 ) : (
                   'Save'

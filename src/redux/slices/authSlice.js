@@ -27,9 +27,10 @@ export const login = createAsyncThunk(
           errorMessage.includes('Invalid email') ||
           errorMessage.includes('Invalid password') ||
           errorMessage.includes('Invalid credentials') ||
-          errorMessage.includes('Invalid email or role'))
+          errorMessage.includes('Invalid email or role') ||
+          errorMessage.includes('Please set your password'))
       ) {
-        return rejectWithValue('Invalid email or password');
+        return rejectWithValue(errorMessage);
       }
       return rejectWithValue(errorMessage);
     }
@@ -38,11 +39,10 @@ export const login = createAsyncThunk(
 
 export const signup = createAsyncThunk(
   'auth/signup',
-  async ({ email, password, name, phone, role, locations }, { rejectWithValue }) => {
+  async ({ email, name, phone, role, locations }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/auth/signup', { email, password, name, phone, role, locations });
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
+      const response = await api.post('/auth/signup', { email, name, phone, role, locations });
+      const { user } = response.data;
       return user;
     } catch (error) {
       console.log('Signup error:', error.response?.data || error.message);
@@ -53,10 +53,10 @@ export const signup = createAsyncThunk(
 
 export const createUserBySuperAdmin = createAsyncThunk(
   'auth/createUserBySuperAdmin',
-  async ({ email, password, name, phone, role, locations }, { rejectWithValue }) => {
+  async ({ email, name, phone, role, locations }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/auth/signup', { email, password, name, phone, role, locations });
-      return response.data.user; // Return only user data, no token storage
+      const response = await api.post('/auth/signup', { email, name, phone, role, locations });
+      return response.data.user;
     } catch (error) {
       console.log('createUserBySuperAdmin error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to create user');
@@ -66,11 +66,10 @@ export const createUserBySuperAdmin = createAsyncThunk(
 
 export const createSiteIncharge = createAsyncThunk(
   'auth/createSiteIncharge',
-  async ({ email, password, name, phone, locations }, { rejectWithValue }) => {
+  async ({ email, name, phone, locations }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/auth/signup', {
+      const response = await api.post('/auth/create-siteincharge', {
         email,
-        password,
         name,
         phone,
         role: 'siteincharge',
@@ -100,6 +99,32 @@ export const createSuperAdmin = createAsyncThunk(
     } catch (error) {
       console.log('createSuperAdmin error:', error.response?.data || error.message);
       return rejectWithValue(error.response?.data?.message || 'Failed to create super admin');
+    }
+  }
+);
+
+export const setPassword = createAsyncThunk(
+  'auth/setPassword',
+  async ({ token, newPassword }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/set-password', { token, newPassword });
+      return response.data;
+    } catch (error) {
+      console.log('setPassword error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to set password');
+    }
+  }
+);
+
+export const forgotPassword = createAsyncThunk(
+  'auth/forgotPassword',
+  async ({ email }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error) {
+      console.log('forgotPassword error:', error.response?.data || error.message);
+      return rejectWithValue(error.response?.data?.message || 'Failed to send reset link');
     }
   }
 );
@@ -218,6 +243,32 @@ const authSlice = createSlice({
         state.isLoading = false;
       })
       .addCase(createSuperAdmin.rejected, (state, action) => {
+        state.loading = false;
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(setPassword.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(setPassword.fulfilled, (state) => {
+        state.loading = false;
+        state.isLoading = false;
+      })
+      .addCase(setPassword.rejected, (state, action) => {
+        state.loading = false;
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(forgotPassword.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(forgotPassword.fulfilled, (state) => {
+        state.loading = false;
+        state.isLoading = false;
+      })
+      .addCase(forgotPassword.rejected, (state, action) => {
         state.loading = false;
         state.isLoading = false;
         state.error = action.payload;

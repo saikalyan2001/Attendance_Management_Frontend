@@ -1,15 +1,15 @@
-// src/components/auth/LoginForm.jsx
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react'; // Added useState
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
 import { toast } from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Invalid email address'),
@@ -23,10 +23,12 @@ const LoginForm = ({ onSubmit, loading, role, error }) => {
   });
   const formRef = useRef(null);
   const { user } = useSelector((state) => state.auth);
+  const [showPassword, setShowPassword] = useState(false); // New state for password visibility
 
   useEffect(() => {
     if (error) {
-      const message = error === 'Invalid role' ? 'Invalid role' : 'Invalid email or password';
+      const message = error === 'Invalid role' ? 'Invalid role' : 
+                     error.includes('Please set your password') ? error : 'Invalid email or password';
       form.setError('email', { message });
       form.setError('password', { message });
       const fieldElement = document.querySelector('[name="email"]');
@@ -108,19 +110,37 @@ const LoginForm = ({ onSubmit, loading, role, error }) => {
                 Password <span className="text-error">*</span>
               </FormLabel>
               <FormControl>
-                <Input
-                  {...field}
-                  type="password"
-                  className="w-full bg-complementary text-body border-accent h-10 text-sm sm:text-base"
-                  disabled={loading}
-                  aria-label="Password"
-                  aria-invalid={!!form.formState.errors.password}
-                />
+                <div className="relative">
+                  <Input
+                    {...field}
+                    type={showPassword ? 'text' : 'password'} // Toggle type
+                    className="w-full bg-complementary text-body border-accent h-10 text-sm sm:text-base pr-10" // Added padding for icon
+                    disabled={loading}
+                    aria-label="Password"
+                    aria-invalid={!!form.formState.errors.password}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-accent hover:text-accent-hover"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </FormControl>
               <FormMessage className="text-error text-xs sm:text-sm" />
             </FormItem>
           )}
         />
+        <div className="text-right">
+          <Link
+            to="/forgot-password"
+            className="text-sm text-accent hover:text-accent-hover underline"
+          >
+            Forgot Password?
+          </Link>
+        </div>
         <Button
           type="submit"
           className={cn(
