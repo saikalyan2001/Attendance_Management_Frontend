@@ -25,7 +25,7 @@ const FileIcon = () => <svg className="h-5 w-5 text-body" fill="none" stroke="cu
 // Get file icon based on extension
 const getFileIcon = (fileName) => {
   if (!fileName || typeof fileName !== 'string') {
-    console.warn('Invalid fileName in getFileIcon:', fileName);
+    
     return <FileIcon />;
   }
   const extension = fileName.toLowerCase().split('.').pop();
@@ -41,7 +41,7 @@ const getFileIcon = (fileName) => {
 // Normalize file system path to URL path
 const normalizeDocPath = (docPath) => {
   if (!docPath || typeof docPath !== 'string' || docPath.trim() === '') {
-    console.warn('Invalid or missing document path:', docPath);
+    
     return null;
   }
   let normalized = docPath.replace(/\\/g, '/');
@@ -82,7 +82,7 @@ const uploadDocumentSchema = z.object({
 // Check if file is an image
 const isImageFile = (file) => {
   if (!file || !file.name || typeof file.name !== 'string') {
-    console.warn('Invalid file in isImageFile:', file);
+    
     return false;
   }
   const extension = file.name.toLowerCase().split('.').pop();
@@ -92,13 +92,13 @@ const isImageFile = (file) => {
 // Format uploadedAt timestamp
 const formatUploadedAt = (uploadedAt) => {
   if (!uploadedAt || typeof uploadedAt !== 'string') {
-    console.warn('Invalid uploadedAt:', uploadedAt);
+    
     return 'Unknown';
   }
   try {
     return format(new Date(uploadedAt), 'MMM dd, yyyy, h:mm a');
   } catch (err) {
-    console.warn('Failed to format uploadedAt:', uploadedAt, err);
+    
     return 'Unknown';
   }
 };
@@ -275,7 +275,7 @@ const EmployeeDocumentsSection = ({
       setPreviewUrls({});
       setCurrentPage(1);
     } catch (err) {
-      console.error('Submit error:', err);
+      
       toast.dismiss();
       const parsedError = parseServerError(err);
       setServerError(parsedError);
@@ -357,7 +357,7 @@ const EmployeeDocumentsSection = ({
 
       await uploadForm.handleSubmit(handleDocumentSubmit)();
     } catch (error) {
-      console.error('handleDocumentSaveClick error:', error);
+      
       toast.dismiss();
       toast.error('Error submitting form, please try again', {
         id: `form-submit-error-${Date.now()}`,
@@ -370,7 +370,7 @@ const EmployeeDocumentsSection = ({
 
   const handlePreviewDocument = (file) => {
     if (!file) {
-      console.error('No file provided for preview');
+      
       toast.error('No file selected for preview', {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -402,7 +402,7 @@ const EmployeeDocumentsSection = ({
         });
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (err) {
-        console.error('Preview error:', err);
+        
         toast.dismiss();
         toast.error('Failed to open document for preview', {
           id: 'preview-error',
@@ -412,7 +412,7 @@ const EmployeeDocumentsSection = ({
         });
       }
     } else {
-      console.error('Invalid file object:', file);
+      
       toast.dismiss();
       toast.error('Invalid file format for preview', {
         id: 'preview-error',
@@ -448,7 +448,7 @@ const EmployeeDocumentsSection = ({
       setPreviewDocument(file);
       handlePreviewDocument(file);
     } catch (err) {
-      console.error('Preview error:', err);
+      
       toast.error(`Failed to fetch document for preview: ${err.message}`, {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -504,7 +504,7 @@ const EmployeeDocumentsSection = ({
         style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
       });
     } catch (err) {
-      console.error('Download error:', err);
+      
       toast.error(`Failed to download document: ${err.message}`, {
         id: 'download-error',
         duration: autoDismissDuration,
@@ -1051,7 +1051,7 @@ const EmployeeDocumentsSection = ({
                 alt={`Preview of ${previewDocument.name}`}
                 className="max-w-full max-h-[60vh] object-contain rounded-md"
                 onError={(e) => {
-                  console.error('Image failed to load:', previewUrl);
+                  
                   toast.error('Failed to load image preview', {
                     id: 'image-load-error',
                     duration: autoDismissDuration,

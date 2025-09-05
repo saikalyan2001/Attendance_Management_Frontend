@@ -40,12 +40,12 @@ const SuperAdminEmployeeAdvancesSection = ({
       prev.error === next.error
   );
 
-  console.log("advancesPagination", advancesPagination);
+  
   
   const [isTableOpen, setIsTableOpen] = useState(true);
   const autoDismissDuration = 5000;
 
-  console.log('advances', advances);
+  
 
   const handleSort = (field) => {
     const newSortOrder = sortField === field ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc';

@@ -62,7 +62,7 @@ const Dashboard = () => {
   // Detect current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
 
-  console.log("user dashboard", user);
+  
   
 
   useEffect(() => {

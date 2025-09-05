@@ -91,8 +91,8 @@ const employeeSchema = z.object({
 });
 
 const parseServerError = (error) => {
-  console.log("🔧 parseServerError input:", error);
-  console.log("🔧 parseServerError type:", typeof error);
+  
+  
   
   if (!error) {
     return { message: "An unknown error occurred", fields: {}, errors: [] };
@@ -100,8 +100,8 @@ const parseServerError = (error) => {
 
   // ✅ IMPROVED: Handle Excel validation errors with better structure detection
   if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
-    console.log("🔧 Found errors array with length:", error.errors.length);
-    console.log("🔧 First error structure:", error.errors[0]);
+    
+    
     
     return {
       message: error.message || "Excel file contains validation errors",
@@ -281,7 +281,7 @@ const validateExcelFile = async (file) => {
 
     return { isValid: true };
   } catch (error) {
-    console.error("Excel validation error:", error);
+    
     return {
       isValid: false,
       error: `Failed to validate Excel file: ${error.message}`,
@@ -359,7 +359,7 @@ const useEmployeeRegistration = ({
   );
 
   renderCount.current += 1;
-  console.log(`useEmployeeRegistration re-render count: ${renderCount.current}, previews: ${JSON.stringify(previews)}, locations: ${JSON.stringify(locations)}, timestamp: ${Date.now()}`);
+  
 
   const form = useForm({
     resolver: zodResolver(employeeSchema),
@@ -398,7 +398,7 @@ const useEmployeeRegistration = ({
         setIsSubmitting(true);
         dispatch(employeeSlice.reset());
         toast.dismiss();
-        console.log(`handleSubmit called for single employee, documents: ${data.documents.length}, previews: ${JSON.stringify(previews)}, timestamp: ${Date.now()}`);
+        
         const employeeData = {
           employeeId: data.employeeId,
           name: data.name,
@@ -418,7 +418,7 @@ const useEmployeeRegistration = ({
           employeeSlice.registerEmployee({ employeeData, documents: data.documents })
         ).unwrap();
       } catch (error) {
-        console.error("Single employee registration error:", error);
+        
         const parsedError = parseServerError(error);
         setServerError(parsedError);
         setRetryCount((prev) => prev + 1);
@@ -460,7 +460,7 @@ const useEmployeeRegistration = ({
     return () => {
       Object.values(previews).forEach((url) => {
         if (url) {
-          console.log(`Cleaning up preview URL: ${url}, timestamp=${Date.now()}`);
+          
           URL.revokeObjectURL(url);
         }
       });
@@ -471,18 +471,8 @@ const useEmployeeRegistration = ({
 // Excel Error useEffect - FIXED VERSION
 // Excel Error useEffect - ENHANCED DEBUG VERSION
 useEffect(() => {
-  console.log("🟡 Excel useEffect checking:", {
-    employeesError,
-    errorType,
-    lastError,
-    condition: employeesError && errorType === "excel" && employeesError !== lastError
-  });
-
+  
   if (employeesError && errorType === "excel" && employeesError !== lastError) {
-    console.log(`🔍 Excel Error Debug:`, {
-      employeesError,
-      parsedErrorResult: parseServerError(employeesError)
-    });
     
     toast.dismiss();
     const parsedError = parseServerError(employeesError);
@@ -503,22 +493,22 @@ useEffect(() => {
     });
     
     // Debug the errors array
-    console.log(`🔍 Parsed Errors:`, parsedError.errors);
-    console.log(`🔍 Errors length:`, parsedError.errors?.length);
-    console.log(`🔍 Errors type:`, typeof parsedError.errors);
+    
+    
+    
     
     // Show specific row errors
     if (parsedError.errors?.length > 0) {
-      console.log(`🔍 Processing ${parsedError.errors.length} errors`);
+      
       parsedError.errors.slice(0, 5).forEach((err, index) => {
-        console.log(`🔍 Error ${index}:`, err);
+        
         const errorMessage = typeof err === 'object' && err.row 
           ? `Row ${err.row}: ${err.message}`
           : typeof err === 'string' 
           ? err 
           : `Error: ${err.message || 'Unknown validation error'}`;
         
-        console.log(`🔍 Creating toast for error ${index}:`, errorMessage);
+        
         
         toast.error(errorMessage, {
           id: `excel-row-error-${index}-${Date.now()}`,
@@ -527,7 +517,7 @@ useEffect(() => {
         });
       });
     } else {
-      console.log(`🔍 No errors array found or empty`);
+      
     }
     
     // Delay the reset to allow toasts to display
@@ -542,7 +532,7 @@ useEffect(() => {
 // Option 1: Keep both useEffects (Recommended)
 useEffect(() => {
   if (employeesError && errorType === "single" && employeesError !== lastError) {
-    console.log(`Single Error useEffect triggered: error=${JSON.stringify(employeesError)}`);
+    
     toast.dismiss();
     const parsedError = parseServerError(employeesError);
     setServerError(parsedError);
@@ -585,7 +575,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (success && (successType === "single" || successType === "excel") && success !== lastSuccess) {
-      console.log(`Success useEffect triggered: success=${success}, successType=${successType}, lastSuccess=${lastSuccess}, timestamp=${Date.now()}`);
+      
       toast.dismiss();
       const successMessage = successType === "single"
         ? "Employee registered successfully"
@@ -640,7 +630,7 @@ useEffect(() => {
     }
 
     try {
-      console.log(`handleExcelSubmit called, file: ${excelFile.name}, role: ${requiredRole}, timestamp: ${Date.now()}`);
+      
       // Conditionally dispatch the correct action based on role
       const action = requiredRole === "siteincharge" 
         ? employeeSlice.importEmployees 
@@ -649,7 +639,7 @@ useEffect(() => {
       await dispatch(action({ excelFile })).unwrap();
       setExcelFile(null);
     } catch (error) {
-  console.error("Excel upload error:", error);
+  
   
   // More specific error messages based on the actual error
   let errorMessage = "Failed to process Excel file";
@@ -679,7 +669,7 @@ useEffect(() => {
 
   const handleSaveClick = async () => {
     try {
-      console.log(`handleSaveClick called, documents: ${form.getValues().documents.length}, previews: ${JSON.stringify(previews)}, timestamp: ${Date.now()}`);
+      
       const isValid = await form.trigger();
       if (!isValid) {
         const errors = [];
@@ -815,7 +805,7 @@ useEffect(() => {
       return;
     }
     appendDocument({ file: null });
-    console.log(`Added document field, new length: ${documentFields.length + 1}, previews: ${JSON.stringify(previews)}, timestamp: ${Date.now()}`);
+    
   };
 
   const handleRemoveDocument = (index) => {
@@ -824,7 +814,7 @@ useEffect(() => {
       setPreviews((prev) => {
         const newUrls = { ...prev };
         if (newUrls[index]) {
-          console.log(`Revoking preview URL for index ${index}: ${newUrls[index]}, timestamp: ${Date.now()}`);
+          
           URL.revokeObjectURL(newUrls[index]);
           delete newUrls[index];
         }
@@ -837,7 +827,7 @@ useEffect(() => {
         delete newState[index];
         return newState;
       });
-      console.log(`Removed document at index ${index}, previews: ${JSON.stringify(previews)}, timestamp: ${Date.now()}`);
+      
     }, 300);
   };
 
@@ -865,10 +855,10 @@ useEffect(() => {
         return;
       }
       const previewUrl = URL.createObjectURL(file);
-      console.log(`handleDrop for index ${index}: file=${file.name}, previewUrl=${previewUrl}, documents: ${form.getValues().documents.length}, timestamp=${Date.now()}`);
+      
       setPreviews((prev) => {
         const newPreviews = { ...prev, [index]: previewUrl };
-        console.log(`Updated previews after drop: ${JSON.stringify(newPreviews)}, documents: ${form.getValues().documents.length}, timestamp=${Date.now()}`);
+        
         return newPreviews;
       });
       onChange(file);
@@ -877,10 +867,10 @@ useEffect(() => {
   };
 
   const setPreview = (index, url) => {
-    console.log(`setPreview called for index ${index}: url=${url}, documents: ${form.getValues().documents.length}, timestamp=${Date.now()}`);
+    
     setPreviews((prev) => {
       const newPreviews = { ...prev, [index]: url };
-      console.log(`Updated previews after setPreview: ${JSON.stringify(newPreviews)}, documents: ${form.getValues().documents.length}, timestamp=${Date.now()}`);
+      
       return newPreviews;
     });
   };

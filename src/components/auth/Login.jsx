@@ -34,7 +34,7 @@ const Login = () => {
 
   useEffect(() => {
     if (error) {
-      console.log('Auth error:', error);
+      
       toast.error(error, {
         id: 'auth-error',
         duration: error.includes('Account setup incomplete') ? 8000 : 5000,

@@ -142,7 +142,7 @@ const EmployeeList = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useSelector((state) => state.auth);
 
-  console.log('reduxSelectors:', reduxSelectors);
+  
 
   const employeesState = useSelector(reduxSelectors.employees);
   const settingsState = useSelector(reduxSelectors.settings);
@@ -163,10 +163,10 @@ const EmployeeList = ({
   const { locations = [], loading: locationsLoading } = locationsData || {};
   const { allLocations = [] } = allLocationsData;
 
-  console.log('EmployeeList role:', role);
-  console.log('locationsData:', locationsData);
-  console.log('locations:', locations);
-  console.log('allLocations:', allLocations);
+  
+  
+  
+  
 
   const initialDepartment = searchParams.get("department") || "all";
   const initialStatus = searchParams.get("status") || "all";
@@ -274,7 +274,7 @@ const EmployeeList = ({
       dispatch(actions.fetchDepartments({ location: filterLocation === "all" ? undefined : filterLocation }))
         .unwrap()
         .catch((err) => {
-          console.error("Fetch departments error:", err);
+          
           toast.error(err.message || "Failed to fetch departments");
         });
     }
@@ -302,7 +302,7 @@ const EmployeeList = ({
     dispatch(actions.fetchEmployees(fetchParams))
       .unwrap()
       .catch((err) => {
-        console.error("Fetch employees error:", err);
+        
         toast.error(err.message || "Failed to fetch employees");
       });
 
@@ -979,10 +979,7 @@ const EmployeeList = ({
                     const isHighlighted = shouldHighlightEmployee(employee);
 
                     if (employee.paidLeaves?.carriedForward < 0) {
-                      console.warn(
-                        `Negative carriedForward for employee ${employee.employeeId}: ${employee.paidLeaves.carriedForward}`
-                      );
-                    }
+                                          }
 
                     return (
                       <TableRow

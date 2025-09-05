@@ -8,7 +8,7 @@ export const fetchLocations = createAsyncThunk(
       const response = await api.get('/superadmin/locations');
       return response.data;
     } catch (error) {
-      console.error('Fetch locations error:', error);
+      
       // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to fetch locations');
     }
@@ -27,7 +27,7 @@ export const fetchPaginatedLocations = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch paginated locations error:', error);
+      
       // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to fetch paginated locations');
     }
@@ -41,7 +41,7 @@ export const addLocation = createAsyncThunk(
       const response = await api.post('/superadmin/locations', { name, address, city, state });
       return response.data;
     } catch (error) {
-      console.error('Add location error:', error);
+      
       // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to add location');
     }
@@ -55,7 +55,7 @@ export const editLocation = createAsyncThunk(
       const response = await api.put(`/superadmin/locations/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Edit location error:', error);
+      
       // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to edit location');
     }
@@ -69,7 +69,7 @@ export const deleteLocation = createAsyncThunk(
       await api.delete(`/superadmin/locations/${id}`);
       return id;
     } catch (error) {
-      console.error('Delete location error:', error);
+      
       // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to delete location');
     }

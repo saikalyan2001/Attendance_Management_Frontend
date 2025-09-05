@@ -11,7 +11,7 @@ const SiteInchargeMarkAttendance = (props) => {
       locationId={props.locationId}
       // ✅ Fix the employee selector to return the correct data structure
       employeeSelector={(state) => {
-        console.log('🔍 Employee Selector State:', state.siteInchargeEmployee);
+        
         return {
           data: state.siteInchargeEmployee.employees || [], // Assuming employees are in this path
           loading: state.siteInchargeEmployee.loading,

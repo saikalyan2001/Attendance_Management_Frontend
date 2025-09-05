@@ -151,7 +151,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
 
   useEffect(() => {
     if (error) {
-      console.log('Error in Redux state:', error); // Debug log
+       // Debug log
       const userFriendlyErrorMessage =
         error === 'Failed to fetch settings'
           ? 'Could not load system settings. Please check your connection and try again.'
@@ -213,7 +213,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
       ].filter(field => form.getValues(field.checkbox));
 
       if (fieldsToUpdate.length === 0) {
-        console.log('No fields selected for update'); // Debug log
+         // Debug log
         toast.error('Select at least one setting to update by checking the boxes above', {
           id: 'no-selection-error',
           duration: 5000,
@@ -228,7 +228,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
           field,
           message: error.message,
         }));
-        console.log('Form validation errors:', errors); // Debug log
+         // Debug log
         const firstError = errors[0];
         if (firstError) {
           toast.error(firstError.message, {
@@ -248,7 +248,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
       if (form.getValues('updatePaidLeavesPerYear') && form.getValues('applyLeaveChanges')) {
         const token = localStorage.getItem('token');
         if (!token) {
-          console.log('No token found in localStorage'); // Debug log
+           // Debug log
           throw new Error('No token found in localStorage');
         }
 
@@ -258,7 +258,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
           },
         });
         const data = await response.json();
-        console.log('Employee count response:', data); // Debug log
+         // Debug log
 
         if (!response.ok) {
           throw new Error(data.message || 'Failed to fetch employee count');
@@ -270,7 +270,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
         await submitFields(fieldsToUpdate);
       }
     } catch (error) {
-      console.log('Update settings error:', error); // Debug log
+       // Debug log
       const userFriendlyErrorMessage =
         error.message === 'No token found in localStorage'
           ? 'Your session has expired. Please log in again.'
@@ -321,11 +321,11 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
           dispatch(updateEmployeeLeaves())
             .unwrap()
             .then((response) => {
-              console.log('Update employee leaves response:', response); // Debug log
+               // Debug log
               setEmployeeCount(response.employeeCount || 0);
             })
             .catch((err) => {
-              console.log('Update employee leaves error:', err); // Debug log
+               // Debug log
               const userFriendlyErrorMessage =
                 err.message === 'Settings not found'
                   ? 'System settings not found. Please contact support.'
@@ -344,7 +344,7 @@ const SettingsForm = ({ role, settingsSelector, fetchSettings, updateSettings, u
         }
       })
       .catch((err) => {
-        console.log('Update settings error:', err); // Debug log
+         // Debug log
         const userFriendlyErrorMessage =
           err.message === 'Settings not found'
             ? 'System settings not found. Please contact support.'

@@ -30,7 +30,7 @@ const AttendanceHistory = ({
   const [isTableOpen, setIsTableOpen] = useState(true);
 
   // Debug attendance prop
-  console.log('AttendanceHistory - attendance prop:', attendance);
+  
 
   const sortedAttendance = useMemo(() => {
     // Filter by employeeId

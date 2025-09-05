@@ -74,12 +74,6 @@ const SuperadminRegisterEmployee = () => {
     excelSectionRef,
   } = useEmployeeRegistration(hookProps);
 
-  console.log(
-    `SuperadminRegisterEmployee render: previews=${JSON.stringify(
-      previews
-    )}, timestamp=${Date.now()}`
-  );
-
   const renderSelectionScreen = () => (
     <div className="flex flex-col items-center space-y-6">
       <h3 className="text-lg sm:text-xl xl:text-2xl font-semibold text-body">

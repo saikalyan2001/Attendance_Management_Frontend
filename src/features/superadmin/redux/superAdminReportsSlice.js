@@ -10,11 +10,7 @@ export const fetchAttendanceReport = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
-        "Fetch attendance report error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance report"
       );
     }
@@ -30,11 +26,7 @@ export const fetchLeaveReport = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
-        "Fetch leave report error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to fetch leave report"
       );
     }
@@ -50,11 +42,7 @@ export const fetchSalaryReport = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
-        "Fetch salary report error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to fetch salary report"
       );
     }

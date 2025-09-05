@@ -19,11 +19,7 @@ export const markAttendance = createAsyncThunk(
         : attendance.map((rec) => rec._id);
       return { attendance, attendanceIds };
     } catch (error) {
-      console.error(
-        "Mark attendance error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message ||
           error.message ||
           "Failed to mark attendance"
@@ -36,11 +32,7 @@ export const bulkMarkAttendance = createAsyncThunk(
   "siteInchargeAttendance/bulkMarkAttendance",
   async ({ attendance, overwrite }, { rejectWithValue }) => {
     try {
-      console.log("Sending bulk attendance payload:", {
-        attendance,
-        overwrite,
-      });
-      if (!Array.isArray(attendance)) {
+            if (!Array.isArray(attendance)) {
         throw new Error("Attendance must be an array");
       }
       const controller = new AbortController();
@@ -64,11 +56,7 @@ export const bulkMarkAttendance = createAsyncThunk(
         attendanceIds,
       };
     } catch (error) {
-      console.error(
-        "Bulk mark attendance error:",
-        error.response?.data || error.message
-      );
-      if (error.name === "AbortError") {
+            if (error.name === "AbortError") {
         return rejectWithValue("Request timed out");
       }
       return rejectWithValue({
@@ -93,11 +81,7 @@ export const undoAttendance = createAsyncThunk(
       await api.delete("/siteincharge/attendance", { data: { attendanceIds } });
       return attendanceIds;
     } catch (error) {
-      console.error(
-        "Undo attendance error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message ||
           error.message ||
           "Failed to undo attendance"
@@ -114,7 +98,7 @@ export const fetchAttendance = createAsyncThunk(
       if (cleanedFilters.status === "all") {
         delete cleanedFilters.status;
       }
-      console.log("fetchAttendance payload:", { ...cleanedFilters, page, limit });
+      
       const response = await api.get("/siteincharge/attendance", {
         params: { ...cleanedFilters, page, limit },
       });
@@ -123,7 +107,7 @@ export const fetchAttendance = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-      console.error("Fetch attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance data"
       );
@@ -143,7 +127,7 @@ export const fetchMonthlyAttendance = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-      console.error("Fetch monthly attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly attendance"
       );
@@ -158,15 +142,7 @@ export const requestAttendanceEdit = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      console.log("Requesting attendance edit:", {
-        employeeId,
-        location,
-        date,
-        currentStatus,
-        newStatus,
-        reason,
-      });
-      const response = await api.post("/siteincharge/attendance/request-edit", {
+            const response = await api.post("/siteincharge/attendance/request-edit", {
         employeeId,
         location,
         date,
@@ -176,11 +152,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
-        "Request attendance edit error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to request attendance edit"
       );
     }
@@ -199,11 +171,7 @@ export const fetchAttendanceEditRequests = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-      console.error(
-        'Fetch attendance edit requests error:',
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message ||
           'Failed to fetch attendance edit requests'
       );
@@ -223,11 +191,7 @@ export const calculateSalaryImpact = createAsyncThunk(
       );
       return response.data.salaryCalculations || [];
     } catch (error) {
-      console.error(
-        "Calculate salary impact error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to calculate salary impact"
       );
     }

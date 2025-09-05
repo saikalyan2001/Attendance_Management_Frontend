@@ -11,7 +11,7 @@ export const markAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Mark attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data || { message: "Failed to mark attendance" }
       );
@@ -29,7 +29,7 @@ export const bulkMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Bulk mark attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data || { message: "Failed to mark attendance in bulk" }
       );
@@ -44,7 +44,7 @@ export const editAttendance = createAsyncThunk(
       const response = await api.put(`/admin/attendance/${id}`, { status });
       return response.data;
     } catch (error) {
-      console.error("Edit attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to edit attendance"
       );
@@ -61,7 +61,7 @@ export const fetchAttendanceRequests = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Fetch attendance requests error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance requests"
       );
@@ -79,7 +79,7 @@ export const handleAttendanceRequest = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Handle attendance request error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to handle attendance request"
       );
@@ -98,7 +98,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Request attendance edit error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to request attendance edit"
       );
@@ -123,7 +123,7 @@ export const exportAttendance = createAsyncThunk(
       link.remove();
       return true;
     } catch (error) {
-      console.error("Export attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to export attendance"
       );
@@ -140,7 +140,7 @@ export const undoMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Undo attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to undo attendance"
       );
@@ -155,10 +155,10 @@ export const fetchAttendance = createAsyncThunk(
       const response = await api.get("/admin/attendance", {
         params: { month, year, location, date, status, page, limit },
       });
-      console.log("fetchAttendance response:", response.data); // Debug log
+       // Debug log
       return response.data;
     } catch (error) {
-      console.error("Fetch attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance"
       );
@@ -173,10 +173,10 @@ export const fetchMonthlyAttendance = createAsyncThunk(
       const response = await api.get("/admin/attendance", {
         params: { month, year, location, page, limit },
       });
-      console.log("fetchMonthlyAttendance response:", response.data);
+      
       return response.data;
     } catch (error) {
-      console.error("Fetch monthly attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly attendance"
       );
@@ -252,7 +252,7 @@ const attendanceSlice = createSlice({
           totalItems: 0,
           itemsPerPage: 10,
         };
-        console.log("Updated monthlyPagination:", state.monthlyPagination); // Debug log
+         // Debug log
       })
       .addCase(fetchMonthlyAttendance.rejected, (state, action) => {
         state.loading = false;

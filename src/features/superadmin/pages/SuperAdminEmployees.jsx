@@ -60,7 +60,7 @@ const SuperAdminEmployees = () => {
         navigate("/login");
       });
     } else if (!authLoading && (!user || user.role !== "super_admin")) {
-      console.log('Redirecting to /login: Invalid user or role', { user });
+      
       navigate("/login");
     }
   }, [user, authLoading, isLoading, dispatch, navigate]);

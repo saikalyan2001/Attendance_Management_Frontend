@@ -8,7 +8,7 @@ const SiteInchargeTransferEmployeeDialog = ({ open, onOpenChange, employeeId, al
     locations: () => null, // Locations provided via allLocations prop
   };
 
-  console.log("allLocations", allLocations);
+  
   
 
   const actions = {

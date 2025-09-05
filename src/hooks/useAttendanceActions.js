@@ -118,7 +118,7 @@ const fetchInitialData = useCallback(async (params) => {
         try {
           await dispatch(actions.fetchAllEmployeesByLocation({ location }));
         } catch (error) {
-          console.warn("Failed to fetch all employees by location, using regular employee list:", error);
+          
           // Continue with regular employee list if this fails
         }
       }
@@ -135,7 +135,7 @@ const fetchInitialData = useCallback(async (params) => {
       }
     }
   } catch (error) {
-    console.error('Failed to fetch initial data:', error);
+    
     // Don't throw error, let component handle gracefully
   }
 }, [dispatch, actions, role]);

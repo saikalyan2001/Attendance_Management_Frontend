@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  // baseURL: 'http://localhost:5000/api',
+  baseURL: 'https://attendance-management-backend-1-roc6.onrender.com/api',
   timeout: 10000, // 10-second timeout
 });
 
@@ -22,7 +23,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API response error:', error.message);
+    
 
     // Timeout handling
     if (error.code === 'ECONNABORTED') {

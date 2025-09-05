@@ -47,7 +47,7 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
 
   const handleTimeout = useCallback(() => {
     setLoadingState((prev) => ({ ...prev, hasTimedOut: true }));
-    console.warn('Route loading timed out');
+    
   }, []);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
     return () => clearTimeout(delayTimer);
   }, [isLoading]);
 
-  console.log('ProtectedRoute: user=', user, 'error=', error, 'isLoading=', isLoading); // Debug: Log state
+   // Debug: Log state
 
   if (isLoading || loadingState.isDelayLoading || loadingState.shouldShowSpinner) {
     const message =
@@ -93,7 +93,7 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
   }
 
   if (!user || !user.role || !allowedRoles.includes(user.role)) {
-    console.log('ProtectedRoute: Redirecting to /login due to invalid user or role'); // Debug: Log redirect
+     // Debug: Log redirect
     return (
       <Navigate
         to="/login"

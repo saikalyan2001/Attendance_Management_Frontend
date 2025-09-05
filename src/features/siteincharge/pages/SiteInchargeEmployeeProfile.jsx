@@ -167,7 +167,7 @@ const SiteInchargeEmployeeProfile = () => {
       });
       setEditDialogOpen(false);
     } catch (err) {
-      console.error('Submit error:', err);
+      
       toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
         duration: autoDismissDuration,
@@ -203,16 +203,7 @@ const SiteInchargeEmployeeProfile = () => {
   };
 
   useEffect(() => {
-    console.log('SiteInchargeEmployeeProfile - Dispatching fetchEmployeeAttendance with:', {
-      employeeId: id,
-      month: monthFilter,
-      year: yearFilter,
-      page: attendanceCurrentPage,
-      limit: 10,
-      sortField,
-      sortOrder,
-    });
-    dispatch(getEmployee({
+        dispatch(getEmployee({
       id,
       documentsPage: documentsCurrentPage,
       documentsLimit: 10,

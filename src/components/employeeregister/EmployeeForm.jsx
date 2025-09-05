@@ -38,13 +38,6 @@ const EmployeeForm = ({
   disableLocationField = false, // Default to false, true for siteincharge
   locationName = "No location", // Default location name
 }) => {
-  console.log(
-    `EmployeeForm render: previews=${JSON.stringify(previews)}, documentFields=${
-      documentFields.length
-    }, locations=${JSON.stringify(locations)}, showLocationField=${showLocationField}, disableLocationField=${disableLocationField}, locationName=${locationName}, timestamp=${
-      Date.now()
-    }`
-  );
 
   return (
     <Form {...form}>

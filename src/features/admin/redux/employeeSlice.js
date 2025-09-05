@@ -29,12 +29,12 @@ export const fetchEmployees = createAsyncThunk(
       if (page) params.page = page;
       if (limit) params.limit = limit;
       
-      console.log("API params being sent:", params); // For debugging
+       // For debugging
       
       const response = await api.get("/admin/employees", { params });
       return response.data;
     } catch (error) {
-      console.error("Fetch employees error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employees"
       );
@@ -53,7 +53,7 @@ export const fetchMonthlyLeaves = createAsyncThunk(
       const response = await api.get("/admin/employees/leaves", { params });
       return response.data;
     } catch (error) {
-      console.error("Fetch monthly leaves error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly leaves"
       );
@@ -67,24 +67,19 @@ export const fetchEmployeeById = createAsyncThunk(
     try {
       const employeeId = typeof arg === 'string' ? arg : arg.id;
       if (!employeeId) {
-        console.error("No employee ID provided:", arg);
+        
         throw new Error("No employee ID provided");
       }
       const id = String(employeeId);
       if (!/^[0-9a-fA-F]{24}$/.test(id)) {
-        console.error("Invalid employee ID format:", id);
+        
         throw new Error("Invalid employee ID format");
       }
-      console.log("Fetching employee with validated ID:", id);
+      
       const response = await api.get(`/admin/employees/${id}`);
       return response.data;
     } catch (error) {
-      console.error("Fetch employee by ID error:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data || { message: error.message || "Failed to fetch employee" }
       );
     }
@@ -100,7 +95,7 @@ export const fetchEmployeeDocuments = createAsyncThunk(
       const response = await api.get(`/admin/employees/${id}/documents`, { params });
       return response.data;
     } catch (error) {
-      console.error("Fetch employee documents error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee documents"
       );
@@ -130,7 +125,7 @@ export const registerEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Register employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data || { 
           message: error.message || "Failed to register employee" 
@@ -147,7 +142,7 @@ export const updateEmployee = createAsyncThunk(
       const response = await api.put(`/admin/employees/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error("Update employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to update employee"
       );
@@ -166,7 +161,7 @@ export const updateEmployeeAdvance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Update employee advance error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to update employee advance"
       );
@@ -181,7 +176,7 @@ export const deactivateEmployee = createAsyncThunk(
       const response = await api.put(`/admin/employees/${id}/deactivate`);
       return { id, message: response.data.message };
     } catch (error) {
-      console.error("Deactivate employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to deactivate employee"
       );
@@ -199,7 +194,7 @@ export const transferEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Transfer employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to transfer employee"
       );
@@ -216,7 +211,7 @@ export const rejoinEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Rejoin employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to rejoin employee"
       );
@@ -231,7 +226,7 @@ export const getEmployeeHistory = createAsyncThunk(
       const response = await api.get(`/admin/employees/${id}/history`);
       return response.data;
     } catch (error) {
-      console.error("Get employee history error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee history"
       );
@@ -259,11 +254,7 @@ export const addEmployeeDocuments = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-      console.error(
-        "Add employee documents error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data || { message: "Failed to add employee documents" }
       );
     }
@@ -285,11 +276,7 @@ export const fetchEmployeeAttendance = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-      console.error(
-        "Fetch employee attendance error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee attendance"
       );
     }
@@ -303,7 +290,7 @@ export const fetchSettings = createAsyncThunk(
       const response = await api.get("/admin/employees/settings");
       return response.data;
     } catch (error) {
-      console.error("Fetch settings error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch settings"
       );
@@ -323,11 +310,7 @@ export const fetchEmployeeAdvances = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error(
-        "Fetch employee advances error:",
-        error.response?.data || error.message
-      );
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee advances"
       );
     }
@@ -339,28 +322,17 @@ export const registerEmployeesFromExcel = createAsyncThunk(
   async ({ excelFile }, { rejectWithValue }) => {
     try {
       if (!(excelFile instanceof File)) {
-        console.error("Invalid excelFile:", excelFile);
+        
         throw new Error("No valid Excel file provided");
       }
-      console.log("Sending Excel file:", {
-        name: excelFile.name,
-        type: excelFile.type,
-        size: excelFile.size,
-        lastModified: excelFile.lastModified,
-      });
-      const formData = new FormData();
+            const formData = new FormData();
       formData.append("excelFile", excelFile, excelFile.name);
       const response = await api.post("/admin/employees/excel", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       return response.data;
     } catch (error) {
-      console.error("Register employees from Excel error:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data || { message: error.message || "Failed to register employees from Excel" }
       );
     }
@@ -376,7 +348,7 @@ export const fetchDepartments = createAsyncThunk(
       const response = await api.get("/admin/employees/departments", { params });
       return response.data.departments;
     } catch (error) {
-      console.error("Fetch departments error:", error.response?.data || error.message);
+      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch departments"
       );
@@ -388,12 +360,12 @@ export const deleteEmployee = createAsyncThunk(
   "employees/deleteEmployee",
   async (id, { rejectWithValue, dispatch }) => {
     try {
-      console.log("Deleting employee with ID:", id);
+      
       const response = await api.delete(`/admin/employees/${id}`);
       await dispatch(fetchLocations()).unwrap();
       return { id, message: response.data.message };
     } catch (error) {
-      console.error("Delete employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to delete employee");
     }
   }
@@ -403,11 +375,11 @@ export const restoreEmployee = createAsyncThunk(
   "employees/restoreEmployee",
   async (id, { rejectWithValue }) => {
     try {
-      console.log("Restoring employee with ID:", id);
+      
       const response = await api.put(`/admin/employees/${id}/restore`);
       return response.data;
     } catch (error) {
-      console.error("Restore employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to restore employee");
     }
   }
@@ -854,7 +826,7 @@ export const employeesSlice = createSlice({
         state.error = action.payload;
         state.errorType = "excel";
         state.success = false;
-        console.log("registerEmployeesFromExcel rejected:", action.payload);
+        
       })
       .addCase(fetchDepartments.pending, (state) => {
         state.loading = true;

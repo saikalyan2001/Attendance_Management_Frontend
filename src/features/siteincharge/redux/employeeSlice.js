@@ -26,7 +26,7 @@ export const fetchEmployees = createAsyncThunk(
       query.set("page", page);
       query.set("limit", limit); // ✅ Add limit parameter
 
-      console.log("Site incharge API params:", Object.fromEntries(query)); // For debugging
+       // For debugging
 
       const response = await api.get(`/siteincharge/employees?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -34,7 +34,7 @@ export const fetchEmployees = createAsyncThunk(
 
       return response.data;
     } catch (error) {
-      console.error("Fetch employees error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to fetch employees");
     }
   }
@@ -67,7 +67,7 @@ export const fetchAllEmployees = createAsyncThunk(
       if (search) query.set("search", search);
       query.set("limit", 1000);
 
-      console.log("Fetch all employees params:", Object.fromEntries(query)); // For debugging
+       // For debugging
 
       const response = await api.get(`/siteincharge/employees?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -75,7 +75,7 @@ export const fetchAllEmployees = createAsyncThunk(
 
       return response.data.employees || [];
     } catch (error) {
-      console.error("Fetch all employees error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to fetch all employees");
     }
   }
@@ -102,7 +102,7 @@ export const fetchAllLocations = createAsyncThunk(
       const locations = response.data || [];
       const invalidLocations = locations.filter(loc => !loc._id || !/^[0-9a-fA-F]{24}$/.test(loc._id));
       if (invalidLocations.length > 0) {
-        console.warn('Invalid location IDs found:', invalidLocations);
+        
       }
       return locations;
     } catch (error) {
@@ -192,7 +192,7 @@ export const transferEmployee = createAsyncThunk(
       const response = await api.put(`/siteincharge/employees/${id}/transfer`, { location });
       return response.data;
     } catch (error) {
-      console.warn('Transfer employee error:', error.response?.data);
+      
       return rejectWithValue(error.response?.data?.message || 'Failed to transfer employee');
     }
   }
@@ -233,14 +233,14 @@ export const fetchEmployeeAttendance = createAsyncThunk(
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
 
-      console.log('fetchEmployeeAttendance response:', response.data);
+      
 
       return {
         attendance: response.data.attendance || [],
         pagination: response.data.pagination || { total: 0, page: 1, limit, totalPages: 1 },
       };
     } catch (error) {
-      console.error('Fetch attendance error:', error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch employee attendance');
     }
   }
@@ -291,7 +291,7 @@ export const updateEmployeeAdvance = createAsyncThunk(
       const response = await api.put(`/siteincharge/employees/${id}/advance`, { advance, month, year });
       return response.data;
     } catch (error) {
-      console.warn('Update employee advance error:', error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || 'Failed to update employee advance');
     }
   }
@@ -305,16 +305,10 @@ export const importEmployees = createAsyncThunk(
       const token = state.auth.token;
 
       if (!(excelFile instanceof File)) {
-        console.error('Invalid excelFile:', excelFile);
+        
         throw new Error('No valid Excel file provided');
       }
-      console.log('Sending Excel file:', {
-        name: excelFile.name,
-        type: excelFile.type,
-        size: excelFile.size,
-        lastModified: excelFile.lastModified,
-      });
-      
+            
       const formData = new FormData();
       formData.append('excelFile', excelFile);
       
@@ -326,12 +320,7 @@ export const importEmployees = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Import employees from Excel error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      return rejectWithValue(
+            return rejectWithValue(
         error.response?.data || { message: error.message || 'Failed to import employees from Excel' }
       );
     }
@@ -342,13 +331,13 @@ export const deleteEmployee = createAsyncThunk(
   'siteInchargeEmployee/deleteEmployee',
   async (id, { rejectWithValue }) => {
     try {
-      console.log("Deleting employee with ID:", id);
+      
       const response = await api.delete(`/siteincharge/employees/${id}/delete`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       return { id, message: response.data.message };
     } catch (error) {
-      console.error("Delete employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to delete employee");
     }
   }
@@ -358,13 +347,13 @@ export const restoreEmployee = createAsyncThunk(
   'siteInchargeEmployee/restoreEmployee',
   async (id, { rejectWithValue }) => {
     try {
-      console.log("Restoring employee with ID:", id);
+      
       const response = await api.put(`/siteincharge/employees/${id}/restore`, {}, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       return response.data;
     } catch (error) {
-      console.error("Restore employee error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to restore employee");
     }
   }
@@ -420,12 +409,12 @@ const employeeSlice = createSlice({
           limit: 10,
           totalPages: 1,
         };
-        console.log('Fetched employees:', state.employees, 'Pagination:', state.pagination);
+        
       })
       .addCase(fetchEmployees.rejected, (state, action) => { 
         state.loading = false; 
         state.error = action.payload; 
-        console.error('Fetch employees error:', action.payload);
+        
       })
       .addCase(fetchAllEmployees.pending, (state) => {
         state.loading = true;
@@ -434,12 +423,12 @@ const employeeSlice = createSlice({
       .addCase(fetchAllEmployees.fulfilled, (state, action) => { 
         state.loading = false; 
         state.allEmployees = (action.payload || []).filter(emp => emp && typeof emp === 'object' && emp._id); 
-        console.log('Fetched all employees:', state.allEmployees);
+        
       })
       .addCase(fetchAllEmployees.rejected, (state, action) => { 
         state.loading = false; 
         state.error = action.payload; 
-        console.error('Fetch all employees error:', action.payload);
+        
       })
       .addCase(fetchLocations.pending, (state) => {
         state.loading = true;
@@ -577,14 +566,14 @@ const employeeSlice = createSlice({
         state.loading = false;
         state.attendance = action.payload.attendance || [];
         state.attendancePagination = action.payload.pagination;
-        console.log('fetchEmployeeAttendance fulfilled:', state.attendance, state.attendancePagination);
+        
       })
       .addCase(fetchEmployeeAttendance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.attendance = [];
         state.attendancePagination = { total: 0, page: 1, limit: 10, totalPages: 1 };
-        console.error('fetchEmployeeAttendance rejected:', action.payload);
+        
       })
       .addCase(deactivateEmployee.pending, (state) => {
         state.loading = true;
@@ -674,19 +663,14 @@ const employeeSlice = createSlice({
         state.employees = [...state.employees, ...newEmployees];
         state.allEmployees = [...state.allEmployees, ...newEmployees];
         state.pagination.total += newEmployees.length;
-        console.log('importEmployees fulfilled:', {
-          newEmployees,
-          total: state.pagination.total,
-          successType: state.successType,
-        });
-      })
+              })
       .addCase(importEmployees.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.errorType = "excel";
         state.success = false;
         state.successType = null;
-        console.log('importEmployees rejected:', action.payload);
+        
       })
       .addCase(deleteEmployee.pending, (state) => {
         state.loading = true;

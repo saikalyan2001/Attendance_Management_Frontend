@@ -15,10 +15,10 @@ export const fetchAttendance = createAsyncThunk(
       // When location === "all", SuperAdmin fetches all attendance without location filter
       
       const response = await api.get("/superadmin/attendance", { params });
-      console.log("SuperAdmin fetchAttendance response:", response.data);
+      
       return response.data;
     } catch (error) {
-      console.error("Fetch attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to fetch attendance");
     }
   }
@@ -34,10 +34,10 @@ export const fetchMonthlyAttendance = createAsyncThunk(
         params.location = location;
       }
       const response = await api.get("/superadmin/attendance", { params });
-      console.log("fetchMonthlyAttendance response:", response.data);
+      
       return response.data;
     } catch (error) {
-      console.error("Fetch monthly attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to fetch monthly attendance");
     }
   }
@@ -67,7 +67,7 @@ export const bulkMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Bulk mark attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data || { message: "Failed to mark attendance in bulk" });
     }
   }
@@ -80,7 +80,7 @@ export const markAttendance = createAsyncThunk(
       const response = await api.post("/superadmin/attendance", { attendance, overwrite });
       return response.data;
     } catch (error) {
-      console.error("Mark attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data || { message: "Failed to mark attendance" });
     }
   }
@@ -93,7 +93,7 @@ export const editAttendance = createAsyncThunk(
       const response = await api.put(`/superadmin/attendance/${id}`, { status });
       return response.data;
     } catch (error) {
-      console.error("Edit attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to edit attendance");
     }
   }
@@ -106,7 +106,7 @@ export const fetchAttendanceRequests = createAsyncThunk(
       const response = await api.get("/superadmin/attendance/requests", { params: filters });
       return response.data;
     } catch (error) {
-      console.error("Fetch attendance requests error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to fetch attendance requests");
     }
   }
@@ -119,7 +119,7 @@ export const handleAttendanceRequest = createAsyncThunk(
       const response = await api.put(`/superadmin/attendance/requests/${id}`, { status, date });
       return response.data;
     } catch (error) {
-      console.error("Handle attendance request error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to handle attendance request");
     }
   }
@@ -136,7 +136,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error("Request attendance edit error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to request attendance edit");
     }
   }
@@ -163,7 +163,7 @@ export const exportAttendance = createAsyncThunk(
       link.remove();
       return true;
     } catch (error) {
-      console.error("Export attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to export attendance");
     }
   }
@@ -176,7 +176,7 @@ export const undoMarkAttendance = createAsyncThunk(
       const response = await api.post("/superadmin/attendance/undo", { attendanceIds });
       return response.data;
     } catch (error) {
-      console.error("Undo attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to undo attendance");
     }
   }
@@ -190,7 +190,7 @@ export const overrideAttendance = createAsyncThunk(
       const response = await api.put(`/superadmin/attendance/override/${id}`, { status, reason });
       return response.data;
     } catch (error) {
-      console.error("Override attendance error:", error.response?.data || error.message);
+      
       return rejectWithValue(error.response?.data?.message || "Failed to override attendance");
     }
   }
@@ -253,7 +253,7 @@ const superAdminAttendanceSlice = createSlice({
           totalItems: 0,
           itemsPerPage: 5,
         };
-        console.log("Updated monthlyPagination:", state.monthlyPagination);
+        
       })
       .addCase(fetchMonthlyAttendance.rejected, (state, action) => {
         state.loading = false;

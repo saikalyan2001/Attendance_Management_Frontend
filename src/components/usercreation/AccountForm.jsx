@@ -158,7 +158,7 @@ const AccountForm = ({
       }
       await form.handleSubmit(handleSubmit)();
     } catch (error) {
-      console.error('Save click error:', error);
+      
       toast.error('Unable to submit the form. Please try again.', {
         id: 'submit-error',
         duration: 6000,

@@ -61,7 +61,7 @@ const LocationForm = ({
     try {
       await onSubmit(data);
     } catch (err) {
-      console.error("Form submission error:", err);
+      
     }
   };
 

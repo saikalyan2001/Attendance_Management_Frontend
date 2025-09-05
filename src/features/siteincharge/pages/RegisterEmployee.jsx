@@ -17,13 +17,13 @@ const SiteInchargeRegisterEmployee = () => {
   const documentsSectionRef = useRef(null);
 
   // Debug: Log navigate, user, and location
-  console.log('navigate in SiteInchargeRegisterEmployee:', navigate);
-  console.log('user in SiteInchargeRegisterEmployee:', user);
-  console.log('SiteInchargeRegisterEmployee render: locationId=', locationId, 'locationName=', user?.locations?.[0]?.name);
+  
+  
+  
 
   // Redirect to login if user is not authenticated
   if (!user || !locationId) {
-    console.log('Redirecting to login: user or locationId missing');
+    
     navigate('/login');
     return null;
   }
@@ -166,7 +166,7 @@ const SiteInchargeRegisterEmployee = () => {
         }
         return { isValid: true };
       } catch (error) {
-        console.error('Excel validation error:', error);
+        
         return { isValid: false, error: `Failed to validate Excel file: ${error.message}` };
       }
     },

@@ -36,7 +36,7 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.log('ErrorBoundary caught an error:', error, errorInfo);
+    
   }
 
   render() {
@@ -69,31 +69,31 @@ const SuperAdminDashboard = () => {
 
   useEffect(() => {
     if (!user || user.role !== 'super_admin') {
-      console.log('Unauthorized access attempt:', { user });
+      
       navigate('/login');
       return;
     }
     const dateString = format(selectedDate, 'yyyy-MM-dd');
-    console.log('Fetching super admin dashboard data for date:', dateString, 'user:', user.email);
+    
     dispatch(fetchSuperAdminDashboard({ date: selectedDate }))
       .unwrap()
       .then((data) => {
-        console.log('Received super admin dashboard data:', data);
+        
       })
       .catch((err) => {
-        console.log('Fetch super admin dashboard error:', err);
+        
         toast.error(err);
       });
   }, [dispatch, navigate, selectedDate]);
 
   useEffect(() => {
     if (error) {
-      console.log('Error state triggered:', error);
+      
       toast.error(error, {
         action: {
           label: 'Retry',
           onClick: () => {
-            console.log('Retrying fetch for date:', format(selectedDate, 'yyyy-MM-dd'));
+            
             dispatch(fetchSuperAdminDashboard({ date: selectedDate }))
               .unwrap()
               .catch((err) => toast.error(err));
@@ -105,7 +105,7 @@ const SuperAdminDashboard = () => {
   }, [error, dispatch, selectedDate]);
 
   const handleLogout = () => {
-    console.log('Initiating logout for user:', user?.email);
+    
     dispatch(logout())
       .unwrap()
       .then(() => {
@@ -116,11 +116,11 @@ const SuperAdminDashboard = () => {
   };
 
   const handleRefresh = () => {
-    console.log('Refetching for date:', format(selectedDate, 'yyyy-MM-dd'));
+    
     dispatch(fetchSuperAdminDashboard({ date: selectedDate }))
       .unwrap()
       .then((data) => {
-        console.log('Refreshed super admin dashboard data:', data);
+        
         toast.success('Data refreshed successfully');
       })
       .catch((err) => toast.error(err));
@@ -155,7 +155,7 @@ const SuperAdminDashboard = () => {
       toast.error('No recent user activity data to export');
       return [];
     }
-    console.log('Exporting CSV with data:', filteredActivity);
+    
     return filteredActivity.map((record) => ({
       User: `${record.user?.name || 'Unknown'} (${record.user?.email || 'N/A'})`,
       Role: record.user?.role || 'N/A',
@@ -168,7 +168,7 @@ const SuperAdminDashboard = () => {
     if (date) {
       const timeZone = 'Asia/Kolkata';
       const zonedDate = toZonedTime(date, timeZone);
-      console.log('Selected date:', date, 'Zoned date:', zonedDate);
+      
       setSelectedDate(zonedDate);
       setIsCalendarOpen(false);
       setCurrentPage(1);
@@ -177,7 +177,7 @@ const SuperAdminDashboard = () => {
 
   const filteredActivity = useMemo(() => {
     let result = dashboardData?.recentActivity || [];
-    console.log('Raw recentActivity:', result);
+    
     if (searchQuery) {
       result = result.filter(
         (record) =>
@@ -188,7 +188,7 @@ const SuperAdminDashboard = () => {
     if (roleFilter !== 'all') {
       result = result.filter((record) => record.user?.role === roleFilter);
     }
-    console.log('Filtered Activity for day', format(selectedDate, 'yyyy-MM-dd'), ':', result);
+    
     return result;
   }, [dashboardData, searchQuery, roleFilter, selectedDate]);
 
@@ -208,7 +208,7 @@ const SuperAdminDashboard = () => {
       { name: 'Admins', value: counts.admin, fill: 'rgb(var(--color-green))' },
       { name: 'Site Incharges', value: counts.siteincharge, fill: 'rgb(var(--color-accent))' },
     ];
-    console.log('Chart Data:', data);
+    
     return data;
   }, [filteredActivity]);
 

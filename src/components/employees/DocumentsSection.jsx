@@ -42,7 +42,7 @@ const getFileIcon = (fileName) => {
 // Normalize file system path to URL path
 const normalizeDocPath = (docPath) => {
   if (!docPath || typeof docPath !== 'string' || docPath.trim() === '') {
-    console.warn('Invalid or missing document path:', docPath);
+    
     return null;
   }
   let normalized = docPath.replace(/\\/g, '/');
@@ -97,7 +97,7 @@ const formatUploadedAt = (uploadedAt) => {
   try {
     return format(new Date(uploadedAt), 'MMM dd, yyyy, h:mm a');
   } catch (err) {
-    console.warn('Failed to format uploadedAt:', uploadedAt, err);
+    
     return 'Unknown';
   }
 };
@@ -300,7 +300,7 @@ const DocumentsSection = ({
       }
       
     } catch (err) {
-      console.error('Submit error:', err);
+      
       toast.dismiss();
       const errorMessage = err?.message || 'Failed to upload documents';
       toast.error(errorMessage, {
@@ -354,7 +354,7 @@ const DocumentsSection = ({
 
       await uploadForm.handleSubmit(handleDocumentSubmit)();
     } catch (error) {
-      console.error('handleDocumentSaveClick error:', error);
+      
       toast.dismiss();
       toast.error('Error submitting form, please try again', {
         id: `form-submit-error-${Date.now()}`,
@@ -367,7 +367,7 @@ const DocumentsSection = ({
 
   const handlePreviewDocument = (file) => {
     if (!file) {
-      console.error('No file provided for preview');
+      
       toast.error('No file selected for preview', {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -400,7 +400,7 @@ const DocumentsSection = ({
         });
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (err) {
-        console.error('Preview error:', err);
+        
         toast.dismiss();
         toast.error('Failed to open document for preview', {
           id: 'preview-error',
@@ -410,7 +410,7 @@ const DocumentsSection = ({
         });
       }
     } else {
-      console.error('Invalid file object:', file);
+      
       toast.dismiss();
       toast.error('Invalid file format for preview', {
         id: 'preview-error',
@@ -447,7 +447,7 @@ const DocumentsSection = ({
       setPreviewDocument(file);
       handlePreviewDocument(file);
     } catch (err) {
-      console.error('Preview error:', err);
+      
       toast.error(`Failed to fetch document for preview: ${err.message}`, {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -505,7 +505,7 @@ const DocumentsSection = ({
         style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
       });
     } catch (err) {
-      console.error('Download error:', err);
+      
       toast.error(`Failed to download document: ${err.message}`, {
         id: 'download-error',
         duration: autoDismissDuration,
@@ -1102,7 +1102,7 @@ const DocumentsSection = ({
                 alt={`Preview of ${previewDocument.name}`}
                 className="max-w-full max-h-[60vh] object-contain rounded-md"
                 onError={(e) => {
-                  console.error('Image failed to load:', previewUrl);
+                  
                   toast.error('Failed to load image preview', {
                     id: 'image-load-error',
                     duration: autoDismissDuration,

@@ -76,13 +76,13 @@ const uploadDocumentSchema = z.object({
 // Format uploadedAt timestamp
 const formatUploadedAt = (uploadedAt) => {
   if (!uploadedAt || typeof uploadedAt !== 'string') {
-    console.warn('Invalid uploadedAt:', uploadedAt);
+    
     return 'Unknown';
   }
   try {
     return format(new Date(uploadedAt), 'MMM dd, yyyy, h:mm a');
   } catch (err) {
-    console.warn('Failed to format uploadedAt:', uploadedAt, err);
+    
     return 'Unknown';
   }
 };
@@ -123,7 +123,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
     if (!searchQuery) return documents;
     return documents.filter((doc) => {
       if (!doc.name || typeof doc.name !== 'string') {
-        console.warn('Invalid doc.name in filteredDocuments:', doc);
+        
         return false;
       }
       return doc.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -134,7 +134,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
   const sortedDocuments = useMemo(() => {
     if (!filteredDocuments || !Array.isArray(filteredDocuments)) return [];
 
-    console.log('Total documents:', documents?.length, 'Filtered documents:', filteredDocuments.length);
+    
 
     return [...filteredDocuments].sort((a, b) => {
       let aValue, bValue;
@@ -163,12 +163,12 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
   const handlePageChange = (page) => {
     if (page >= 1 && page <= documentsPagination?.totalPages) {
       setDocumentsCurrentPage(page);
-      console.log('Page changed to:', page);
+      
     }
   };
 
   useEffect(() => {
-    console.log('isLoading:', isLoading, 'isTableOpen:', isTableOpen);
+    
     return () => {
       Object.values(previewUrls).forEach((url) => {
         if (url) URL.revokeObjectURL(url);
@@ -241,7 +241,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
       setRemovingIndices([]);
       setDocumentsCurrentPage(1); // Reset to first page after upload
     } catch (err) {
-      console.error('Upload error:', err);
+      
       toast.dismiss();
       const parsedError = parseServerError(err);
       setServerError(parsedError);
@@ -280,7 +280,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
       await uploadForm.trigger();
       setUploadValidationTriggered(true);
     } catch (error) {
-      console.error('Form submission error:', error);
+      
       toast.error('Error submitting form, please try again', {
         id: 'upload-document-form-error',
         duration: autoDismissDuration,
@@ -317,7 +317,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
         setTimeout(() => URL.revokeObjectURL(previewUrl), 1000);
       }
     } catch (err) {
-      console.error('Preview error:', err);
+      
       toast.error('Failed to open document for preview', {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -350,7 +350,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
       const file = new File([blob], docName, { type: blob.type });
       handlePreviewDocument(file);
     } catch (err) {
-      console.error('Fetch document error:', err);
+      
       toast.error(`Failed to fetch document for preview: ${err.message}`, {
         id: 'fetch-document-error',
         duration: autoDismissDuration,
@@ -395,7 +395,7 @@ const Documents = ({ employeeId, documents, documentsPagination, setDocumentsCur
         style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
       });
     } catch (err) {
-      console.error('Download error:', err);
+      
       toast.error(`Failed to download document: ${err.message}`, {
         id: 'download-document-error',
         duration: autoDismissDuration,

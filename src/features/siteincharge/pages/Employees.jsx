@@ -32,15 +32,15 @@ const SiteInchargeEmployees = () => {
     // Only fetchMe if user is not already loaded
     if (!user && !authLoading && !isLoading) {
       dispatch(fetchMe()).unwrap().catch((error) => {
-        console.log('fetchMe failed, redirecting to /login:', error);
+        
         navigate("/login");
       });
     } else if (!authLoading && !isLoading) {
       if (!user || user.role !== "siteincharge") {
-        console.log('Redirecting to /login: Invalid user or role', { user });
+        
         navigate("/login");
       } else if (!user?.locations?.length) {
-        console.log('Redirecting to /siteincharge/dashboard: No locations assigned', { user });
+        
         navigate("/siteincharge/dashboard");
       }
     }

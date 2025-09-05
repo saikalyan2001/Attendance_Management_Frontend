@@ -9,14 +9,14 @@ export const fetchSuperAdminDashboard = createAsyncThunk(
     try {
       const timeZone = 'Asia/Kolkata';
       const dateString = date ? format(toZonedTime(date, timeZone), 'yyyy-MM-dd') : format(toZonedTime(new Date(), timeZone), 'yyyy-MM-dd');
-      console.log('Making super admin dashboard API call for date:', dateString);
+      
       const response = await api.get('/superadmin/dashboard', {
         params: { date: dateString },
       });
-      console.log('Super Admin dashboard API response:', response.data);
+      
       return response.data;
     } catch (error) {
-      console.log('Fetch super admin dashboard error:', error.response?.data || error.message);
+      
       const message = error.response?.data?.message || 'Failed to fetch dashboard data';
       return rejectWithValue(message);
     }

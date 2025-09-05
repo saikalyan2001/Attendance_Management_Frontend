@@ -165,17 +165,17 @@ const AdminEmployeeProfile = () => {
 
   // Memoize state setters to prevent re-renders
   const setAdvancesCurrentPageCallback = useCallback((page) => {
-    console.log('setAdvancesCurrentPage called with:', page);
+    
     setAdvancesCurrentPage(page);
   }, []);
 
   const setAdvancesSortFieldCallback = useCallback((field) => {
-    console.log('setAdvancesSortField called with:', field);
+    
     setAdvancesSortField(field);
   }, []);
 
   const setAdvancesSortOrderCallback = useCallback((order) => {
-    console.log('setAdvancesSortOrder called with:', order);
+    
     setAdvancesSortOrder(order);
   }, []);
 
@@ -237,7 +237,7 @@ const AdminEmployeeProfile = () => {
 
     const employeeId = String(id);
     if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
-      console.error("Invalid employee ID format:", employeeId);
+      
       toast.error("Invalid employee ID format", { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
       navigate('/admin/employees');
       return;
@@ -284,14 +284,7 @@ const AdminEmployeeProfile = () => {
   // Fetch advances when tab is active and parameters change
   useEffect(() => {
     if (activeTab === 'advances') {
-      console.log('AdminEmployeeProfile: Fetching advances with params:', {
-        id,
-        page: advancesCurrentPage,
-        limit: ADVANCES_ITEMS_PER_PAGE,
-        sortField: advancesSortField,
-        sortOrder: advancesSortOrder,
-      });
-      dispatch(
+            dispatch(
         fetchEmployeeAdvances({
           id,
           page: advancesCurrentPage,
@@ -414,7 +407,7 @@ const AdminEmployeeProfile = () => {
       });
       setEditDialogOpen(false);
     } catch (err) {
-      console.error('Submit error:', err);
+      
       toast.dismiss();
       toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
@@ -490,7 +483,7 @@ const AdminEmployeeProfile = () => {
 
       await editForm.handleSubmit(handleEditSubmit)();
     } catch (error) {
-      console.error('handleEditSaveClick error:', error);
+      
       toast.dismiss();
       toast.error('Error submitting form, please try again', {
         id: 'form-submit-error',

@@ -11,7 +11,7 @@ export const fetchLocations = createAsyncThunk(
       const response = await api.get(endpoint);
       return response.data;
     } catch (error) {
-      console.error('Fetch locations error:', error);
+      
       return rejectWithValue(error.message || 'Failed to fetch locations');
     }
   }
@@ -29,7 +29,7 @@ export const fetchPaginatedLocations = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch paginated locations error:', error);
+      
       return rejectWithValue(error.message || 'Failed to fetch paginated locations');
     }
   }
@@ -42,7 +42,7 @@ export const addLocation = createAsyncThunk(
       const response = await api.post('/admin/locations', { name, address, city, state });
       return response.data;
     } catch (error) {
-      console.error('Add location error:', error);
+      
       return rejectWithValue(error.message || 'Failed to add location');
     }
   }
@@ -55,7 +55,7 @@ export const editLocation = createAsyncThunk(
       const response = await api.put(`/admin/locations/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Edit location error:', error);
+      
       return rejectWithValue(error.message || 'Failed to edit location');
     }
   }
@@ -68,7 +68,7 @@ export const deleteLocation = createAsyncThunk(
       await api.delete(`/admin/locations/${id}`);
       return id;
     } catch (error) {
-      console.error('Delete location error:', error);
+      
       return rejectWithValue(error.message || 'Failed to delete location');
     }
   }

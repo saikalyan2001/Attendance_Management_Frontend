@@ -52,7 +52,7 @@ const AdvanceHistory = ({
   }, [advances, sortField, sortOrder, role]);
 
   const handleSort = (field) => {
-    console.log('AdvanceHistory: handleSort called with field:', field);
+    
     const newSortOrder = sortField === field ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc';
     setSortField(field);
     setSortOrder(newSortOrder);
@@ -60,7 +60,7 @@ const AdvanceHistory = ({
   };
 
   const handlePageChange = (page) => {
-    console.log('AdvanceHistory: handlePageChange called with page:', page);
+    
     if (page >= 1 && page <= (advancesPagination?.totalPages || 1)) {
       setCurrentPage(page);
     }

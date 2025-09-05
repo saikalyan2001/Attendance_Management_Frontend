@@ -361,12 +361,12 @@ const AttendanceRequestsTable = ({
 
 // Update this function (around line 240-280):
 const confirmRequestAction = async () => {
-  console.log('confirmRequestAction called'); // Debug
-  console.log('handleRequestActionRedux:', handleRequestActionRedux); // Debug
-  console.log('actionDialog:', actionDialog); // Debug
+   // Debug
+   // Debug
+   // Debug
   
   if (!handleRequestActionRedux || !canApproveReject) {
-    console.log('Early return - missing action or no permission');
+    
     return;
   }
   
@@ -376,7 +376,7 @@ const confirmRequestAction = async () => {
     return;
   }
   
-  console.log('Dispatching with params:', { id: requestId, status: action, date: isoDate }); // Debug
+   // Debug
   
   try {
     const result = await dispatch(handleRequestActionRedux({ 
@@ -385,7 +385,7 @@ const confirmRequestAction = async () => {
       date: isoDate 
     })).unwrap();
     
-    console.log('Success result:', result); // Debug
+     // Debug
     toast.success(`Request ${action} successfully`, { duration: 5000 });
     
     // Reset dialog first
@@ -414,7 +414,7 @@ const confirmRequestAction = async () => {
     
     dispatch(fetchRequestsAction(filters));
   } catch (err) {
-    console.error('Error handling request:', err); // Debug
+     // Debug
     toast.error(err?.message || err || "Failed to handle request", { duration: 5000 });
     
     // Reset dialog on error too

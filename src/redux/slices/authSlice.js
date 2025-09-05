@@ -10,7 +10,7 @@ export const login = createAsyncThunk(
       localStorage.setItem('token', token);
       return user;
     } catch (error) {
-      console.log('Login error:', error);
+      
       // Use the processed error message from api.js interceptor
       const errorMessage = error?.message || 'Login failed. Please try again.';
       return rejectWithValue(errorMessage);
@@ -26,7 +26,7 @@ export const signup = createAsyncThunk(
       const { user } = response.data;
       return user;
     } catch (error) {
-      console.log('Signup error:', error);
+      
       return rejectWithValue(error?.message || 'Signup failed. Please try again.');
     }
   }
@@ -39,7 +39,7 @@ export const createUserBySuperAdmin = createAsyncThunk(
       const response = await api.post('/auth/signup', { email, name, phone, role, locations });
       return response.data.user;
     } catch (error) {
-      console.log('createUserBySuperAdmin error:', error);
+      
       return rejectWithValue(error?.message || 'Failed to create user. Please try again.');
     }
   }
@@ -58,7 +58,7 @@ export const createSiteIncharge = createAsyncThunk(
       });
       return response.data.user;
     } catch (error) {
-      console.log('createSiteIncharge error:', error);
+      
       return rejectWithValue(error?.message || 'Failed to create site incharge. Please try again.');
     }
   }
@@ -78,7 +78,7 @@ export const createSuperAdmin = createAsyncThunk(
       });
       return response.data.user;
     } catch (error) {
-      console.log('createSuperAdmin error:', error);
+      
       return rejectWithValue(error?.message || 'Failed to create super admin. Please try again.');
     }
   }
@@ -91,7 +91,7 @@ export const setPassword = createAsyncThunk(
       const response = await api.post('/auth/set-password', { token, newPassword });
       return response.data;
     } catch (error) {
-      console.log('setPassword error:', error);
+      
       return rejectWithValue(error?.message || 'Failed to set password. Please try again.');
     }
   }
@@ -104,7 +104,7 @@ export const forgotPassword = createAsyncThunk(
       const response = await api.post('/auth/forgot-password', { email });
       return response.data;
     } catch (error) {
-      console.log('forgotPassword error:', error);
+      
       return rejectWithValue(error?.message || 'Failed to send reset link. Please try again.');
     }
   }
@@ -118,7 +118,7 @@ export const logout = createAsyncThunk(
       localStorage.removeItem('token');
       return null;
     } catch (error) {
-      console.log('Logout error:', error);
+      
       return rejectWithValue(error?.message || 'Logout failed. Please try again.');
     }
   }
@@ -131,7 +131,7 @@ export const fetchMe = createAsyncThunk(
       const response = await api.get('/auth/me');
       return response.data;
     } catch (error) {
-      console.error('FetchMe error:', error);
+      
       localStorage.removeItem('token');
       return rejectWithValue(null);
     }

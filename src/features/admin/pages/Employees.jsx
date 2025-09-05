@@ -32,11 +32,11 @@ const AdminEmployees = () => {
     // Only fetchMe if user is not already loaded
     if (!user && !authLoading && !isLoading) {
       dispatch(fetchMe()).unwrap().catch(() => {
-        console.log('fetchMe failed, redirecting to /login');
+        
         navigate("/login");
       });
     } else if (!authLoading && (!user || user.role !== "admin")) {
-      console.log('Redirecting to /login: Invalid user or role', { user });
+      
       navigate("/login");
     }
   }, [user, authLoading, isLoading, dispatch, navigate]);

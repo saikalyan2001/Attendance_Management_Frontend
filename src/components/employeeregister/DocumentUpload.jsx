@@ -46,7 +46,7 @@ const DocumentUpload = ({
   locationsLoading,
   isSubmitting,
 }) => {
-  console.log(`DocumentUpload render for index ${index}: preview=${preview}, value=${value?.name}, timestamp=${Date.now()}`);
+  
   return (
     <div
       className={cn(
@@ -84,7 +84,7 @@ const DocumentUpload = ({
               onChange={(e) => {
                 const file = e.target.files[0];
                 if (file) {
-                  console.log(`File input changed for index ${index}: file=${file.name}, size=${file.size}, timestamp=${Date.now()}`);
+                  
                   onChange(file);
                   const previewUrl = URL.createObjectURL(file);
                   setPreview(index, previewUrl);
@@ -149,14 +149,14 @@ const DocumentUpload = ({
                       let url = preview;
                       if (!preview && value) {
                         url = URL.createObjectURL(value);
-                        console.log(`Generated preview for index ${index}: ${value.name}, URL=${url}, timestamp=${Date.now()}`);
+                        
                         setPreview(index, url);
                       }
                       if (!url) {
-                        console.log(`Preview failed: preview=${preview}, file=${value.name}, timestamp=${Date.now()}`);
+                        
                         e.preventDefault();
                       } else {
-                        console.log(`Opening preview for ${value.name}: ${url}, timestamp=${Date.now()}`);
+                        
                       }
                     }}
                   >

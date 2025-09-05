@@ -127,7 +127,7 @@ const SuperAdminEmployeeProfile = () => {
 
     const employeeId = String(id);
     if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
-      console.error('Invalid employee ID format:', employeeId);
+      
       toast.error('Invalid employee ID format', { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
       navigate('/superadmin/employees');
       return;
@@ -276,7 +276,7 @@ const SuperAdminEmployeeProfile = () => {
         position: 'top-center',
       });
     } catch (err) {
-      console.error('Submit error:', err);
+      
       toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
         duration: autoDismissDuration,
