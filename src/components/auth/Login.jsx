@@ -1,4 +1,3 @@
-// src/components/auth/Login.jsx
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -20,7 +19,7 @@ const Login = () => {
 
   useEffect(() => {
     if (user) {
-      toast.success(`Welcome, ${user.name}`, {
+      toast.success(`Welcome, ${user.name}!`, {
         id: 'login-success',
         duration: 5000,
         position: 'top-center',
@@ -38,7 +37,7 @@ const Login = () => {
       console.log('Auth error:', error);
       toast.error(error, {
         id: 'auth-error',
-        duration: 5000,
+        duration: error.includes('Account setup incomplete') ? 8000 : 5000,
         position: 'top-center',
       });
       setTimeout(() => dispatch(resetError()), 100);
@@ -47,13 +46,18 @@ const Login = () => {
 
   const handleLogin = (credentials) => {
     if (!role) {
-      toast.error('Please select a role', {
-        id: 'role-error',
-        duration: 5000,
+      toast.error('Please select your role', {
+        id: 'role-required',
+        duration: 4000,
         position: 'top-center',
       });
+      // Focus the role selector
+      setTimeout(() => {
+        document.getElementById('role')?.focus();
+      }, 100);
       return Promise.reject(new Error('Role not selected'));
     }
+
     dispatch(resetError());
     return dispatch(login({ ...credentials, role }));
   };

@@ -2,13 +2,12 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useState, useEffect, useCallback } from 'react';
 import Login from './components/auth/Login';
-import CreateSiteIncharge from './components/auth/CreateSiteIncharge';
+import CreateSiteIncharge from './features/admin/pages/CreateSiteIncharge';
 import CreateUserBySuperAdmin from './features/superadmin/pages/CreateUserBySuperAdmin';
 import Dashboard from './features/siteincharge/pages/Dashboard';
 import Attendance from './features/siteincharge/pages/Attendance';
 import RegisterEmployee from './features/siteincharge/pages/RegisterEmployee';
 import Employees from './features/siteincharge/pages/Employees';
-import Reports from './features/siteincharge/pages/Reports';
 import Profile from './features/siteincharge/pages/Profile';
 import Locations from './features/admin/pages/Locations';
 import Settings from './features/admin/pages/Settings';
@@ -17,8 +16,8 @@ import AdminReports from './features/admin/pages/Reports';
 import AdminAttendance from './features/admin/pages/Attendance';
 import AdminEmployees from './features/admin/pages/Employees';
 import AdminEmployeeRegister from './features/admin/pages/RegisterEmployee';
-import AdminEmployeeProfile from './features/admin/pages/EmployeeProfile';
-import EmployeeProfile from './features/siteincharge/pages/EmployeeProfile';
+import AdminEmployeeProfile from './features/admin/pages/AdminEmployeeProfile';
+import SiteInchargeEmployeeProfile from './features/siteincharge/pages/SiteInchargeEmployeeProfile';
 import EmployeeHistory from './features/admin/pages/EmployeeHistory';
 import AdminProfile from './features/admin/pages/Profile';
 import SiteInchargeEmployeeHistory from './features/siteincharge/pages/SiteInchargeEmployeeHistory';
@@ -36,7 +35,7 @@ import SuperAdminEmployeeHistory from './features/superadmin/pages/SuperAdminEmp
 import SuperAdminAttendance from './features/superadmin/pages/SuperAdminAttendance';
 import SuperAdminReports from './features/superadmin/pages/SuperAdminReports';
 import SetPassword from './components/auth/SetPassword';
-import ForgotPassword from './components/auth/ForgotPassword'; // New import
+import ForgotPassword from './components/auth/ForgotPassword';
 
 const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." }) => {
   const { user, isLoading, error } = useSelector((state) => state.auth);
@@ -70,14 +69,17 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
     return () => clearTimeout(delayTimer);
   }, [isLoading]);
 
+  console.log('ProtectedRoute: user=', user, 'error=', error, 'isLoading=', isLoading); // Debug: Log state
+
   if (isLoading || loadingState.isDelayLoading || loadingState.shouldShowSpinner) {
-    const message = loadingMessage !== "Loading..."
-      ? loadingMessage
-      : !user
+    const message =
+      loadingMessage !== "Loading..."
+        ? loadingMessage
+        : !user
         ? "Checking session..."
-        : !user.role
-          ? "Loading permissions..."
-          : "Preparing dashboard...";
+        : !user?.role
+        ? "Loading permissions..."
+        : "Preparing dashboard...";
 
     return (
       <LoadingSpinner
@@ -90,15 +92,12 @@ const ProtectedRoute = ({ children, allowedRoles, loadingMessage = "Loading..." 
     );
   }
 
-  if (error || !user || !user.role || (!allowedRoles.includes(user.role))) {
-    const redirectState = {
-      from: window.location.pathname,
-    };
-
+  if (!user || !user.role || !allowedRoles.includes(user.role)) {
+    console.log('ProtectedRoute: Redirecting to /login due to invalid user or role'); // Debug: Log redirect
     return (
       <Navigate
         to="/login"
-        state={redirectState}
+        state={{ from: window.location.pathname }}
         replace
       />
     );
@@ -112,7 +111,7 @@ const App = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/set-password" element={<SetPassword />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} /> {/* New route */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route
         path="/admin/create-siteincharge"
         element={
@@ -162,14 +161,6 @@ const App = () => {
         }
       />
       <Route
-        path="/siteincharge/reports"
-        element={
-          <ProtectedRoute allowedRoles={['siteincharge']} loadingMessage="Loading reports...">
-            <Reports />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/siteincharge/profile"
         element={
           <ProtectedRoute allowedRoles={['siteincharge']} loadingMessage="Loading profile...">
@@ -181,7 +172,7 @@ const App = () => {
         path="/siteincharge/employees/:id"
         element={
           <ProtectedRoute allowedRoles={['siteincharge']} loadingMessage="Loading employee details...">
-            <EmployeeProfile />
+            <SiteInchargeEmployeeProfile />
           </ProtectedRoute>
         }
       />
@@ -314,7 +305,7 @@ const App = () => {
         }
       />
       <Route
-        path="/superadmin/register-employee"
+        path="/super_admin/register-employee"
         element={
           <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee registration...">
             <SuperadminRegisterEmployee />
@@ -322,7 +313,7 @@ const App = () => {
         }
       />
       <Route
-        path="/superadmin/employees/:id"
+        path="/super_admin/employees/:id"
         element={
           <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee details...">
             <SuperAdminEmployeeProfile />
@@ -330,7 +321,7 @@ const App = () => {
         }
       />
       <Route
-        path="/superadmin/employees/:employeeId/history"
+        path="/super_admin/employees/:employeeId/history"
         element={
           <ProtectedRoute allowedRoles={['super_admin']} loadingMessage="Loading employee history...">
             <SuperAdminEmployeeHistory />
@@ -415,11 +406,13 @@ export const PageLoadingWrapper = ({
       >
         <div
           className={cn(
-            'text-center space-y-4 p-6 rounded-lg border',
+            'text-center space-y-4 p-6 rounded-lg border max-w-md',
             theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200',
           )}
+          role="alert"
+          aria-live="assertive"
         >
-          <div className="text-error text-6xl">⚠️</div>
+          <div className="text-error text-6xl" aria-hidden="true">⚠️</div>
           <h2
             className={cn(
               'text-xl font-semibold',
@@ -444,6 +437,7 @@ export const PageLoadingWrapper = ({
                 'bg-accent text-white hover:bg-accent-hover',
                 'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2',
               )}
+              type="button"
             >
               Try Again
             </button>

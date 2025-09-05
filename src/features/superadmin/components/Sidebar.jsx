@@ -74,7 +74,7 @@ const SuperAdminSidebar = ({
           { to: "/superadmin/employees", icon: Briefcase, label: "Employees" },
 
           {
-            to: "/superadmin/register-employee",
+            to: "/super_admin/register-employee",
             icon: UserPlus,
             label: "Register Employee",
           },

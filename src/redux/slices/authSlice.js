@@ -10,28 +10,9 @@ export const login = createAsyncThunk(
       localStorage.setItem('token', token);
       return user;
     } catch (error) {
-      console.log('Login error:', error.response?.data || error.message);
-      const errorMessage = error.response?.data?.message || 'Login failed';
-      console.log('Backend error message:', errorMessage);
-      if (
-        errorMessage &&
-        (errorMessage.includes('Role does not match') ||
-          errorMessage.includes('Invalid role') ||
-          (errorMessage.includes('Invalid email or role') && email && password))
-      ) {
-        return rejectWithValue('Invalid role or Invalid email');
-      }
-      if (
-        errorMessage &&
-        (errorMessage.includes('User not found') ||
-          errorMessage.includes('Invalid email') ||
-          errorMessage.includes('Invalid password') ||
-          errorMessage.includes('Invalid credentials') ||
-          errorMessage.includes('Invalid email or role') ||
-          errorMessage.includes('Please set your password'))
-      ) {
-        return rejectWithValue(errorMessage);
-      }
+      console.log('Login error:', error);
+      // Use the processed error message from api.js interceptor
+      const errorMessage = error?.message || 'Login failed. Please try again.';
       return rejectWithValue(errorMessage);
     }
   }
@@ -45,8 +26,8 @@ export const signup = createAsyncThunk(
       const { user } = response.data;
       return user;
     } catch (error) {
-      console.log('Signup error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Signup failed');
+      console.log('Signup error:', error);
+      return rejectWithValue(error?.message || 'Signup failed. Please try again.');
     }
   }
 );
@@ -58,8 +39,8 @@ export const createUserBySuperAdmin = createAsyncThunk(
       const response = await api.post('/auth/signup', { email, name, phone, role, locations });
       return response.data.user;
     } catch (error) {
-      console.log('createUserBySuperAdmin error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to create user');
+      console.log('createUserBySuperAdmin error:', error);
+      return rejectWithValue(error?.message || 'Failed to create user. Please try again.');
     }
   }
 );
@@ -77,8 +58,8 @@ export const createSiteIncharge = createAsyncThunk(
       });
       return response.data.user;
     } catch (error) {
-      console.log('createSiteIncharge error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to create site incharge');
+      console.log('createSiteIncharge error:', error);
+      return rejectWithValue(error?.message || 'Failed to create site incharge. Please try again.');
     }
   }
 );
@@ -97,8 +78,8 @@ export const createSuperAdmin = createAsyncThunk(
       });
       return response.data.user;
     } catch (error) {
-      console.log('createSuperAdmin error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to create super admin');
+      console.log('createSuperAdmin error:', error);
+      return rejectWithValue(error?.message || 'Failed to create super admin. Please try again.');
     }
   }
 );
@@ -110,8 +91,8 @@ export const setPassword = createAsyncThunk(
       const response = await api.post('/auth/set-password', { token, newPassword });
       return response.data;
     } catch (error) {
-      console.log('setPassword error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to set password');
+      console.log('setPassword error:', error);
+      return rejectWithValue(error?.message || 'Failed to set password. Please try again.');
     }
   }
 );
@@ -123,8 +104,8 @@ export const forgotPassword = createAsyncThunk(
       const response = await api.post('/auth/forgot-password', { email });
       return response.data;
     } catch (error) {
-      console.log('forgotPassword error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to send reset link');
+      console.log('forgotPassword error:', error);
+      return rejectWithValue(error?.message || 'Failed to send reset link. Please try again.');
     }
   }
 );
@@ -137,8 +118,8 @@ export const logout = createAsyncThunk(
       localStorage.removeItem('token');
       return null;
     } catch (error) {
-      console.log('Logout error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Logout failed');
+      console.log('Logout error:', error);
+      return rejectWithValue(error?.message || 'Logout failed. Please try again.');
     }
   }
 );
@@ -150,7 +131,7 @@ export const fetchMe = createAsyncThunk(
       const response = await api.get('/auth/me');
       return response.data;
     } catch (error) {
-      console.error('FetchMe error:', error.response?.data || error.message);
+      console.error('FetchMe error:', error);
       localStorage.removeItem('token');
       return rejectWithValue(null);
     }

@@ -1,4 +1,3 @@
-// src/components/common/Pagination.jsx
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,7 +24,10 @@ const Pagination = ({
           size="sm"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1 || disabled}
-          className="border-complementary text-body hover:bg-accent/20 rounded-lg py-1 px-2 transition-all duration-300"
+          className={cn(
+            "border-complementary text-body hover:bg-accent/20 rounded-lg py-1 px-2 transition-all duration-300",
+            currentPage === 1 || disabled ? "cursor-not-allowed" : "cursor-pointer"
+          )}
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -39,8 +41,9 @@ const Pagination = ({
             className={cn(
               "border-complementary text-body rounded-lg py-1 px-3 transition-all duration-300",
               page === currentPage
-                ? "bg-accent text-body hover:bg-accent-hover"
-                : "hover:bg-accent/20"
+                ? "bg-accent text-body hover:bg-accent-hover cursor-pointer"
+                : "hover:bg-accent/20",
+              disabled ? "cursor-not-allowed" : "cursor-pointer"
             )}
             disabled={disabled}
             aria-label={`Go to page ${page}`}
@@ -53,7 +56,10 @@ const Pagination = ({
           size="sm"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages || disabled}
-          className="border-complementary text-body hover:bg-accent/20 rounded-lg py-1 px-2 transition-all duration-300"
+          className={cn(
+            "border-complementary text-body hover:bg-accent/20 rounded-lg py-1 px-2 transition-all duration-300",
+            currentPage === totalPages || disabled ? "cursor-not-allowed" : "cursor-pointer"
+          )}
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />

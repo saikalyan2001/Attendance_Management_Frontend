@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import MarkAttendance from "./MarkAttendance";
+import SiteInchargeMarkAttendance from "./SiteInchargeMarkAttendance";
 import MonthlyAttendance from "./MonthlyAttendance";
 import ViewAttendance from "./ViewAttendance";
 import AttendanceRequests from "./AttendanceRequests";
@@ -14,6 +14,10 @@ const Attendance = () => {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState("mark");
+
+
+    const [selectedDate, setSelectedDate] = useState(new Date());
+  const [location, setLocation] = useState('all');
 
   useEffect(() => {
     if (!locationId) {
@@ -74,12 +78,16 @@ const Attendance = () => {
           </TabsList>
 
           <TabsContent value="mark">
-            <MarkAttendance
+            <SiteInchargeMarkAttendance
               month={month}
               year={year}
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
+               selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              location={location}
+              setLocation={setLocation}
             />
           </TabsContent>
           <TabsContent value="monthly">
@@ -96,12 +104,16 @@ const Attendance = () => {
         {/* Mobile Content */}
         <div className="sm:hidden">
           {activeTab === "mark" && (
-            <MarkAttendance
+            <SiteInchargeMarkAttendance
               month={month}
               year={year}
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
+               selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              location={location}
+              setLocation={setLocation}
             />
           )}
           {activeTab === "monthly" && <MonthlyAttendance />}

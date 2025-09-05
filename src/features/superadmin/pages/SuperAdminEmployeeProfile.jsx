@@ -12,87 +12,15 @@ import {
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
-  Loader2,
-  X,
-  Copy,
-  ArrowLeft,
-} from 'lucide-react';
+import { Loader2, ArrowLeft, Copy, Badge } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import { z } from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { cn } from '@/lib/utils';
 import { useNavigate, useParams } from 'react-router-dom';
-import EmployeeProfileSection from './SuperAdminEmployeeProfileSection';
-import EmployeeAttendanceSection from './SuperAdminEmployeeAttendanceSection';
-import EmployeeDocumentsSection from './SuperAdminEmployeeDocumentsSection';
-import EmployeeAdvancesSection from './SuperAdminEmployeeAdvancesSection';
-import { Input } from '@/components/ui/input';
-
-// Define validation schemas
-const bankDetailsSchema = z.object({
-  accountNo: z.string().min(1, 'Account number is required').optional(),
-  ifscCode: z.string().min(1, 'IFSC code is required').optional(),
-  bankName: z.string().min(1, 'Bank name is required').optional(),
-  accountHolder: z.string().min(1, 'Account holder is required').optional(),
-}).refine(
-  (data) => {
-    const hasAnyBankDetail = data.accountNo || data.ifscCode || data.bankName || data.accountHolder;
-    if (hasAnyBankDetail) {
-      return data.accountNo && data.ifscCode && data.bankName && data.accountHolder;
-    }
-    return true;
-  },
-  {
-    message: 'All bank details are required if any bank detail is provided',
-    path: ['bankDetails'],
-  }
-);
-
-const editEmployeeSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(50, 'Name must be 50 characters or less'),
-  email: z.string().email('Invalid email address'),
-  designation: z.string().min(1, 'Designation is required').max(50, 'Designation must be 50 characters or less'),
-  department: z.string().min(1, 'Department is required').max(50, 'Department must be 50 characters or less'),
-  salary: z.string().min(1, 'Salary is required').refine((val) => {
-    const num = Number(val);
-    return !isNaN(num) && num >= 1000;
-  }, { message: 'Invalid salary' }),
-  phone: z.string().optional().refine((val) => !val || /^\d{10}$/.test(val), { message: 'Invalid phone number' }),
-  dob: z.string().optional().refine((val) => !val || (new Date(val) <= new Date() && !isNaN(new Date(val))), { message: 'Invalid date of birth' }),
-  bankDetails: bankDetailsSchema,
-  paidLeaves: z.object({
-    available: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: 'Available leaves must be a non-negative number',
-    }),
-    used: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: 'Used leaves must be a non-negative number',
-    }),
-    carriedForward: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: 'Carried forward leaves must be a non-negative number',
-    }),
-  }).refine((data) => Number(data.available) >= Number(data.used), {
-    message: 'Available leaves cannot be less than used leaves',
-    path: ['paidLeaves.available'],
-  }),
-});
+import EmployeeProfileSection from '../../../components/employees/EmployeeProfileSection';
+import EmployeeAttendanceSection from '../../../components/employees/EmployeeAttendanceSection'; 
+import DocumentsSection from '../../../components/employees/DocumentsSection';
+import AdvanceHistory from '../../../components/employees/AdvanceHistory';
+import { format } from 'date-fns';
 
 // Reusable CopyButton component
 const CopyButton = ({ text, fieldId }) => {
@@ -145,7 +73,6 @@ const SuperAdminEmployeeProfile = () => {
     (state) => state.superAdminSettings
   );
 
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [sortField, setSortField] = useState('date');
@@ -155,15 +82,14 @@ const SuperAdminEmployeeProfile = () => {
   const [advancesSortField, setAdvancesSortField] = useState('year');
   const [advancesSortOrder, setAdvancesSortOrder] = useState('desc');
   const [advancesCurrentPage, setAdvancesCurrentPage] = useState(1);
-    const [documentsCurrentPage, setDocumentsCurrentPage] = useState(1);
-      const [documentsSearchQuery, setDocumentsSearchQuery] = useState(''); // New state for document search
-        const [activeTab, setActiveTab] = useState('profile');
+  const [documentsCurrentPage, setDocumentsCurrentPage] = useState(1);
+  const [documentsSearchQuery, setDocumentsSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('profile');
 
   const autoDismissDuration = 5000;
   const ITEMS_PER_PAGE = 2;
   const ADVANCES_ITEMS_PER_PAGE = 5;
-    const DOCUMENTS_ITEMS_PER_PAGE = 3;
-
+  const DOCUMENTS_ITEMS_PER_PAGE = 3;
 
   const tabs = [
     { id: 'profile', label: 'Profile' },
@@ -172,49 +98,28 @@ const SuperAdminEmployeeProfile = () => {
     { id: 'documents', label: 'Documents' },
   ];
 
-  const editForm = useForm({
-    resolver: zodResolver(editEmployeeSchema),
-    defaultValues: {
-      name: '',
-      email: '',
-      designation: '',
-      department: '',
-      salary: '1000',
-      phone: '',
-      dob: '',
-      bankDetails: {
-        accountNo: '',
-        ifscCode: '',
-        bankName: '',
-        accountHolder: '',
-      },
-      paidLeaves: {
-        available: '0',
-        used: '0',
-        carriedForward: '0',
-      },
-    },
-  });
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: i + 1,
+    label: new Date(0, i).toLocaleString('default', { month: 'long' }),
+  }));
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
   const totalYearlyPaidLeaves = useMemo(() => {
     if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
       return settings?.paidLeavesPerYear || 0;
     }
-
     const joinDate = new Date(currentEmployee.joinDate);
     const joinYear = joinDate.getFullYear();
     const joinMonth = joinDate.getMonth();
     const currentYear = new Date().getFullYear();
-
     if (joinYear === currentYear) {
       const remainingMonths = 12 - joinMonth;
       return Math.round((settings.paidLeavesPerYear * remainingMonths) / 12);
     }
-
     return settings.paidLeavesPerYear;
   }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
 
- useEffect(() => {
+  useEffect(() => {
     if (user?.role !== 'super_admin') {
       navigate('/login');
       return;
@@ -222,8 +127,8 @@ const SuperAdminEmployeeProfile = () => {
 
     const employeeId = String(id);
     if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
-      console.error("Invalid employee ID format:", employeeId);
-      toast.error("Invalid employee ID format", { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
+      console.error('Invalid employee ID format:', employeeId);
+      toast.error('Invalid employee ID format', { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
       navigate('/superadmin/employees');
       return;
     }
@@ -284,8 +189,6 @@ const SuperAdminEmployeeProfile = () => {
     sortOrder,
   ]);
 
-
-
   useEffect(() => {
     if (settingsError) {
       toast.dismiss();
@@ -301,29 +204,21 @@ const SuperAdminEmployeeProfile = () => {
 
   const shouldHighlightEmployee = (employee) => {
     if (!employee?.transferTimestamp) return false;
-
     const transferDate = new Date(employee.transferTimestamp);
     if (isNaN(transferDate.getTime())) return false;
-
     const currentTime = new Date().getTime();
     const transferTime = transferDate.getTime();
-    const timeDifference = currentTime - transferTime;
-
-    return timeDifference <= HIGHLIGHT_DURATION;
+    return currentTime - transferTime <= HIGHLIGHT_DURATION;
   };
 
   useEffect(() => {
     if (!currentEmployee) return;
-
     setIsHighlighted(shouldHighlightEmployee(currentEmployee));
-
     const interval = setInterval(() => {
-      const highlighted = shouldHighlightEmployee(currentEmployee);
-      setIsHighlighted(highlighted);
+      setIsHighlighted(shouldHighlightEmployee(currentEmployee));
     }, 60 * 1000);
-
     return () => clearInterval(interval);
-  }, [currentEmployee, HIGHLIGHT_DURATION]);
+  }, [currentEmployee]);
 
   useEffect(() => {
     if (error) {
@@ -356,7 +251,7 @@ const SuperAdminEmployeeProfile = () => {
     setCurrentPage(1);
   };
 
-  const handleEditSubmit = async (data) => {
+  const handleEditSubmit = async (id, data) => {
     try {
       toast.dismiss();
       const employeeData = {
@@ -374,139 +269,31 @@ const SuperAdminEmployeeProfile = () => {
           carriedForward: Number(data.paidLeaves.carriedForward),
         },
       };
-
       await dispatch(updateEmployee({ id, data: employeeData })).unwrap();
       toast.success('Employee updated successfully', {
         id: 'edit-success',
         duration: autoDismissDuration,
         position: 'top-center',
       });
-      setEditDialogOpen(false);
     } catch (err) {
       console.error('Submit error:', err);
-      toast.dismiss();
       toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
         duration: autoDismissDuration,
         position: 'top-center',
       });
+      throw err;
     }
   };
-
-  const handleEditSaveClick = async () => {
-    try {
-      toast.dismiss();
-      const isValid = await editForm.trigger();
-      if (!isValid) {
-        const errors = editForm.formState.errors;
-        const fieldLabels = {
-          name: 'Name',
-          email: 'Email',
-          designation: 'Designation',
-          department: 'Department',
-          salary: 'Salary',
-          phone: 'Phone number',
-          dob: 'Date of birth',
-          'bankDetails.accountNo': 'Account number',
-          'bankDetails.ifscCode': 'IFSC code',
-          'bankDetails.bankName': 'Bank name',
-          'bankDetails.accountHolder': 'Account holder',
-          bankDetails: 'Bank details',
-          'paidLeaves.available': 'Available Leaves',
-          'paidLeaves.used': 'Used Leaves',
-          'paidLeaves.carriedForward': 'Carried Forward Leaves',
-        };
-
-        const findFirstError = (errors, prefix = '') => {
-          for (const [key, value] of Object.entries(errors)) {
-            if (value.message) {
-              return { field: prefix ? `${prefix}.${key}` : key, message: value.message };
-            }
-            if (typeof value === 'object' && value !== null) {
-              const nestedError = findFirstError(value, prefix ? `${prefix}.${key}` : key);
-              if (nestedError) return nestedError;
-            }
-          }
-          return null;
-        };
-
-        const firstError = findFirstError(errors);
-        let errorField = '';
-        let errorMessage = 'Please fill in all required fields';
-
-        if (firstError) {
-          errorField = firstError.field;
-          const fieldLabel = fieldLabels[errorField] || errorField;
-          errorMessage = firstError.message || `${fieldLabel} is invalid`;
-        }
-
-        toast.error(errorMessage, {
-          id: `validation-error-${errorField.replace('.', '-')}`,
-          duration: autoDismissDuration,
-          position: 'top-center',
-        });
-
-        if (errorField) {
-          const firstErrorField = document.querySelector(`[name="${errorField}"]`);
-          if (firstErrorField) {
-            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            firstErrorField.focus();
-          }
-        }
-        return;
-      }
-
-      await editForm.handleSubmit(handleEditSubmit)();
-    } catch (error) {
-      console.error('handleEditSaveClick error:', error);
-      toast.dismiss();
-      toast.error('Error submitting form, please try again', {
-        id: 'form-submit-error',
-        duration: autoDismissDuration,
-        position: 'top-center',
-      });
-    }
-  };
-
-  const openEditDialog = (emp) => {
-    toast.dismiss();
-    editForm.reset({
-      name: emp.name,
-      email: emp.email,
-      designation: emp.designation,
-      department: emp.department,
-      salary: emp.salary.toString(),
-      phone: emp.phone || '',
-      dob: emp.dob && !isNaN(new Date(emp.dob).getTime()) ? new Date(emp.dob).toISOString().split('T')[0] : '',
-      bankDetails: {
-        accountNo: emp.bankDetails?.accountNo || '',
-        ifscCode: emp.bankDetails?.ifscCode || '',
-        bankName: emp.bankDetails?.bankName || '',
-        accountHolder: emp.bankDetails?.accountHolder || '',
-      },
-      paidLeaves: {
-        available: emp.paidLeaves?.available?.toString() || '0',
-        used: emp.paidLeaves?.used?.toString() || '0',
-        carriedForward: emp.paidLeaves?.carriedForward?.toString() || '0',
-      },
-    });
-    setEditDialogOpen(true);
-  };
-
-  const months = Array.from({ length: 12 }, (_, i) => ({
-    value: i + 1,
-    label: new Date(0, i).toLocaleString('default', { month: 'long' }),
-  }));
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
   if (loading || !currentEmployee || loadingSettings) {
     return (
       <Layout title="SuperAdmin Employee Profile">
         <div className="max-w-5xl mx-auto p-4 sm:p-6">
-          <Skeleton className="h-8 w-1/3" />
+          <div className="h-8 w-1/3 bg-gray-200 animate-pulse rounded" />
           <div className="mt-4 sm:mt-6 grid grid-cols-1 gap-4 sm:gap-6">
             {Array(5).fill().map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full rounded-md" />
+              <div key={i} className="h-12 w-full bg-gray-200 animate-pulse rounded" />
             ))}
           </div>
         </div>
@@ -566,36 +353,46 @@ const SuperAdminEmployeeProfile = () => {
         <div className="mt-4">
           {activeTab === 'profile' && (
             <EmployeeProfileSection
-              currentEmployee={currentEmployee}
+              employee={currentEmployee}
               isHighlighted={isHighlighted}
               totalYearlyPaidLeaves={totalYearlyPaidLeaves}
-              openEditDialog={openEditDialog}
+              canEdit={true}
+              title="Profile"
+              onEditClick={handleEditSubmit}
               CopyButton={CopyButton}
+              settings={settings}
             />
           )}
           {activeTab === 'attendance' && (
             <EmployeeAttendanceSection
-              attendance={attendance}
+              employeeId={id}
+              employeeName={currentEmployee.name}
+              attendanceData={attendance}
+              isLoading={loading}
+              error={error}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              totalPages={attendancePagination.totalPages}
+              itemsPerPage={ITEMS_PER_PAGE}
+              sortField={sortField}
+              setSortField={setSortField}
+              sortOrder={sortOrder}
+              setSortOrder={setSortOrder}
               monthFilter={monthFilter}
               yearFilter={yearFilter}
               months={months}
               years={years}
-              currentPage={currentPage}
-              totalPages={attendancePagination.totalPages}
-              paginatedAttendance={attendance}
-              sortField={sortField}
-              sortOrder={sortOrder}
               handleMonthChange={handleMonthChange}
               handleYearChange={handleYearChange}
               handleSort={handleSort}
-              setCurrentPage={setCurrentPage}
-              employeeName={currentEmployee.name}
-              isLoading={loading}
-              employeeId={id}
+              fetchAttendance={fetchEmployeeAttendance}
+              dispatch={dispatch}
+             
+              role="superadmin"
             />
           )}
           {activeTab === 'advances' && (
-            <EmployeeAdvancesSection
+            <AdvanceHistory
               advances={advances}
               currentPage={advancesCurrentPage}
               setCurrentPage={setAdvancesCurrentPage}
@@ -611,328 +408,57 @@ const SuperAdminEmployeeProfile = () => {
               itemsPerPage={ADVANCES_ITEMS_PER_PAGE}
             />
           )}
-          {activeTab === 'documents' && (
-            <EmployeeDocumentsSection
-              currentEmployee={currentEmployee}
-              dispatch={dispatch}
-              id={id}
-              employeeName={currentEmployee.name}
-              isLoading={loading}
-              currentPage={documentsCurrentPage}
-              setCurrentPage={setDocumentsCurrentPage}
-                searchQuery={documentsSearchQuery} // Pass searchQuery
-              setSearchQuery={setDocumentsSearchQuery} // Pass setSearchQuery
-              itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
-            />
-          )}
+         {activeTab === 'documents' && (
+  <DocumentsSection
+    documents={documents}
+    documentsPagination={documentsPagination}
+    employeeName={currentEmployee.name}
+    employeeId={id}
+    isLoading={loading}
+    currentPage={documentsCurrentPage}
+    searchQuery={documentsSearchQuery}
+    setCurrentPage={setDocumentsCurrentPage}
+    setSearchQuery={setDocumentsSearchQuery}
+    itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
+    showSearch={true}
+    showUpload={true}
+    showSorting={false}
+    onUploadDocuments={async (documents) => {
+      await dispatch(addEmployeeDocuments({ 
+        id, 
+        documents, 
+        page: 1, 
+        limit: DOCUMENTS_ITEMS_PER_PAGE 
+      })).unwrap();
+      await dispatch(fetchEmployeeDocuments({ 
+        id, 
+        page: 1, 
+        limit: DOCUMENTS_ITEMS_PER_PAGE, 
+        searchQuery: documentsSearchQuery 
+      })).unwrap();
+    }}
+    onSearchDocuments={(query) => {
+      setDocumentsSearchQuery(query);
+      setDocumentsCurrentPage(1);
+      dispatch(fetchEmployeeDocuments({
+        id,
+        page: 1,
+        limit: DOCUMENTS_ITEMS_PER_PAGE,
+        searchQuery: query,
+      }));
+    }}
+    onPageChange={(page) => {
+      setDocumentsCurrentPage(page);
+      dispatch(fetchEmployeeDocuments({
+        id,
+        page,
+        limit: DOCUMENTS_ITEMS_PER_PAGE,
+        searchQuery: documentsSearchQuery,
+      }));
+    }}
+  />
+)}
         </div>
-
-        {/* Edit Dialog */}
-        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="bg-complementary text-body rounded-lg max-h-[90vh] max-w-[90vw] xs:max-w-[85vw] sm:max-w-2xl mx-auto px-2 xs:px-3 sm:px-4 py-2 xs:py-3 sm:py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-accent scrollbar-track-complementary">
-            <DialogHeader>
-              <DialogTitle className="text-base xs:text-lg sm:text-xl md:text-2xl font-semibold text-body">Edit Employee</DialogTitle>
-            </DialogHeader>
-            <Form {...editForm}>
-              <form className="space-y-3 xs:space-y-4 sm:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
-                  <FormField
-                    control={editForm.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Name *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee name"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Email *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee email"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="designation"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Designation *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee designation"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="department"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Department *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee department"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="salary"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Salary *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee salary"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Phone</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee phone"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="dob"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Date of Birth</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                            disabled={editForm.formState.isSubmitting}
-                            aria-label="Employee date of birth"
-                          />
-                        </FormControl>
-                        <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="space-y-3 xs:space-y-4 sm:space-y-6">
-                  <FormLabel className="text-2xs xs:text-xs sm:text-base md:text-lg font-semibold text-body">Bank Details</FormLabel>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
-                    <FormField
-                      control={editForm.control}
-                      name="bankDetails.accountNo"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Account Number</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Bank account number"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="bankDetails.ifscCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">IFSC Code</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Bank IFSC code"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="bankDetails.bankName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Bank Name</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Bank name"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="bankDetails.accountHolder"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Account Holder</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Bank account holder"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-3 xs:space-y-4 sm:space-y-6">
-                  <FormLabel className="text-2xs xs:text-xs sm:text-base md:text-lg font-semibold text-body">Paid Leaves</FormLabel>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4 sm:gap-6">
-                    <FormField
-                      control={editForm.control}
-                      name="paidLeaves.available"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Available Leaves</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="text"
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Available leaves"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="paidLeaves.used"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Used Leaves</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="text"
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Used leaves"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="paidLeaves.carriedForward"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-2xs xs:text-xs sm:text-sm md:text-base font-semibold text-body">Carried Forward Leaves</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="text"
-                              className="bg-body text-body border-complementary focus:border-accent rounded-lg text-xs xs:text-sm sm:text-base md:text-lg focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                              disabled={editForm.formState.isSubmitting}
-                              aria-label="Carried forward leaves"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-error text-2xs xs:text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-                <DialogFooter className="mt-3 xs:mt-4 sm:mt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditDialogOpen(false)}
-                    className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-1.5 xs:px-2 py-0.5 xs:py-1 sm:px-4 sm:py-2 text-2xs xs:text-xs sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                    disabled={editForm.formState.isSubmitting}
-                    aria-label="Cancel edit employee"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={handleEditSaveClick}
-                    disabled={editForm.formState.isSubmitting}
-                    className="bg-accent text-body hover:bg-accent-hover rounded-lg px-1.5 xs:px-2 py-0.5 xs:py-1 sm:px-4 sm:py-2 text-2xs xs:text-xs sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
-                    aria-label="Save employee details"
-                  >
-                    {editForm.formState.isSubmitting ? (
-                      <Loader2 className="h-2.5 w-2.5 xs:h-3 xs:w-3 sm:h-5 sm:w-5 animate-spin" />
-                    ) : (
-                      'Save'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
       </div>
     </Layout>
   );

@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import MarkAttendance from './MarkAttendance';
+import AdminMarkAttendance from './AdminMarkAttendance';
 import MonthlyAttendance from './MonthlyAttendance';
 import ViewAttendance from './ViewAttendance';
 import AttendanceRequests from './AttendanceRequests';
@@ -104,7 +104,7 @@ const Attendance = () => {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="mark">
-            <MarkAttendance
+            <AdminMarkAttendance
               month={month}
               year={year}
               location={location}
@@ -134,7 +134,7 @@ const Attendance = () => {
         </Tabs>
         <div className="sm:hidden">
           {activeTab === 'mark' && (
-            <MarkAttendance
+            <AdminMarkAttendance
               month={month}
               year={year}
               location={location}

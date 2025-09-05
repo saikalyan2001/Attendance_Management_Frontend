@@ -3,17 +3,30 @@ import api from '../../../utils/api';
 
 export const fetchEmployees = createAsyncThunk(
   "siteInchargeEmployee/fetchEmployees",
-  async ({ location, status, department, page = 1, isDeleted, cache = true }, { getState, rejectWithValue }) => {
+  async ({ location, status, department, search, page = 1, limit = 10, isDeleted, cache = true }, { getState, rejectWithValue }) => {
     try {
       const state = getState();
       const token = state.auth.token;
 
       const query = new URLSearchParams();
-      if (location) query.set("location", location);
-      if (status && status !== "all") query.set("status", status);
+      if (location && location !== "all") query.set("location", location);
+      
+      // ✅ Handle status and isDeleted separately (like other slices)
+      if (status && status !== "all" && status !== "deleted") {
+        query.set("status", status);
+      }
+      
+      // ✅ Handle isDeleted explicitly
+      if (isDeleted !== undefined) {
+        query.set("isDeleted", isDeleted.toString());
+      }
+      
       if (department && department !== "all") query.set("department", department);
-      if (isDeleted !== undefined) query.set("isDeleted", isDeleted.toString());
+      if (search) query.set("search", search); // ✅ Add search parameter
       query.set("page", page);
+      query.set("limit", limit); // ✅ Add limit parameter
+
+      console.log("Site incharge API params:", Object.fromEntries(query)); // For debugging
 
       const response = await api.get(`/siteincharge/employees?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -27,20 +40,34 @@ export const fetchEmployees = createAsyncThunk(
   }
 );
 
+
 export const fetchAllEmployees = createAsyncThunk(
   "siteInchargeEmployee/fetchAllEmployees",
-  async ({ location, status }, { getState, rejectWithValue }) => {
+  async ({ location, status, department, search }, { getState, rejectWithValue }) => {
     try {
       const state = getState();
       const token = state.auth.token;
 
       const query = new URLSearchParams();
-      if (location) query.set("location", location);
-      if (status && status !== "all") {
-        query.set("status", status !== "deleted" ? status : undefined);
-        query.set("isDeleted", status === "deleted" ? "true" : "false");
+      if (location && location !== "all") query.set("location", location);
+      
+      // ✅ Handle status and isDeleted separately
+      if (status && status !== "all" && status !== "deleted") {
+        query.set("status", status);
       }
+      
+      // ✅ Handle isDeleted explicitly
+      if (status === "deleted") {
+        query.set("isDeleted", "true");
+      } else if (status && status !== "all") {
+        query.set("isDeleted", "false");
+      }
+      
+      if (department && department !== "all") query.set("department", department);
+      if (search) query.set("search", search);
       query.set("limit", 1000);
+
+      console.log("Fetch all employees params:", Object.fromEntries(query)); // For debugging
 
       const response = await api.get(`/siteincharge/employees?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -53,6 +80,7 @@ export const fetchAllEmployees = createAsyncThunk(
     }
   }
 );
+
 
 export const fetchLocations = createAsyncThunk(
   'siteInchargeEmployee/fetchLocations',
@@ -116,7 +144,9 @@ export const registerEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to register employee');
+      return rejectWithValue(error.response?.data || { 
+          message: error.message || "Failed to register employee" 
+        });
     }
   }
 );
@@ -354,6 +384,7 @@ const employeeSlice = createSlice({
     settings: null,
     loading: false,
     error: null,
+    errorType: null, 
     success: false,
     successType: null,
     pagination: {
@@ -449,6 +480,7 @@ const employeeSlice = createSlice({
       .addCase(registerEmployee.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.errorType = null; 
         state.success = false;
         state.successType = null;
       })
@@ -464,6 +496,7 @@ const employeeSlice = createSlice({
       .addCase(registerEmployee.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.errorType = "single"; 
         state.success = false;
         state.successType = null;
       })
@@ -627,6 +660,7 @@ const employeeSlice = createSlice({
       .addCase(importEmployees.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.errorType = null;
         state.success = false;
         state.successType = null;
       })
@@ -649,6 +683,7 @@ const employeeSlice = createSlice({
       .addCase(importEmployees.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.errorType = "excel";
         state.success = false;
         state.successType = null;
         console.log('importEmployees rejected:', action.payload);

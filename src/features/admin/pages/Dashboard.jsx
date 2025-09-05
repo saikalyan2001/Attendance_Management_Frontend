@@ -62,6 +62,9 @@ const Dashboard = () => {
   // Detect current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
 
+  console.log("user dashboard", user);
+  
+
   useEffect(() => {
     if (!user || user.role !== 'admin') {
       ('Unauthorized access attempt:', { user }); // Debug

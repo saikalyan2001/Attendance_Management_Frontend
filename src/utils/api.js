@@ -23,11 +23,20 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API response error:', error.message);
+
+    // Timeout handling
     if (error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error('Request timed out'));
+      return Promise.reject({ message: 'Request timed out' });
     }
-    return Promise.reject(error.response?.data?.message || error.message || 'API request failed');
+
+    // Always reject with a consistent error object
+    return Promise.reject({
+      message: error.response?.data?.message || error.message || 'API request failed',
+      data: error.response?.data || null,
+      status: error.response?.status || null,
+    });
   }
 );
+
 
 export default api;

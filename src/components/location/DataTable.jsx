@@ -1,4 +1,3 @@
-// src/components/common/DataTable.jsx
 import {
   Table,
   TableBody,
@@ -30,14 +29,15 @@ const DataTable = ({
                 key={col.key}
                 className={cn(
                   "text-body text-sm md:text-base font-semibold px-4 py-3",
-                  col.width
+                  col.width,
+                  col.sortable ? "cursor-pointer" : "cursor-default"
                 )}
               >
                 {col.sortable ? (
                   <Button
                     variant="ghost"
                     onClick={() => onSort(col.key)}
-                    className="text-body hover:text-accent font-semibold text-sm md:text-base transition-colors duration-300"
+                    className="text-body hover:text-accent font-semibold text-sm md:text-base transition-colors duration-300 cursor-pointer"
                     aria-label={`Sort by ${col.label} ${
                       sortConfig.column === col.key && sortConfig.order === "asc"
                         ? "ascending"
@@ -52,7 +52,7 @@ const DataTable = ({
                       : ""}
                   </Button>
                 ) : (
-                  col.label
+                  <span className="cursor-default">{col.label}</span>
                 )}
               </TableHead>
             ))}
@@ -68,7 +68,7 @@ const DataTable = ({
                   className="border-b border-accent/10 animate-shimmer"
                 >
                   {columns.map((col) => (
-                    <TableCell key={col.key} className={cn("px-4 py-3", col.width)}>
+                    <TableCell key={col.key} className={cn("px-4 py-3", col.width, "cursor-default")}>
                       <Skeleton className="h-6 w-3/4 bg-complementary-light" />
                     </TableCell>
                   ))}

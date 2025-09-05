@@ -8,8 +8,9 @@ export const fetchLocations = createAsyncThunk(
       const response = await api.get('/superadmin/locations');
       return response.data;
     } catch (error) {
-      console.error('Fetch locations error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
+      console.error('Fetch locations error:', error);
+      // Use error.message directly since the interceptor transforms it
+      return rejectWithValue(error.message || 'Failed to fetch locations');
     }
   }
 );
@@ -26,8 +27,9 @@ export const fetchPaginatedLocations = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      console.error('Fetch paginated locations error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch paginated locations');
+      console.error('Fetch paginated locations error:', error);
+      // Use error.message directly since the interceptor transforms it
+      return rejectWithValue(error.message || 'Failed to fetch paginated locations');
     }
   }
 );
@@ -39,8 +41,9 @@ export const addLocation = createAsyncThunk(
       const response = await api.post('/superadmin/locations', { name, address, city, state });
       return response.data;
     } catch (error) {
-      console.error('Add location error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to add location');
+      console.error('Add location error:', error);
+      // Use error.message directly since the interceptor transforms it
+      return rejectWithValue(error.message || 'Failed to add location');
     }
   }
 );
@@ -52,8 +55,9 @@ export const editLocation = createAsyncThunk(
       const response = await api.put(`/superadmin/locations/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Edit location error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to edit location');
+      console.error('Edit location error:', error);
+      // Use error.message directly since the interceptor transforms it
+      return rejectWithValue(error.message || 'Failed to edit location');
     }
   }
 );
@@ -65,8 +69,9 @@ export const deleteLocation = createAsyncThunk(
       await api.delete(`/superadmin/locations/${id}`);
       return id;
     } catch (error) {
-      console.error('Delete location error:', error.response?.data || error.message);
-      return rejectWithValue(error.response?.data?.message || 'Failed to delete location');
+      console.error('Delete location error:', error);
+      // Use error.message directly since the interceptor transforms it
+      return rejectWithValue(error.message || 'Failed to delete location');
     }
   }
 );
@@ -91,7 +96,7 @@ const superAdminLocationsSlice = createSlice({
     setLoading: (state, action) => {
       state.loading = action.payload;
     },
-        setCurrentPage: (state, action) => {
+    setCurrentPage: (state, action) => {
       state.currentPage = action.payload;
     },
   },
@@ -109,7 +114,7 @@ const superAdminLocationsSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-       .addCase(fetchPaginatedLocations.pending, (state) => {
+      .addCase(fetchPaginatedLocations.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
@@ -172,5 +177,5 @@ const superAdminLocationsSlice = createSlice({
   },
 });
 
-export const { reset, setLoading, setCurrentPage  } = superAdminLocationsSlice.actions;
+export const { reset, setLoading, setCurrentPage } = superAdminLocationsSlice.actions;
 export default superAdminLocationsSlice.reducer;

@@ -6,21 +6,30 @@ import { fetchLocations } from "../redux/locationsSlice";
 export const fetchEmployees = createAsyncThunk(
   "superadminEmployees/fetchEmployees",
   async (
-    { location, status, department, month, year, page = 1, limit = 10 },
+    { location, status, department, search, month, year, page = 1, limit = 10, isDeleted }, // ✅ Add isDeleted
     { rejectWithValue }
   ) => {
     try {
       const params = {};
       if (location && location !== "all") params.location = location;
-      if (status && status !== "all") {
-        params.status = status !== "deleted" ? status : undefined;
-        params.isDeleted = status === "deleted" ? true : false;
+      
+      // ✅ Handle status and isDeleted separately
+      if (status && status !== "all" && status !== "deleted") {
+        params.status = status;
       }
+      
+      // ✅ Handle isDeleted explicitly
+      if (isDeleted !== undefined) {
+        params.isDeleted = isDeleted;
+      }
+      
       if (department && department !== "all") params.department = department;
+      if (search) params.search = search;
       if (month) params.month = month;
       if (year) params.year = year;
       if (page) params.page = page;
       if (limit) params.limit = limit;
+      
       const response = await api.get("/superadmin/employees", { params });
       return response.data;
     } catch (error) {
@@ -34,6 +43,7 @@ export const fetchEmployees = createAsyncThunk(
     }
   }
 );
+
 
 
 export const fetchEmployeeById = createAsyncThunk(
@@ -165,7 +175,7 @@ export const registerEmployee = createAsyncThunk(
         error.response?.data || error.message
       );
       return rejectWithValue(
-        error.response?.data?.message || "Failed to register employee"
+        error.response?.data || error.message || "Failed to register employee" 
       );
     }
   }
@@ -294,7 +304,6 @@ export const addEmployeeDocuments = createAsyncThunk(
           itemsPerPage: 5,
         },
         employee: response.data.employee, // Include employee for state updates
-        message: response.data.message || "Documents added successfully",
       };
     } catch (error) {
       console.error(

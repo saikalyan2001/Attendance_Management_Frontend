@@ -1,4 +1,3 @@
-// src/components/common/LocationForm.jsx
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
-import { toast } from "react-hot-toast";
+import { locationToasts } from "../../utils/toastMessages";
 
 const locationSchema = z.object({
   name: z
@@ -62,7 +61,6 @@ const LocationForm = ({
     try {
       await onSubmit(data);
     } catch (err) {
-      // Errors from onSubmit (e.g., API errors) are handled in SuperAdminLocations.jsx
       console.error("Form submission error:", err);
     }
   };
@@ -70,15 +68,15 @@ const LocationForm = ({
   const onSubmitWithValidation = form.handleSubmit(
     handleSubmit,
     (errors) => {
-      // Extract all validation errors
-      const errorMessages = Object.values(errors).map((error) => error.message);
-      // Show the first error as a toast to avoid overwhelming the user
-      if (errorMessages.length > 0) {
-        toast.error(errorMessages[0], {
-          id: `form-error-${mode}`,
-          duration: 6000,
-          position: "top-center",
-        });
+      // Enhanced validation error handling
+      const errorEntries = Object.entries(errors);
+      
+      if (errorEntries.length === 1) {
+        const [field, error] = errorEntries[0];
+        locationToasts.validationError(field, error.message);
+      } else if (errorEntries.length > 1) {
+        // Show first error with count of remaining errors
+        locationToasts.multipleValidationErrors(errors);
       }
     }
   );
@@ -96,14 +94,17 @@ const LocationForm = ({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-body text-sm font-medium">
+                <FormLabel className="text-body text-sm font-medium cursor-default">
                   Name *
                 </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     id={`${mode}-location-name`}
-                    className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                    className={cn(
+                      "h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm",
+                      isLoading ? "cursor-not-allowed" : "cursor-text"
+                    )}
                     disabled={isLoading}
                     aria-label="Location name"
                     aria-describedby={`${mode}-location-name-error`}
@@ -111,24 +112,28 @@ const LocationForm = ({
                 </FormControl>
                 <FormMessage
                   id={`${mode}-location-name-error`}
-                  className="text-error text-xs"
+                  className="text-error text-xs cursor-default"
                 />
               </FormItem>
             )}
           />
+          
           <FormField
             control={form.control}
             name="city"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-body text-sm font-medium">
+                <FormLabel className="text-body text-sm font-medium cursor-default">
                   City *
                 </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     id={`${mode}-location-city`}
-                    className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                    className={cn(
+                      "h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm",
+                      isLoading ? "cursor-not-allowed" : "cursor-text"
+                    )}
                     disabled={isLoading}
                     aria-label="City"
                     aria-describedby={`${mode}-location-city-error`}
@@ -136,24 +141,28 @@ const LocationForm = ({
                 </FormControl>
                 <FormMessage
                   id={`${mode}-location-city-error`}
-                  className="text-error text-xs"
+                  className="text-error text-xs cursor-default"
                 />
               </FormItem>
             )}
           />
+          
           <FormField
             control={form.control}
             name="state"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-body text-sm font-medium">
+                <FormLabel className="text-body text-sm font-medium cursor-default">
                   State *
                 </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     id={`${mode}-location-state`}
-                    className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                    className={cn(
+                      "h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm",
+                      isLoading ? "cursor-not-allowed" : "cursor-text"
+                    )}
                     disabled={isLoading}
                     aria-label="State"
                     aria-describedby={`${mode}-location-state-error`}
@@ -161,24 +170,28 @@ const LocationForm = ({
                 </FormControl>
                 <FormMessage
                   id={`${mode}-location-state-error`}
-                  className="text-error text-xs"
+                  className="text-error text-xs cursor-default"
                 />
               </FormItem>
             )}
           />
+          
           <FormField
             control={form.control}
             name="address"
             render={({ field }) => (
               <FormItem className="sm:col-span-2">
-                <FormLabel className="text-body text-sm font-medium">
+                <FormLabel className="text-body text-sm font-medium cursor-default">
                   Address *
                 </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     id={`${mode}-location-address`}
-                    className="h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm"
+                    className={cn(
+                      "h-10 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-lg text-sm transition-all duration-300 hover:shadow-sm",
+                      isLoading ? "cursor-not-allowed" : "cursor-text"
+                    )}
                     disabled={isLoading}
                     aria-label="Address"
                     aria-describedby={`${mode}-location-address-error`}
@@ -186,18 +199,22 @@ const LocationForm = ({
                 </FormControl>
                 <FormMessage
                   id={`${mode}-location-address-error`}
-                  className="text-error text-xs"
+                  className="text-error text-xs cursor-default"
                 />
               </FormItem>
             )}
           />
         </div>
+        
         <div className="flex justify-end gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={onCancel}
-            className="border-complementary text-body hover:bg-complementary/20 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md"
+            className={cn(
+              "border-complementary text-body hover:bg-complementary/20 rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md",
+              isLoading ? "cursor-not-allowed" : "cursor-pointer"
+            )}
             disabled={isLoading}
             aria-label={`Cancel ${mode} location`}
           >
@@ -205,7 +222,10 @@ const LocationForm = ({
           </Button>
           <Button
             type="submit"
-            className="bg-accent text-body hover:bg-accent-hover rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md flex items-center gap-2"
+            className={cn(
+              "bg-accent text-body hover:bg-accent-hover rounded-lg text-sm py-2 px-4 transition-all duration-300 hover:shadow-md flex items-center gap-2",
+              isLoading ? "cursor-not-allowed" : "cursor-pointer"
+            )}
             disabled={isLoading}
             aria-label={`${mode === "add" ? "Add" : "Save"} location`}
           >

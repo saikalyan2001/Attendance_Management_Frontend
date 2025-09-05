@@ -5,21 +5,32 @@ import { fetchLocations } from "./locationsSlice";
 export const fetchEmployees = createAsyncThunk(
   "employees/fetchEmployees",
   async (
-    { location, status, department, month, year, page = 1, limit = 10 },
+    { location, status, department, search, month, year, page = 1, limit = 10, isDeleted }, // ✅ Add search and isDeleted
     { rejectWithValue }
   ) => {
     try {
       const params = {};
       if (location && location !== "all") params.location = location;
-      if (status && status !== "all") {
-        params.status = status !== "deleted" ? status : undefined;
-        params.isDeleted = status === "deleted" ? true : false;
+      
+      // ✅ Handle status and isDeleted separately
+      if (status && status !== "all" && status !== "deleted") {
+        params.status = status;
       }
+      
+      // ✅ Handle isDeleted explicitly
+      if (isDeleted !== undefined) {
+        params.isDeleted = isDeleted;
+      }
+      
       if (department && department !== "all") params.department = department;
+      if (search) params.search = search; // ✅ Add search parameter handling
       if (month) params.month = month;
       if (year) params.year = year;
       if (page) params.page = page;
       if (limit) params.limit = limit;
+      
+      console.log("API params being sent:", params); // For debugging
+      
       const response = await api.get("/admin/employees", { params });
       return response.data;
     } catch (error) {
@@ -30,6 +41,7 @@ export const fetchEmployees = createAsyncThunk(
     }
   }
 );
+
 
 export const fetchMonthlyLeaves = createAsyncThunk(
   "employees/fetchMonthlyLeaves",
@@ -120,7 +132,9 @@ export const registerEmployee = createAsyncThunk(
     } catch (error) {
       console.error("Register employee error:", error.response?.data || error.message);
       return rejectWithValue(
-        error.response?.data?.message || "Failed to register employee"
+        error.response?.data || { 
+          message: error.message || "Failed to register employee" 
+        }
       );
     }
   }

@@ -9,9 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import SuperAdminMarkAttendance from './SuperAdminMarkAttendance';
-import MonthlyAttendance from './SuperAdminMonthlyAttendance'; // Reuse admin component
-import ViewAttendance from './SuperAdminViewAttendance'; // Reuse admin component
-import AttendanceRequests from './SuperAdminAttendanceRequests'; // Reuse admin component
+import MonthlyAttendance from './SuperAdminMonthlyAttendance'; 
+import ViewAttendance from './SuperAdminViewAttendance'; 
+import AttendanceRequests from './SuperAdminAttendanceRequests'; 
 
 const SuperAdminAttendance = () => {
   const dispatch = useDispatch();

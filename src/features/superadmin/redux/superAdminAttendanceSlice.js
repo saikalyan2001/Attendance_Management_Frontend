@@ -7,12 +7,15 @@ export const fetchAttendance = createAsyncThunk(
     try {
       const { auth } = getState();
       const params = { month, year, date, status, page, limit };
-      // Superadmins can fetch without location restrictions
+      
+      // ✅ Enhanced location filtering for SuperAdmin
       if (location && location !== "all") {
         params.location = location;
       }
+      // When location === "all", SuperAdmin fetches all attendance without location filter
+      
       const response = await api.get("/superadmin/attendance", { params });
-      console.log("fetchAttendance response:", response.data);
+      console.log("SuperAdmin fetchAttendance response:", response.data);
       return response.data;
     } catch (error) {
       console.error("Fetch attendance error:", error.response?.data || error.message);
@@ -45,11 +48,23 @@ export const bulkMarkAttendance = createAsyncThunk(
   async ({ attendance, overwrite = false }, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState();
-      const records = attendance.map((record) => ({
-        ...record,
-        location: record.location && record.location !== "all" ? record.location : undefined,
-      }));
-      const response = await api.post("/superadmin/attendance/bulk", { attendance: records, overwrite });
+      
+      // ✅ Handle location filtering for attendance records
+      const records = attendance.map((record) => {
+        const processedRecord = { ...record };
+        
+        // For SuperAdmin: if location is "all" or undefined, don't include location in record
+        if (record.location === "all" || !record.location) {
+          delete processedRecord.location;
+        }
+        
+        return processedRecord;
+      });
+      
+      const response = await api.post("/superadmin/attendance/bulk", { 
+        attendance: records, 
+        overwrite 
+      });
       return response.data;
     } catch (error) {
       console.error("Bulk mark attendance error:", error.response?.data || error.message);
