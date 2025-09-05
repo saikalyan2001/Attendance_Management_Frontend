@@ -22,7 +22,7 @@ export const fetchLocations = createAsyncThunk(
       const response = await axios.get('http://localhost:5000/api/locations');
       return response.data.length > 0 ? response.data : fallbackLocations;
     } catch (error) {
-      console.error('Fetch locations error:', error);
+      ('Fetch locations error:', error);
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
     }
   }

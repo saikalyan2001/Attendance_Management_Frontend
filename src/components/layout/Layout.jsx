@@ -1,14 +1,16 @@
+// src/components/layout/Layout.jsx
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../../redux/slices/authSlice';
-import AdminSidebar from '../../features/admin/components/Sidebar'; 
-import SiteInchargeSidebar from '../../features/siteincharge/components/Sidebar'; 
+import AdminSidebar from '../../features/admin/components/Sidebar';
+import SiteInchargeSidebar from '../../features/siteincharge/components/Sidebar';
+import SuperAdminSidebar from '../../features/superadmin/components/Sidebar';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { Toaster, toast } from 'react-hot-toast';
 
 const Layout = ({ children, title, role: propRole }) => {
   const dispatch = useDispatch();
@@ -17,11 +19,8 @@ const Layout = ({ children, title, role: propRole }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Determine the role: Use propRole if provided, otherwise fall back to user.role from Redux
-  const role = propRole || user?.role || 'siteincharge'; // Default to 'siteincharge' if no role is found
-
-  // Select the appropriate Sidebar component based on the role
-  const Sidebar = role === 'siteincharge' ? SiteInchargeSidebar : AdminSidebar;
+  const role = propRole || user?.role || 'siteincharge';
+  const Sidebar = role === 'siteincharge' ? SiteInchargeSidebar : role === 'super_admin' ? SuperAdminSidebar : AdminSidebar;
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
@@ -29,16 +28,20 @@ const Layout = ({ children, title, role: propRole }) => {
 
   const handleLogout = () => {
     dispatch(logout()).then(() => {
-      toast.success('Logged out successfully');
+      toast.success('Logged out successfully', {
+        id: 'logout-success',
+        position: 'top-center',
+        duration: 3000, // Reduced duration for faster dismissal
+      });
       navigate('/login');
     });
   };
 
-  const navbarHeight = 64;
+  const navbarHeight = 48; // Reduced from 64px to save vertical space
 
   return (
     <div className="flex min-h-screen bg-body text-body transition-colors duration-200">
-      {/* Sidebar for Laptop (Extra Large and above) */}
+      <Toaster position="top-center" containerStyle={{ top: navbarHeight + 10 }} /> {/* Adjusted to avoid navbar overlap */}
       <div
         className={cn(
           'hidden xl:block fixed top-0 left-0 h-full bg-complementary text-body shadow-md z-30 transition-all duration-300',
@@ -53,37 +56,40 @@ const Layout = ({ children, title, role: propRole }) => {
           isOpen={true}
         />
       </div>
-      {/* Mobile/Tablet Header */}
-      <div className="xl:hidden fixed top-0 left-0 right-0 z-50 bg-complementary text-body shadow-md p-3 flex justify-between items-center">
+      <div className="xl:hidden fixed top-0 left-0 right-0 z-50 bg-complementary text-body shadow-md p-2 flex justify-between items-center">
         <Button
           variant="outline"
           size="sm"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md p-1.5"
+          className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md p-1"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
           </svg>
         </Button>
-        <h1 className="text-sm font-bold truncate">{title}</h1>
-        <div className="flex items-center space-x-1.5">
-          <span className="text-xs truncate max-w-[100px]">{user?.name || 'Guest'}</span>
+        <h1 className="text-xs font-bold truncate max-w-[150px]">{title}</h1> {/* Smaller text, tighter truncate */}
+        <div className="flex items-center space-x-1"> {/* Reduced space-x */}
           <ThemeToggle />
           <Button
             variant="outline"
             size="sm"
             onClick={handleLogout}
             aria-label="Log out"
-            className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md p-1.5"
+            className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md p-1"
           >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </div>
-      {/* Mobile/Tablet Sidebar and Backdrop */}
       {mobileMenuOpen && (
         <>
-          <div className="xl:hidden fixed top-0 left-0 z-50">
+          <div
+            className={cn(
+              'xl:hidden fixed top-0 left-0 z-50 w-[256px] h-full bg-complementary text-body shadow-md transition-transform duration-300',
+              mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            )}
+            style={{ maxHeight: '100vh', overflowY: 'auto' }} // Added max height and scroll
+          >
             <Sidebar
               isCollapsed={false}
               toggleCollapse={() => {}}
@@ -101,24 +107,22 @@ const Layout = ({ children, title, role: propRole }) => {
       )}
       <main
         className={cn(
-          'flex-1 p-4 sm:p-5 md:p-6 xl:p-8 transition-all duration-300 max-w-full overflow-x-hidden',
+          'flex-1 p-3 sm:p-4 md:p-5 xl:p-6 transition-all duration-300 max-w-full overflow-x-hidden', // Reduced mobile padding
           isSidebarCollapsed ? 'xl:ml-[72px]' : 'xl:ml-[256px]'
         )}
+        style={{ paddingTop: `${navbarHeight + 10}px` }} // Dynamic padding instead of spacer
       >
-        {/* Mobile/Tablet Navbar Spacer */}
-        <div className="xl:hidden" style={{ height: `${navbarHeight}px` }} />
-        {/* Page Header for Laptop */}
-        <header className="hidden xl:flex justify-between items-center p-3 sm:p-4 bg-complementary text-body shadow-md rounded-md mb-4 sm:mb-5 md:mb-6">
-          <h1 className="text-base sm:text-lg md:text-xl xl:text-2xl font-bold">{title}</h1>
-          <div className="flex items-center space-x-3 sm:space-x-4">
-            <span className="text-sm sm:text-base md:text-lg">{user?.name || 'Guest'}</span>
+        <header className="hidden xl:flex justify-between items-center p-2 sm:p-3 bg-complementary text-body shadow-md rounded-md mb-4">
+          <h1 className="text-base sm:text-lg md:text-xl font-bold">{title}</h1>
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <span className="text-sm sm:text-base">{user?.name || 'Guest'}</span>
             <ThemeToggle />
             <Button
               variant="outline"
               size="sm"
               onClick={handleLogout}
               aria-label="Log out"
-              className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-[10px] sm:text-sm md:text-base xl:text-lg py-1 sm:py-1.5 px-2 sm:px-3"
+              className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-md text-xs sm:text-sm py-1 px-2"
             >
               <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>

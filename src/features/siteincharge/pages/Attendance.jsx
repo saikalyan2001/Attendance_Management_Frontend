@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import MarkAttendance from "./MarkAttendance";
+import SiteInchargeMarkAttendance from "./SiteInchargeMarkAttendance";
 import MonthlyAttendance from "./MonthlyAttendance";
 import ViewAttendance from "./ViewAttendance";
 import AttendanceRequests from "./AttendanceRequests";
 import Layout from "../../../components/layout/Layout";
-import { toast } from "sonner";
+import { toast } from "react-hot-toast";
 
 const Attendance = () => {
   const { user } = useSelector((state) => state.auth);
@@ -15,10 +15,16 @@ const Attendance = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState("mark");
 
+
+    const [selectedDate, setSelectedDate] = useState(new Date());
+  const [location, setLocation] = useState('all');
+
   useEffect(() => {
     if (!locationId) {
       toast.error("No location assigned. Please contact admin.", {
-        duration: 10000,
+        id: 'no-location-error',
+        duration: 5000,
+        position: 'top-center',
       });
     }
   }, [locationId]);
@@ -27,15 +33,21 @@ const Attendance = () => {
     setActiveTab(e.target.value);
   };
 
+  const tabClass = (tab) =>
+    `py-3 text-sm rounded-md hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent ${
+      activeTab === tab ? "bg-accent text-body" : ""
+    }`;
+
   return (
     <Layout title="Attendance" role={user?.role || "siteincharge"}>
       <div className="w-full max-w-full overflow-x-hidden">
-        {/* Mobile Dropdown (hidden on sm and above) */}
+        {/* Mobile Dropdown */}
         <div className="sm:hidden mb-4">
           <select
             value={activeTab}
             onChange={handleDropdownChange}
             className="w-full p-3 text-sm font-medium bg-complementary text-body rounded-lg border border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+            aria-label="Select attendance tab"
           >
             <option value="mark">Mark Attendance</option>
             <option value="monthly">Monthly Attendance</option>
@@ -43,45 +55,39 @@ const Attendance = () => {
             <option value="requests">Edit Requests</option>
           </select>
         </div>
-        {/* Tabs for larger screens (hidden on mobile) */}
+
+        {/* Tabs for desktop */}
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
           className="space-y-6 w-full max-w-full overflow-x-hidden hidden sm:block"
         >
           <TabsList className="grid w-full h-fit p-2 grid-cols-4 bg-complementary text-body rounded-lg shadow-sm max-w-full">
-            <TabsTrigger
-              value="mark"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="mark" className={tabClass("mark")}>
               Mark Attendance
             </TabsTrigger>
-            <TabsTrigger
-              value="monthly"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="monthly" className={tabClass("monthly")}>
               Monthly Attendance
             </TabsTrigger>
-            <TabsTrigger
-              value="view"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="view" className={tabClass("view")}>
               View Attendance
             </TabsTrigger>
-            <TabsTrigger
-              value="requests"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="requests" className={tabClass("requests")}>
               Edit Requests
             </TabsTrigger>
           </TabsList>
+
           <TabsContent value="mark">
-            <MarkAttendance
+            <SiteInchargeMarkAttendance
               month={month}
               year={year}
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
+               selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              location={location}
+              setLocation={setLocation}
             />
           </TabsContent>
           <TabsContent value="monthly">
@@ -94,15 +100,20 @@ const Attendance = () => {
             <AttendanceRequests locationId={locationId} />
           </TabsContent>
         </Tabs>
-        {/* Mobile Content (visible on mobile, controlled by dropdown) */}
+
+        {/* Mobile Content */}
         <div className="sm:hidden">
           {activeTab === "mark" && (
-            <MarkAttendance
+            <SiteInchargeMarkAttendance
               month={month}
               year={year}
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
+               selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              location={location}
+              setLocation={setLocation}
             />
           )}
           {activeTab === "monthly" && <MonthlyAttendance />}

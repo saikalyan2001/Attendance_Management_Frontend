@@ -7,11 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import MarkAttendance from './MarkAttendance';
+import AdminMarkAttendance from './AdminMarkAttendance';
 import MonthlyAttendance from './MonthlyAttendance';
 import ViewAttendance from './ViewAttendance';
 import AttendanceRequests from './AttendanceRequests';
-import LoadingSpinner from '../../../components/common/LoadingSpinner';
 
 const Attendance = () => {
   const dispatch = useDispatch();
@@ -35,9 +34,16 @@ const Attendance = () => {
   }, []);
 
   useEffect(() => {
+    if (!user || user.role !== 'admin') {
+      toast.error("Unauthorized access. Please log in as an admin.", {
+        duration: 5000,
+      });
+      navigate('/login');
+      return;
+    }
     dispatch(fetchLocations());
-    dispatch(fetchEmployees());
-  }, [dispatch]);
+    dispatch(fetchEmployees({ location }));
+  }, [dispatch, user, navigate, location]);
 
   useEffect(() => {
     if (locationsError || employeesError) {
@@ -53,9 +59,10 @@ const Attendance = () => {
     setActiveTab(e.target.value);
   };
 
-  // if (isLoading || isDelayLoading) {
-  //   return <LoadingSpinner />;
-  // }
+  const tabClass = (tab) =>
+    `py-3 text-sm rounded-md hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent ${
+      activeTab === tab ? 'bg-accent text-body' : ''
+    }`;
 
   return (
     <Layout title="Attendance">
@@ -83,33 +90,21 @@ const Attendance = () => {
           className="space-y-6 w-full max-w-full overflow-x-hidden hidden sm:block"
         >
           <TabsList className="grid w-full h-fit p-2 grid-cols-4 bg-complementary text-body rounded-lg shadow-sm max-w-full">
-            <TabsTrigger
-              value="mark"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="mark" className={tabClass('mark')}>
               Mark Attendance
             </TabsTrigger>
-            <TabsTrigger
-              value="monthly"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="monthly" className={tabClass('monthly')}>
               Monthly Attendance
             </TabsTrigger>
-            <TabsTrigger
-              value="overview"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="overview" className={tabClass('overview')}>
               Attendance Overview
             </TabsTrigger>
-            <TabsTrigger
-              value="requests"
-              className="py-3 text-sm rounded-md data-[state=active]:bg-accent data-[state=active]:text-body hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
+            <TabsTrigger value="requests" className={tabClass('requests')}>
               Attendance Requests
             </TabsTrigger>
           </TabsList>
           <TabsContent value="mark">
-            <MarkAttendance
+            <AdminMarkAttendance
               month={month}
               year={year}
               location={location}
@@ -121,7 +116,14 @@ const Attendance = () => {
             />
           </TabsContent>
           <TabsContent value="monthly">
-            <MonthlyAttendance />
+            <MonthlyAttendance
+              month={month}
+              year={year}
+              location={location}
+              setLocation={setLocation}
+              setMonth={setMonth}
+              setYear={setYear}
+            />
           </TabsContent>
           <TabsContent value="overview">
             <ViewAttendance />
@@ -132,7 +134,7 @@ const Attendance = () => {
         </Tabs>
         <div className="sm:hidden">
           {activeTab === 'mark' && (
-            <MarkAttendance
+            <AdminMarkAttendance
               month={month}
               year={year}
               location={location}
@@ -143,7 +145,16 @@ const Attendance = () => {
               setYear={setYear}
             />
           )}
-          {activeTab === 'monthly' && <MonthlyAttendance />}
+          {activeTab === 'monthly' && (
+            <MonthlyAttendance
+              month={month}
+              year={year}
+              location={location}
+              setLocation={setLocation}
+              setMonth={setMonth}
+              setYear={setYear}
+            />
+          )}
           {activeTab === 'overview' && <ViewAttendance />}
           {activeTab === 'requests' && <AttendanceRequests locationId={location} />}
         </div>

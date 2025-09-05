@@ -1,3 +1,4 @@
+// src/components/auth/SignupForm.js
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,13 +17,11 @@ const signupSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   name: z.string().min(1, 'Name is required'),
   phone: z.string().optional(),
-  locations: z.array(z.string()).optional(),
+  locations: z.array(z.string()).min(1, 'At least one location is required'),
 });
 
 const SignupForm = ({ onSubmit, loading, error, role }) => {
-  const { locations } = useSelector((state) => state.adminLocations);
-
-  console.log("locations", locations);
+  const { locations, loading: locationsLoading } = useSelector((state) => state.adminLocations);
 
   const form = useForm({
     resolver: zodResolver(signupSchema),
@@ -36,18 +35,21 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
   });
 
   useEffect(() => {
-    if (role === 'siteincharge' && locations.length > 0) {
-      form.setValue('locations', [locations[0]._id]); // Default to first location
-    } else {
-      form.setValue('locations', []);
+    if (locations.length > 0) {
+      form.setValue('locations', [locations[0]._id]);
     }
-  }, [role, locations, form]);
+  }, [locations, form]);
+
+  useEffect(() => {
+    if (!loading && !error) {
+      form.reset();
+    }
+  }, [loading, error, form]);
 
   const handleSubmit = (data) => {
     onSubmit({
       ...data,
-      role,
-      locations: role === 'siteincharge' ? data.locations : [],
+      role: 'siteincharge',
     });
   };
 
@@ -58,6 +60,12 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
           <Alert variant="destructive" className="border-error text-error">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        )}
+        {locationsLoading && (
+          <div className="text-center">
+            <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+            <p className="text-sm text-body">Loading locations...</p>
+          </div>
         )}
         <FormField
           control={form.control}
@@ -70,7 +78,7 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                   {...field}
                   type="email"
                   className="bg-complementary text-body border-accent"
-                  disabled={loading}
+                  disabled={loading || locationsLoading}
                 />
               </FormControl>
               <FormMessage />
@@ -88,7 +96,7 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                   {...field}
                   type="password"
                   className="bg-complementary text-body border-accent"
-                  disabled={loading}
+                  disabled={loading || locationsLoading}
                 />
               </FormControl>
               <FormMessage />
@@ -105,7 +113,7 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                 <Input
                   {...field}
                   className="bg-complementary text-body border-accent"
-                  disabled={loading}
+                  disabled={loading || locationsLoading}
                 />
               </FormControl>
               <FormMessage />
@@ -122,52 +130,50 @@ const SignupForm = ({ onSubmit, loading, error, role }) => {
                 <Input
                   {...field}
                   className="bg-complementary text-body border-accent"
-                  disabled={loading}
+                  disabled={loading || locationsLoading}
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        {role === 'siteincharge' && (
-          <FormField
-            control={form.control}
-            name="locations"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Locations *</FormLabel>
-                <Select
-                  onValueChange={(value) => field.onChange([value])}
-                  value={field.value[0] || ''}
-                  disabled={loading || locations.length === 0}
-                >
-                  <FormControl>
-                    <SelectTrigger className="bg-complementary text-body border-accent">
-                      <SelectValue placeholder={locations.length === 0 ? "No locations available" : "Select location"} />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent className="bg-complementary text-body">
-                    {locations.map((loc) => (
-                      <SelectItem key={loc._id} value={loc._id}>
-                        {loc.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {locations.length === 0 && (
-                  <p className="text-sm text-error">No locations available. Please contact an admin to add locations.</p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <FormField
+          control={form.control}
+          name="locations"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Location *</FormLabel>
+              <Select
+                onValueChange={(value) => field.onChange([value])}
+                value={field.value[0] || ''}
+                disabled={loading || locationsLoading || locations.length === 0}
+              >
+                <FormControl>
+                  <SelectTrigger className="bg-complementary text-body border-accent">
+                    <SelectValue placeholder={locations.length === 0 ? "No locations available" : "Select location"} />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent className="bg-complementary text-body">
+                  {locations.map((loc) => (
+                    <SelectItem key={loc._id} value={loc._id}>
+                      {loc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {locations.length === 0 && !locationsLoading && (
+                <p className="text-sm text-error">No locations available. Please add locations first.</p>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <Button
           type="submit"
           className="w-full bg-accent text-body hover:bg-accent-hover"
-          disabled={loading || (role === 'siteincharge' && locations.length === 0)}
+          disabled={loading || locationsLoading || locations.length === 0}
         >
-          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Sign Up'}
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Create Site Incharge'}
         </Button>
       </form>
     </Form>
