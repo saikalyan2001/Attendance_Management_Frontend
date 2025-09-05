@@ -6,25 +6,29 @@ const api = axios.create({
   timeout: 10000, // 10-second timeout
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Only set Content-Type if not multipart/form-data
+    if (
+      !config.headers['Content-Type'] ||
+      config.headers['Content-Type'] === 'application/json'
+    ) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  // Only set Content-Type if not multipart/form-data
-  if (!config.headers['Content-Type'] || config.headers['Content-Type'] === 'application/json') {
-    config.headers['Content-Type'] = 'application/json';
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+);
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    
-
     // Timeout handling
     if (error.code === 'ECONNABORTED') {
       return Promise.reject({ message: 'Request timed out' });
@@ -32,12 +36,14 @@ api.interceptors.response.use(
 
     // Always reject with a consistent error object
     return Promise.reject({
-      message: error.response?.data?.message || error.message || 'API request failed',
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        'API request failed',
       data: error.response?.data || null,
       status: error.response?.status || null,
     });
   }
 );
-
 
 export default api;
