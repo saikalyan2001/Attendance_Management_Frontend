@@ -9,7 +9,13 @@ import AuthProvider from "./components/auth/AuthProvider";
 import { onCLS, onFCP, onLCP, onTTFB, onINP } from 'web-vitals';
 
 // Log web vitals for performance monitoring
-
+const reportWebVitals = () => {
+  onCLS((metric) => console.log('CLS:', metric));
+  onFCP((metric) => console.log('FCP:', metric));
+  onLCP((metric) => console.log('LCP:', metric));
+  onTTFB((metric) => console.log('TTFB:', metric));
+  onINP((metric) => console.log('INP:', metric));
+};
 
 reportWebVitals();
 

@@ -46,7 +46,6 @@ const DocumentUpload = ({
   locationsLoading,
   isSubmitting,
 }) => {
-  
   return (
     <div
       className={cn(
@@ -84,7 +83,6 @@ const DocumentUpload = ({
               onChange={(e) => {
                 const file = e.target.files[0];
                 if (file) {
-                  
                   onChange(file);
                   const previewUrl = URL.createObjectURL(file);
                   setPreview(index, previewUrl);
@@ -103,9 +101,13 @@ const DocumentUpload = ({
               <div className="flex gap-2">
                 <Button
                   type="button"
-                  onClick={() => document.getElementById(`file-input-${index}`).click()}
+                  onClick={() =>
+                    document.getElementById(`file-input-${index}`).click()
+                  }
                   className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                  disabled={employeesLoading || locationsLoading || isSubmitting}
+                  disabled={
+                    employeesLoading || locationsLoading || isSubmitting
+                  }
                 >
                   Choose File
                 </Button>
@@ -114,7 +116,9 @@ const DocumentUpload = ({
                   variant="outline"
                   onClick={() => handleRemoveDocument(index)}
                   className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                  disabled={employeesLoading || locationsLoading || isSubmitting}
+                  disabled={
+                    employeesLoading || locationsLoading || isSubmitting
+                  }
                   aria-label="Cancel document upload"
                 >
                   Cancel
@@ -139,41 +143,57 @@ const DocumentUpload = ({
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <a
-                    href={preview || "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full"
-                    aria-label={`Preview document ${value.name}`}
-                    onClick={(e) => {
-                      let url = preview;
-                      if (!preview && value) {
-                        url = URL.createObjectURL(value);
-                        
-                        setPreview(index, url);
-                      }
-                      if (!url) {
-                        
-                        e.preventDefault();
-                      } else {
-                        
-                      }
-                    }}
-                  >
-                    <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </a>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveDocument(index)}
-                    className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
-                    disabled={employeesLoading || locationsLoading || isSubmitting}
-                    aria-label={`Remove document ${value.name}`}
-                  >
-                    <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </Button>
-                </div>
+  {/* ✅ FIXED: Smart preview button that handles both cases */}
+  <Button
+    type="button"
+    variant="ghost"
+    size="sm"
+    onClick={() => {
+      // ✅ NEW: Handle preview for files not yet uploaded
+      if (!value.webViewLink && !value.googleDriveId) {
+        // This is a newly selected file (not uploaded yet)
+        if (preview) {
+          // Use the local blob URL for preview
+          window.open(preview, '_blank');
+        } else if (isImageFile(value)) {
+          // Create temporary blob URL for images
+          const tempUrl = URL.createObjectURL(value);
+          window.open(tempUrl, '_blank');
+          // Clean up after a short delay
+          setTimeout(() => URL.revokeObjectURL(tempUrl), 1000);
+        } else {
+          // For non-images, show an alert or toast
+          alert('Preview will be available after uploading the document.');
+        }
+      } else {
+        // This is an uploaded file with Google Drive links
+        const previewUrl = value.webViewLink || 
+          (value.googleDriveId ? `/api/files/${value.googleDriveId}/view` : '#');
+        if (previewUrl !== '#') {
+          window.open(previewUrl, '_blank');
+        }
+      }
+    }}
+    className="p-1 text-accent hover:text-accent-hover focus:ring-2 focus:ring-accent/20 rounded-full"
+    aria-label={`Preview document ${value.originalName || value.name}`}
+    disabled={employeesLoading || locationsLoading || isSubmitting}
+  >
+    <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
+  </Button>
+  
+  <Button
+    type="button"
+    variant="ghost"
+    size="sm"
+    onClick={() => handleRemoveDocument(index)}
+    className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
+    disabled={employeesLoading || locationsLoading || isSubmitting}
+    aria-label={`Remove document ${value.name}`}
+  >
+    <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+  </Button>
+</div>
+
               </div>
               {isImageFile(value) && preview && (
                 <div className="mt-2 flex justify-center">

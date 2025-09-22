@@ -3,7 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   // baseURL: 'http://localhost:5000/api',
   baseURL: 'https://attendance-management-backend-1-roc6.onrender.com/api',
-  timeout: 10000, // 10-second timeout
+  timeout: 100000, // 10-second timeout
 });
 
 api.interceptors.request.use(

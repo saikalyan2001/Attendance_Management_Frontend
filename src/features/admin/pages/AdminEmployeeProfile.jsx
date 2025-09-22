@@ -8,6 +8,7 @@ import {
   reset as resetEmployees,
   fetchEmployeeAdvances,
   fetchEmployeeDocuments,
+  fetchEmployeeSalary,
 } from '../redux/employeeSlice';
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
@@ -140,6 +141,9 @@ const AdminEmployeeProfile = () => {
     advancesPagination,
     loading,
     error,
+      salaryData,
+  salaryLoading,
+  salaryError,
   } = useSelector((state) => state.adminEmployees);
   const { settings, loading: loadingSettings, error: settingsError } = useSelector(
     (state) => state.adminSettings
@@ -185,6 +189,22 @@ const AdminEmployeeProfile = () => {
     { id: 'advances', label: 'Advances' },
     { id: 'documents', label: 'Documents' },
   ];
+
+
+  // ✅ ADD: Salary calculation state
+const [selectedSalaryMonth, setSelectedSalaryMonth] = useState(new Date().getMonth() + 1);
+const [selectedSalaryYear, setSelectedSalaryYear] = useState(new Date().getFullYear());
+
+// ✅ ADD: Fetch salary data when profile tab is active
+useEffect(() => {
+  if (activeTab === 'profile' && currentEmployee?._id) {
+    dispatch(fetchEmployeeSalary({
+      employeeId: currentEmployee._id,
+      year: selectedSalaryYear,
+      month: selectedSalaryMonth
+    }));
+  }
+}, [dispatch, activeTab, currentEmployee?._id, selectedSalaryYear, selectedSalaryMonth]);
 
   const editForm = useForm({
     resolver: zodResolver(editEmployeeSchema),
@@ -575,6 +595,7 @@ const AdminEmployeeProfile = () => {
               settings={settings}
             />
           )}
+          
           {activeTab === 'attendance' && (
             <EmployeeAttendanceSection
               attendanceData={attendance}

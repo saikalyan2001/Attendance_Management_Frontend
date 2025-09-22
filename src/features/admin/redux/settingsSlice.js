@@ -37,13 +37,28 @@ export const updateEmployeeLeaves = createAsyncThunk(
   }
 );
 
+// New thunk for fetching locations
+export const fetchLocations = createAsyncThunk(
+  'adminSettings/fetchLocations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/admin/locations');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
+    }
+  }
+);
+
 const settingsSlice = createSlice({
   name: 'adminSettings',
   initialState: {
     settings: null,
+    locations: [], // Added locations state
     loadingFetch: false,
     loadingUpdate: false,
     loadingLeaves: false,
+    loadingLocations: false, // Added loading state for locations
     error: null,
     successUpdate: false,
     successLeaves: false,
@@ -97,6 +112,19 @@ const settingsSlice = createSlice({
         state.loadingLeaves = false;
         state.error = action.payload;
         state.successLeaves = false;
+      })
+      // Added cases for fetchLocations
+      .addCase(fetchLocations.pending, (state) => {
+        state.loadingLocations = true;
+        state.error = null;
+      })
+      .addCase(fetchLocations.fulfilled, (state, action) => {
+        state.loadingLocations = false;
+        state.locations = action.payload;
+      })
+      .addCase(fetchLocations.rejected, (state, action) => {
+        state.loadingLocations = false;
+        state.error = action.payload;
       });
   },
 });

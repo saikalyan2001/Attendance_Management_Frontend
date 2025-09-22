@@ -47,6 +47,7 @@ import {
   endOfMonth,
   isSunday,
   startOfDay,
+  isValid,
 } from "date-fns";
 import {
   CalendarIcon,
@@ -154,6 +155,23 @@ const MonthlyAttendanceTable = ({
   
   const itemsPerPage = 5;
 
+  // ✅ NEW: Helper function to validate and parse dates
+  const isValidDate = (date) => {
+    if (!date) return false;
+    const parsed = new Date(date);
+    return isValid(parsed);
+  };
+
+  const safeFormatDate = (date, formatStr = "yyyy-MM-dd") => {
+    if (!isValidDate(date)) return null;
+    try {
+      return format(new Date(date), formatStr);
+    } catch (error) {
+      
+      return null;
+    }
+  };
+
   // Authorization check
   useEffect(() => {
     if (!user || user.role !== userRole) {
@@ -260,14 +278,21 @@ const MonthlyAttendanceTable = ({
       // SiteIncharge: nested structure [{employee: {...}, attendance: [...]}]
       return attendanceData.map(item => item.employee).filter(Boolean);
     } else {
-      // SuperAdmin/Admin: flat structure, extract unique employees
-      const employeeMap = new Map();
-      attendanceData.forEach((att) => {
-        if (att.employee && att.employee._id) {
-          employeeMap.set(att.employee._id.toString(), att.employee);
-        }
-      });
-      return Array.from(employeeMap.values());
+      // ✅ UPDATED: SuperAdmin/Admin now uses {employee, attendance[]} structure
+      // Check if it's the new structure or old flat structure for backward compatibility
+      if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+        // NEW structure: each item has {employee, attendance[]}
+        return attendanceData.map(item => item.employee).filter(Boolean);
+      } else {
+        // OLD flat structure: extract unique employees (fallback)
+        const employeeMap = new Map();
+        attendanceData.forEach((att) => {
+          if (att.employee && att.employee._id) {
+            employeeMap.set(att.employee._id.toString(), att.employee);
+          }
+        });
+        return Array.from(employeeMap.values());
+      }
     }
   }, [attendanceData, userRole]);
 
@@ -288,7 +313,7 @@ const MonthlyAttendanceTable = ({
       });
   }, [extractedEmployees, sortField, sortOrder, monthlySearch]);
 
-  // Find attendance record for a specific employee and day
+  // ✅ FIXED: Find attendance record with date validation
   const findAttendanceRecord = (employee, day) => {
     if (userRole === 'siteincharge') {
       const employeeData = attendanceData.find(item => 
@@ -296,16 +321,39 @@ const MonthlyAttendanceTable = ({
       );
       
       if (employeeData && employeeData.attendance) {
-        return employeeData.attendance.find(
-          (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-        );
+        return employeeData.attendance.find((att) => {
+          if (!isValidDate(att.date)) return false;
+          const attDateStr = safeFormatDate(att.date);
+          const dayDateStr = safeFormatDate(day.date);
+          return attDateStr && dayDateStr && attDateStr === dayDateStr;
+        });
       }
     } else {
-      return attendanceData.find(
-        (att) =>
-          att.employee?._id?.toString() === employee._id?.toString() &&
-          format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-      );
+      // ✅ UPDATED: Handle both new and old data structures with date validation
+      if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+        // NEW structure: find employee's data and search their attendance
+        const employeeData = attendanceData.find(item => 
+          item.employee._id.toString() === employee._id.toString()
+        );
+        
+        if (employeeData && employeeData.attendance) {
+          return employeeData.attendance.find((att) => {
+            if (!isValidDate(att.date)) return false;
+            const attDateStr = safeFormatDate(att.date);
+            const dayDateStr = safeFormatDate(day.date);
+            return attDateStr && dayDateStr && attDateStr === dayDateStr;
+          });
+        }
+      } else {
+        // OLD flat structure (fallback)
+        return attendanceData.find((att) => {
+          if (!att.employee || att.employee._id.toString() !== employee._id.toString()) return false;
+          if (!isValidDate(att.date)) return false;
+          const attDateStr = safeFormatDate(att.date);
+          const dayDateStr = safeFormatDate(day.date);
+          return attDateStr && dayDateStr && attDateStr === dayDateStr;
+        });
+      }
     }
     return null;
   };
@@ -317,15 +365,30 @@ const MonthlyAttendanceTable = ({
     if (userRole === 'siteincharge') {
       attendanceData.forEach(item => {
         item.attendance?.forEach(record => {
-          totals[record.status] = (totals[record.status] || 0) + 1;
+          if (record.status) {
+            totals[record.status] = (totals[record.status] || 0) + 1;
+          }
         });
       });
     } else {
-      attendanceData.forEach(att => {
-        if (att.status) {
-          totals[att.status] = (totals[att.status] || 0) + 1;
-        }
-      });
+      // ✅ UPDATED: Handle both new and old data structures
+      if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+        // NEW structure: each item has {employee, attendance[]}
+        attendanceData.forEach(item => {
+          item.attendance?.forEach(record => {
+            if (record.status) {
+              totals[record.status] = (totals[record.status] || 0) + 1;
+            }
+          });
+        });
+      } else {
+        // OLD flat structure (fallback)
+        attendanceData.forEach(att => {
+          if (att.status) {
+            totals[att.status] = (totals[att.status] || 0) + 1;
+          }
+        });
+      }
     }
     
     return totals;
@@ -451,7 +514,7 @@ const MonthlyAttendanceTable = ({
     (_, i) => new Date().getFullYear() - 2 + i
   );
 
-  // Export functions
+  // ✅ FIXED: Export functions with date validation
   const handleDownloadExcel = () => {
     if (!attendanceData || !attendanceData.length) {
       toast.error("No attendance data available to export.", { duration: 5000 });
@@ -484,7 +547,7 @@ const MonthlyAttendanceTable = ({
       };
     });
 
-    // Add daily totals row
+    // ✅ FIXED: Add daily totals row with date validation
     data.push({
       ID: "",
       Employee: "Daily Totals",
@@ -492,10 +555,32 @@ const MonthlyAttendanceTable = ({
         let records = [];
         if (userRole === 'siteincharge') {
           records = attendanceData.flatMap(item =>
-            item.attendance.filter(att => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd"))
+            (item.attendance || []).filter(att => {
+              if (!isValidDate(att.date)) return false;
+              const attDateStr = safeFormatDate(att.date);
+              const dayDateStr = safeFormatDate(day.date);
+              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+            })
           );
         } else {
-          records = attendanceData.filter(att => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd"));
+          // Handle both new and old structures
+          if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+            records = attendanceData.flatMap(item =>
+              (item.attendance || []).filter(att => {
+                if (!isValidDate(att.date)) return false;
+                const attDateStr = safeFormatDate(att.date);
+                const dayDateStr = safeFormatDate(day.date);
+                return attDateStr && dayDateStr && attDateStr === dayDateStr;
+              })
+            );
+          } else {
+            records = attendanceData.filter(att => {
+              if (!isValidDate(att.date)) return false;
+              const attDateStr = safeFormatDate(att.date);
+              const dayDateStr = safeFormatDate(day.date);
+              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+            });
+          }
         }
         
         const totals = {
@@ -556,6 +641,7 @@ const MonthlyAttendanceTable = ({
     setIsExporting(false);
   };
 
+  // ✅ FIXED: PDF export with date validation
   const handleDownloadPDF = () => {
     if (!attendanceData || !attendanceData.length) {
       toast.error("No attendance data available to export.", { duration: 5000 });
@@ -600,7 +686,7 @@ const MonthlyAttendanceTable = ({
       ];
     });
 
-    // Add daily totals row
+    // ✅ FIXED: Add daily totals row with date validation
     body.push([
       "",
       "Daily Totals",
@@ -608,10 +694,32 @@ const MonthlyAttendanceTable = ({
         let records = [];
         if (userRole === 'siteincharge') {
           records = attendanceData.flatMap(item =>
-            item.attendance.filter(att => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd"))
+            (item.attendance || []).filter(att => {
+              if (!isValidDate(att.date)) return false;
+              const attDateStr = safeFormatDate(att.date);
+              const dayDateStr = safeFormatDate(day.date);
+              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+            })
           );
         } else {
-          records = attendanceData.filter(att => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd"));
+          // Handle both new and old structures
+          if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+            records = attendanceData.flatMap(item =>
+              (item.attendance || []).filter(att => {
+                if (!isValidDate(att.date)) return false;
+                const attDateStr = safeFormatDate(att.date);
+                const dayDateStr = safeFormatDate(day.date);
+                return attDateStr && dayDateStr && attDateStr === dayDateStr;
+              })
+            );
+          } else {
+            records = attendanceData.filter(att => {
+              if (!isValidDate(att.date)) return false;
+              const attDateStr = safeFormatDate(att.date);
+              const dayDateStr = safeFormatDate(day.date);
+              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+            });
+          }
         }
         
         const totals = {
@@ -1090,7 +1198,7 @@ const MonthlyAttendanceTable = ({
                       );
                     })}
                     
-                    {/* Daily Totals Row */}
+                    {/* ✅ FIXED: Daily Totals Row with date validation */}
                     <TableRow className="bg-accent font-semibold border-t-2 border-complementary">
                       <TableCell className="text-body text-sm w-[100px] text-center px-2"></TableCell>
                       <TableCell className="text-body text-sm w-[200px] text-center px-2 font-semibold">
@@ -1100,14 +1208,32 @@ const MonthlyAttendanceTable = ({
                         let records = [];
                         if (userRole === 'siteincharge') {
                           records = attendanceData.flatMap((item) =>
-                            item.attendance.filter(
-                              (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                            )
+                            (item.attendance || []).filter((att) => {
+                              if (!isValidDate(att.date)) return false;
+                              const attDateStr = safeFormatDate(att.date);
+                              const dayDateStr = safeFormatDate(day.date);
+                              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+                            })
                           );
                         } else {
-                          records = attendanceData.filter(
-                            (att) => format(new Date(att.date), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-                          );
+                          // Handle both new and old structures
+                          if (attendanceData.length > 0 && attendanceData[0].employee && attendanceData[0].attendance) {
+                            records = attendanceData.flatMap((item) =>
+                              (item.attendance || []).filter((att) => {
+                                if (!isValidDate(att.date)) return false;
+                                const attDateStr = safeFormatDate(att.date);
+                                const dayDateStr = safeFormatDate(day.date);
+                                return attDateStr && dayDateStr && attDateStr === dayDateStr;
+                              })
+                            );
+                          } else {
+                            records = attendanceData.filter((att) => {
+                              if (!isValidDate(att.date)) return false;
+                              const attDateStr = safeFormatDate(att.date);
+                              const dayDateStr = safeFormatDate(day.date);
+                              return attDateStr && dayDateStr && attDateStr === dayDateStr;
+                            });
+                          }
                         }
                         
                         const totals = {

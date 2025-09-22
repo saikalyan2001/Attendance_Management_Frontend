@@ -359,6 +359,53 @@ export const restoreEmployee = createAsyncThunk(
   }
 );
 
+// ✅ ADD: After your existing imports at the top
+export const fetchEmployeeSalary = createAsyncThunk(
+  'siteInchargeEmployee/fetchEmployeeSalary',
+  async ({ employeeId, year, month }, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/siteincharge/employees/${employeeId}/salary/${year}/${month}`);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || "Failed to fetch salary data");
+    }
+  }
+);
+
+// ✅ ADD: Payroll summary action
+export const fetchPayrollSummary = createAsyncThunk(
+  'siteInchargeEmployee/fetchPayrollSummary', 
+  async ({ year, month, location }, { rejectWithValue }) => {
+    try {
+      const params = { year, month };
+      if (location && location !== 'all') params.location = location;
+      
+      const response = await api.get(`/siteincharge/payroll/${year}/${month}`, { params });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || "Failed to fetch payroll data");
+    }
+  }
+);
+
+// ✅ ADD: Force refresh action (like admin/superadmin)
+export const forceRefreshEmployees = createAsyncThunk(
+  'siteInchargeEmployee/forceRefreshEmployees',
+  async (params, { dispatch, rejectWithValue }) => {
+    try {
+      
+      const result = await dispatch(fetchEmployees({
+        ...params,
+        _cacheBuster: Date.now() // Force fresh data
+      })).unwrap();
+      return result;
+    } catch (error) {
+      return rejectWithValue(error);
+    }
+  }
+);
+
+
 const employeeSlice = createSlice({
   name: 'siteInchargeEmployee',
   initialState: {
@@ -371,6 +418,10 @@ const employeeSlice = createSlice({
     locations: [],
     allLocations: [],
     settings: null,
+     salaryData: null,
+  payrollSummary: null,
+  salaryLoading: false,
+  salaryError: null,
     loading: false,
     error: null,
     errorType: null, 
@@ -382,6 +433,8 @@ const employeeSlice = createSlice({
       limit: 10,
       totalPages: 1,
     },
+    lastUpdated: null,
+  attendanceUpdateTrigger: 0,
   },
   reducers: {
     reset: (state) => {
@@ -393,6 +446,51 @@ const employeeSlice = createSlice({
       state.attendance = [];
       state.attendancePagination = { total: 0, page: 1, limit: 10, totalPages: 1 };
     },
+    // ✅ NEW: Clear success state
+  clearSuccess: (state) => {
+    state.success = false;
+    state.successType = null;
+  },
+  
+  // ✅ NEW: Set last updated timestamp
+  setLastUpdated: (state) => {
+    state.lastUpdated = Date.now();
+  },
+  
+  // ✅ NEW: Set attendance update trigger
+  setAttendanceUpdateTrigger: (state) => {
+    state.attendanceUpdateTrigger = Date.now();
+  },
+  
+  // ✅ NEW: Update individual employee data
+  updateEmployeeInList: (state, action) => {
+    const updatedEmployee = action.payload;
+    const index = state.employees.findIndex(emp => emp._id === updatedEmployee._id);
+    const allIndex = state.allEmployees.findIndex(emp => emp._id === updatedEmployee._id);
+
+    if (index !== -1) {
+      state.employees[index] = {
+        ...state.employees[index],
+        ...updatedEmployee,
+        paidLeaves: updatedEmployee.paidLeaves,
+        monthlyLeaves: updatedEmployee.monthlyLeaves
+      };
+    }
+    if (allIndex !== -1) {
+      state.allEmployees[allIndex] = {
+        ...state.allEmployees[allIndex],
+        ...updatedEmployee
+      };
+    }
+    if (state.employee?._id === updatedEmployee._id) {
+      state.employee = {
+        ...state.employee,
+        ...updatedEmployee
+      };
+    }
+},
+
+    
   },
   extraReducers: (builder) => {
     builder
@@ -728,9 +826,40 @@ const employeeSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
         state.success = false;
-      });
+      })
+      // ✅ ADD: At the end of your extraReducers, before the closing
+.addCase(fetchEmployeeSalary.pending, (state) => {
+  state.salaryLoading = true;
+  state.salaryError = null;
+})
+.addCase(fetchEmployeeSalary.fulfilled, (state, action) => {
+  state.salaryLoading = false;
+  state.salaryData = action.payload;
+})
+.addCase(fetchEmployeeSalary.rejected, (state, action) => {
+  state.salaryLoading = false;
+  state.salaryError = action.payload;
+})
+.addCase(fetchPayrollSummary.pending, (state) => {
+  state.salaryLoading = true;
+  state.salaryError = null;
+})
+.addCase(fetchPayrollSummary.fulfilled, (state, action) => {
+  state.salaryLoading = false;
+  state.payrollSummary = action.payload;
+})
+.addCase(fetchPayrollSummary.rejected, (state, action) => {
+  state.salaryLoading = false;
+  state.salaryError = action.payload;
+})
+.addCase(forceRefreshEmployees.fulfilled, (state, action) => {
+  state.employees = action.payload.employees || [];
+  state.pagination = action.payload.pagination || state.pagination;
+  state.lastUpdated = Date.now();
+  
+})
   },
 });
 
-export const { reset } = employeeSlice.actions;
+export const { reset, clearSuccess, setLastUpdated, setAttendanceUpdateTrigger, updateEmployeeInList } = employeeSlice.actions;
 export default employeeSlice.reducer;

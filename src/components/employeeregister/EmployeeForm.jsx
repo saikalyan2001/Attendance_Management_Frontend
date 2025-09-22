@@ -16,7 +16,7 @@ import DocumentUpload from "./DocumentUpload";
 
 const EmployeeForm = ({
   form,
-  locations = [], // Default to empty array
+  locations = [],
   employeesLoading,
   locationsLoading,
   isSubmitting,
@@ -34,11 +34,10 @@ const EmployeeForm = ({
   setRegistrationMode,
   documentsSectionRef,
   includeEmailField,
-  showLocationField = true, // Default to true for admin and super_admin
-  disableLocationField = false, // Default to false, true for siteincharge
-  locationName = "No location", // Default location name
+  showLocationField = true,
+  disableLocationField = false,
+  locationName = "No location",
 }) => {
-
   return (
     <Form {...form}>
       <form className="space-y-6 sm:space-y-8">
@@ -53,14 +52,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Employee ID *
+                    Employee ID
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., EMP003"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -76,14 +74,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Name *
+                    Name
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., Alice Johnson"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -99,7 +96,7 @@ const EmployeeForm = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                      Email *
+                      Email
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -107,7 +104,6 @@ const EmployeeForm = ({
                         {...field}
                         placeholder="e.g., alice@example.com"
                         className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                        disabled={employeesLoading || locationsLoading || isSubmitting}
                       />
                     </FormControl>
                     <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -124,14 +120,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Designation *
+                    Designation
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., Analyst"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -147,14 +142,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Department *
+                    Department
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., Finance"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -171,18 +165,11 @@ const EmployeeForm = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                      Location *
+                      Location
                     </FormLabel>
                     <Select
                       value={field.value}
                       onValueChange={field.onChange}
-                      disabled={
-                        employeesLoading ||
-                        locationsLoading ||
-                        disableLocationField ||
-                        locations.length === 0 ||
-                        isSubmitting
-                      }
                     >
                       <FormControl>
                         <SelectTrigger className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg">
@@ -219,11 +206,6 @@ const EmployeeForm = ({
                         )}
                       </SelectContent>
                     </Select>
-                    {locations.length === 0 && !locationsLoading && !disableLocationField && (
-                      <p className="text-error text-[9px] sm:text-xs xl:text-base mt-1">
-                        No locations available. Please add a location in the Locations page.
-                      </p>
-                    )}
                     <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
                       {serverError?.fields?.location ||
                         form.formState.errors.location?.message}
@@ -238,7 +220,7 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Salary (₹/year) *
+                    Salary (₹/year)
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -246,7 +228,6 @@ const EmployeeForm = ({
                       {...field}
                       placeholder="e.g., 55000"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -262,14 +243,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Join Date *
+                    Join Date
                   </FormLabel>
                   <FormControl>
                     <Input
                       type="date"
                       {...field}
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -285,14 +265,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Phone *
+                    Phone
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., 1234567890"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -315,14 +294,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Account Number *
+                    Account Number
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., 123456789012"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -338,14 +316,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    IFSC Code *
+                    IFSC Code
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., SBIN0001234"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -361,14 +338,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Bank Name *
+                    Bank Name
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., State Bank of India"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -384,14 +360,13 @@ const EmployeeForm = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-body text-[10px] sm:text-sm xl:text-lg font-medium">
-                    Account Holder Name *
+                    Account Holder Name
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       placeholder="e.g., Alice Johnson"
                       className="h-9 sm:h-10 xl:h-12 bg-body text-body border-complementary focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-md text-[10px] sm:text-sm xl:text-lg transition-all duration-300 hover:shadow-sm"
-                      disabled={employeesLoading || locationsLoading || isSubmitting}
                     />
                   </FormControl>
                   <FormMessage className="text-error text-[9px] sm:text-xs xl:text-base">
@@ -438,7 +413,6 @@ const EmployeeForm = ({
             type="button"
             onClick={appendDocument}
             className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
-            disabled={employeesLoading || locationsLoading || isSubmitting}
           >
             <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
             Add Document
@@ -450,7 +424,6 @@ const EmployeeForm = ({
             variant="outline"
             onClick={() => setRegistrationMode(null)}
             className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md"
-            disabled={employeesLoading || locationsLoading || isSubmitting}
             aria-label="Back"
           >
             Back
@@ -462,7 +435,6 @@ const EmployeeForm = ({
               "bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 min-h-[40px] sm:min-h-[48px] w-full sm:w-auto transition-all duration-300 hover:shadow-md",
               isSubmitting && "animate-scale-in"
             )}
-            disabled={employeesLoading || locationsLoading || isSubmitting}
             aria-label="Register Employee"
           >
             {isSubmitting ? (

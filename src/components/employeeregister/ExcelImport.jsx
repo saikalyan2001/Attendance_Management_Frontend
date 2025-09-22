@@ -20,8 +20,6 @@ const ExcelImport = ({
   setRegistrationMode,
 }) => {
   const getFileIcon = (file) => {
-    if (!file) return <FileIcon className="h-5 w-5 text-body" />;
-    const extension = file.name.toLowerCase().split(".").pop();
     return <FileIcon className="h-5 w-5 text-body" />;
   };
 
@@ -57,7 +55,6 @@ const ExcelImport = ({
           accept=".xlsx,.xls,.csv"
           onChange={handleExcelFileChange}
           className="hidden"
-          disabled={employeesLoading || locationsLoading || isSubmitting}
         />
         {!excelFile ? (
           <div className="flex flex-col items-center space-y-2">
@@ -70,7 +67,6 @@ const ExcelImport = ({
                 type="button"
                 onClick={() => document.getElementById("excel-file-input").click()}
                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                disabled={employeesLoading || locationsLoading || isSubmitting}
               >
                 Choose File
               </Button>
@@ -79,14 +75,13 @@ const ExcelImport = ({
                 variant="outline"
                 onClick={() => setExcelFile(null)}
                 className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300"
-                disabled={employeesLoading || locationsLoading || isSubmitting}
                 aria-label="Cancel file upload"
               >
                 Cancel
               </Button>
             </div>
             <p className="text-[9px] sm:text-xs xl:text-sm text-body/50">
-              (XLSX, XLS, CSV; Max 5MB)
+              (XLSX, XLS, CSV)
             </p>
           </div>
         ) : (
@@ -109,7 +104,6 @@ const ExcelImport = ({
                 size="sm"
                 onClick={handleRemoveExcel}
                 className="text-error hover:text-error-hover focus:ring-2 focus:ring-error/20 rounded-full"
-                disabled={employeesLoading || locationsLoading || isSubmitting}
                 aria-label={`Remove file ${excelFile.name}`}
               >
                 <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -123,7 +117,6 @@ const ExcelImport = ({
           type="button"
           onClick={() => setRegistrationMode(null)}
           className="border-complementary text-body hover:bg-complementary/10 rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 transition-all duration-300 hover:shadow-md"
-          disabled={employeesLoading || locationsLoading || isSubmitting}
           aria-label="Back"
         >
           Back
@@ -132,7 +125,6 @@ const ExcelImport = ({
           type="button"
           onClick={handleExcelSubmit}
           className="bg-accent text-body hover:bg-accent-hover rounded-md text-[10px] sm:text-sm xl:text-lg py-1 sm:py-2 px-3 sm:px-4 flex items-center transition-all duration-300 hover:shadow-md"
-          disabled={employeesLoading || locationsLoading || isSubmitting || !excelFile}
         >
           <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
           Import Employees

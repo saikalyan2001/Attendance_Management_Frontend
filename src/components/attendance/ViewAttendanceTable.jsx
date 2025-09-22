@@ -242,31 +242,50 @@ const ViewAttendanceTable = ({
   ]);
 
   // Normalize attendance data based on role
-  const normalizedAttendance = useMemo(() => {
-    if (userRole === 'siteincharge') {
-      let data = [];
-      if (filterDate) {
-        // Daily attendance: flat array of records
-        data = Array.isArray(rawAttendance) ? [...rawAttendance] : [];
-      } else {
-        // Monthly attendance: flatten nested structure
-        data = Array.isArray(monthlyAttendance)
-          ? monthlyAttendance.flatMap(item =>
-              Array.isArray(item.attendance)
-                ? item.attendance.map(record => ({
-                    ...record,
-                    employee: item.employee,
-                  }))
-                : []
-            )
-          : [];
-      }
-      return data;
+// ✅ FIXED: Update the normalizedAttendance useMemo
+const normalizedAttendance = useMemo(() => {
+  if (userRole === 'siteincharge') {
+    let data = [];
+    if (filterDate) {
+      // Daily attendance: flat array of records
+      data = Array.isArray(rawAttendance) ? [...rawAttendance] : [];
     } else {
-      // SuperAdmin/Admin: already flat structure
-      return Array.isArray(rawAttendance) ? [...rawAttendance] : [];
+      // Monthly attendance: flatten nested structure
+      data = Array.isArray(monthlyAttendance)
+        ? monthlyAttendance.flatMap(item =>
+            Array.isArray(item.attendance)
+              ? item.attendance.map(record => ({
+                  ...record, // ✅ Preserve all fields including status
+                  employee: item.employee,
+                }))
+              : []
+          )
+        : [];
     }
-  }, [rawAttendance, monthlyAttendance, filterDate, userRole]);
+    return data;
+  } else {
+    // ✅ UPDATED: SuperAdmin/Admin - handle the new {employee, attendance[]} structure
+    if (Array.isArray(rawAttendance) && rawAttendance.length > 0) {
+      // Check if it's the new structure
+      if (rawAttendance[0].employee && rawAttendance[0].attendance) {
+        // NEW structure: flatten the {employee, attendance[]} format
+        return rawAttendance.flatMap(item =>
+          Array.isArray(item.attendance)
+            ? item.attendance.map(record => ({
+                ...record, // ✅ This preserves the status field
+                employee: item.employee, // ✅ Attach employee info
+              }))
+            : []
+        );
+      } else {
+        // OLD structure: already flat
+        return [...rawAttendance];
+      }
+    }
+    return [];
+  }
+}, [rawAttendance, monthlyAttendance, filterDate, userRole]);
+
 
   // Sort and filter attendance data
   const sortedAttendance = useMemo(() => {
@@ -288,44 +307,76 @@ const ViewAttendanceTable = ({
     });
   }, [normalizedAttendance, sortConfig]);
 
-  const filteredAttendance = useMemo(() => {
-    let filtered = sortedAttendance || [];
-    
-    if (filterStatus && filterStatus !== "all") {
-      filtered = filtered.filter(record => record?.status === filterStatus);
-    }
-    
-    if (userRole === 'siteincharge') {
-      if (filterDate) {
-        filtered = filtered.filter(record => {
-          if (!record?.date) return false;
-          const recordDate = new Date(record.date);
-          const filterDateStr = format(filterDate, "yyyy-MM-dd");
-          const recordDateStr = format(recordDate, "yyyy-MM-dd");
-          return recordDateStr === filterDateStr;
-        });
-      } else if (filterMonth && filterYear) {
-        filtered = filtered.filter(record => {
-          if (!record?.date) return false;
-          const recordDate = new Date(record.date);
-          return (
-            recordDate.getMonth() + 1 === filterMonth &&
-            recordDate.getFullYear() === filterYear
-          );
-        });
+ // ✅ FIXED: Update the filteredAttendance useMemo
+// ✅ FIXED: Update the filteredAttendance useMemo
+const filteredAttendance = useMemo(() => {
+  let filtered = sortedAttendance || [];
+  
+  if (filterStatus && filterStatus !== "all") {
+    filtered = filtered.filter(record => record?.status === filterStatus);
+  }
+  
+  // ✅ FIXED: Apply date filtering to ALL roles, not just siteincharge
+  if (filterDate) {
+    filtered = filtered.filter(record => {
+      if (!record?.date) return false;
+      
+      try {
+        const recordDate = new Date(record.date);
+        
+        // Check if recordDate is valid
+        if (isNaN(recordDate.getTime())) {
+          
+          return false;
+        }
+        
+        // Compare dates by removing time components
+        const filterDateOnly = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate());
+        const recordDateOnly = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+        
+        return filterDateOnly.getTime() === recordDateOnly.getTime();
+      } catch (error) {
+        
+        return false;
       }
-    }
-    
-    if (searchQuery) {
-      filtered = filtered.filter(
-        record =>
-          record?.employee?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          record?.employee?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    
-    return filtered;
-  }, [sortedAttendance, filterStatus, filterDate, filterMonth, filterYear, searchQuery, userRole]);
+    });
+  }
+  
+  // Keep the existing siteincharge-specific month/year filtering
+  if (userRole === 'siteincharge' && !filterDate && filterMonth && filterYear) {
+    filtered = filtered.filter(record => {
+      if (!record?.date) return false;
+      
+      try {
+        const recordDate = new Date(record.date);
+        
+        if (isNaN(recordDate.getTime())) {
+          
+          return false;
+        }
+        
+        return (
+          recordDate.getMonth() + 1 === filterMonth &&
+          recordDate.getFullYear() === filterYear
+        );
+      } catch (error) {
+        
+        return false;
+      }
+    });
+  }
+  
+  if (searchQuery) {
+    filtered = filtered.filter(
+      record =>
+        record?.employee?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        record?.employee?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }
+  
+  return filtered;
+}, [sortedAttendance, filterStatus, filterDate, filterMonth, filterYear, searchQuery, userRole]);
+
 
   // Status totals
   const statusTotals = useMemo(() => {

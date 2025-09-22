@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations } from '../redux/locationsSlice';
-import { fetchEmployees, reset as resetEmployees } from '../redux/superadminEmployeeSlice';
+import { fetchEmployees, reset as resetEmployees, clearSuccess } from '../redux/superadminEmployeeSlice';
 import Layout from '../../../components/layout/Layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -17,15 +17,58 @@ const SuperAdminAttendance = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.superAdminLocations);
-  const { employees, loading: employeesLoading, error: employeesError } = useSelector((state) => state.superadminEmployees);
+  const { employees, loading: employeesLoading, error: employeesError, success: employeeSuccess } = useSelector((state) => state.superadminEmployees);
   const { user, isLoading } = useSelector((state) => state.auth);
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [location, setLocation] = useState('all'); // Superadmin can select 'all' without restrictions
+  const [location, setLocation] = useState(''); // Superadmin can select 'all' without restrictions
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState('mark');
   const [isDelayLoading, setIsDelayLoading] = useState(true);
+  // ✅ ADD: In src/features/superadmin/pages/SuperAdminAttendance.jsx
+const [previousTab, setPreviousTab] = useState('mark');
+
+// ✅ NEW: Force refresh when switching from monthly back to mark
+useEffect(() => {
+  if (previousTab === 'monthly' && activeTab === 'mark') {
+    setTimeout(() => {
+      if (location) {
+        dispatch(fetchEmployees({ 
+          location: location === 'all' ? undefined : location,
+          month,
+          year,
+          page: 1,
+          limit: 1000,
+          _cacheBuster: Date.now()
+        }));
+      }
+    }, 500);
+  }
+  
+  setPreviousTab(activeTab);
+}, [activeTab, previousTab, location, month, year, dispatch]);
+
+
+    // ✅ ADD: Clear success state when component unmounts or tab changes
+    useEffect(() => {
+      return () => {
+        if (employeeSuccess) {
+          dispatch(clearSuccess());
+        }
+      };
+    }, [employeeSuccess, dispatch]);
+  
+    // ✅ ADD: Reset success when switching tabs
+    useEffect(() => {
+      if (employeeSuccess) {
+        // Clear success after a short delay to allow other components to react
+        setTimeout(() => {
+          dispatch(clearSuccess());
+        }, 1000);
+      }
+    }, [activeTab, employeeSuccess, dispatch]);
+  
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -34,17 +77,29 @@ const SuperAdminAttendance = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (!user || user.role !== 'super_admin') {
-      toast.error("Unauthorized access. Please log in as a superadmin.", {
-        duration: 5000,
-      });
-      navigate('/login');
-      return;
-    }
-    dispatch(fetchLocations());
-    dispatch(fetchEmployees({ location }));
-  }, [dispatch, user, navigate, location]);
+ // In SuperAdminMarkAttendance.jsx - modify useEffect
+// In SuperAdminAttendance.jsx - modify useEffect
+// In SuperAdminAttendance.jsx - modify useEffect
+useEffect(() => {
+  if (!user || user.role !== 'super_admin') {
+    toast.error("Unauthorized access. Please log in as a superadmin.", {
+      duration: 5000,
+    });
+    navigate('/login');
+    return;
+  }
+  
+  // ✅ Use a filter that actually excludes locations
+  dispatch(fetchLocations({ 
+    role: 'super_admin', 
+    filter: 'limited' // This will show only first 3 locations
+  }));
+  
+  if (location) {
+    dispatch(fetchEmployees({ location: location === 'all' ? undefined : location }));
+  }
+}, [dispatch, user, navigate, location]);
+
 
   useEffect(() => {
     if (locationsError || employeesError) {

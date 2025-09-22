@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SiteInchargeMarkAttendance from "./SiteInchargeMarkAttendance";
 import MonthlyAttendance from "./MonthlyAttendance";
@@ -7,17 +7,36 @@ import ViewAttendance from "./ViewAttendance";
 import AttendanceRequests from "./AttendanceRequests";
 import Layout from "../../../components/layout/Layout";
 import { toast } from "react-hot-toast";
+import { clearSuccess } from "../redux/employeeSlice";
 
 const Attendance = () => {
+  const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
+  const { success: employeeSuccess } = useSelector((state) => state.siteInchargeEmployee);
   const locationId = user?.locations?.[0]?._id;
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState("mark");
-
-
-    const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [location, setLocation] = useState('all');
+
+  // ✅ ADD: Clear success state when component unmounts or tab changes
+  useEffect(() => {
+    return () => {
+      if (employeeSuccess) {
+        dispatch(clearSuccess());
+      }
+    };
+  }, [employeeSuccess, dispatch]);
+
+  // ✅ ADD: Reset success when switching tabs
+  useEffect(() => {
+    if (employeeSuccess) {
+      setTimeout(() => {
+        dispatch(clearSuccess());
+      }, 1000);
+    }
+  }, [activeTab, employeeSuccess, dispatch]);
 
   useEffect(() => {
     if (!locationId) {
@@ -39,7 +58,7 @@ const Attendance = () => {
     }`;
 
   return (
-    <Layout title="Attendance" role={user?.role || "siteincharge"}>
+    <Layout title="Site-in-Charge Attendance" role={user?.role || "siteincharge"}>
       <div className="w-full max-w-full overflow-x-hidden">
         {/* Mobile Dropdown */}
         <div className="sm:hidden mb-4">
@@ -84,7 +103,7 @@ const Attendance = () => {
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
-               selectedDate={selectedDate}
+              selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               location={location}
               setLocation={setLocation}
@@ -110,7 +129,7 @@ const Attendance = () => {
               setMonth={setMonth}
               setYear={setYear}
               locationId={locationId}
-               selectedDate={selectedDate}
+              selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               location={location}
               setLocation={setLocation}

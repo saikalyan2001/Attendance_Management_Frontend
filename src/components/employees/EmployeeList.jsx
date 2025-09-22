@@ -142,8 +142,6 @@ const EmployeeList = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useSelector((state) => state.auth);
 
-  
-
   const employeesState = useSelector(reduxSelectors.employees);
   const settingsState = useSelector(reduxSelectors.settings);
   const locationsState = useSelector(reduxSelectors.locations);
@@ -162,11 +160,6 @@ const EmployeeList = ({
   const { settings = {}, loading: settingsLoading } = settingsState || {};
   const { locations = [], loading: locationsLoading } = locationsData || {};
   const { allLocations = [] } = allLocationsData;
-
-  
-  
-  
-  
 
   const initialDepartment = searchParams.get("department") || "all";
   const initialStatus = searchParams.get("status") || "all";
@@ -205,6 +198,56 @@ const EmployeeList = ({
   const [dropdownKey, setDropdownKey] = useState(0);
 
   const HIGHLIGHT_DURATION = settings?.highlightDuration ?? 24 * 60 * 60 * 1000;
+
+  // ✅ ADD: Listen for attendance updates
+  const { attendanceUpdateTrigger } = useSelector((state) => state.superadminEmployees);
+  const { employeeRefreshTrigger } = useSelector((state) => state.superAdminAttendance || {});
+
+  // ✅ ADD: Refresh employees when attendance is updated
+  useEffect(() => {
+    if (attendanceUpdateTrigger > 0) {
+      
+      
+      const fetchParams = {
+        location: showLocationFilter
+          ? filterLocation === "all" ? undefined : filterLocation
+          : locationId,
+        department: filterDepartment === "all" ? undefined : filterDepartment,
+        status: filterStatus === "all" || filterStatus === "deleted" ? undefined : filterStatus,
+        isDeleted: filterStatus === "deleted" ? true : undefined,
+        search: search || undefined,
+        page: currentPage,
+        limit: itemsPerPage,
+        _cacheBuster: Date.now() // Force fresh data
+      };
+
+      dispatch(actions.fetchEmployees(fetchParams));
+    }
+  }, [attendanceUpdateTrigger, dispatch, actions.fetchEmployees]);
+
+  // ✅ ADD: Secondary refresh listener
+  useEffect(() => {
+    if (employeeRefreshTrigger > 0) {
+      
+      
+      setTimeout(() => {
+        const fetchParams = {
+          location: showLocationFilter
+            ? filterLocation === "all" ? undefined : filterLocation
+            : locationId,
+          department: filterDepartment === "all" ? undefined : filterDepartment,
+          status: filterStatus === "all" || filterStatus === "deleted" ? undefined : filterStatus,
+          isDeleted: filterStatus === "deleted" ? true : undefined,
+          search: search || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+          _cacheBuster: Date.now()
+        };
+
+        dispatch(actions.fetchEmployees(fetchParams));
+      }, 500);
+    }
+  }, [employeeRefreshTrigger, dispatch, actions.fetchEmployees]);
 
   const availableDepartments = useDynamicDepartments
     ? [...new Set(allEmployees.map((emp) => emp.department).filter(Boolean))].sort()
@@ -274,7 +317,6 @@ const EmployeeList = ({
       dispatch(actions.fetchDepartments({ location: filterLocation === "all" ? undefined : filterLocation }))
         .unwrap()
         .catch((err) => {
-          
           toast.error(err.message || "Failed to fetch departments");
         });
     }
@@ -302,7 +344,6 @@ const EmployeeList = ({
     dispatch(actions.fetchEmployees(fetchParams))
       .unwrap()
       .catch((err) => {
-        
         toast.error(err.message || "Failed to fetch employees");
       });
 
@@ -389,6 +430,7 @@ const EmployeeList = ({
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
+  // All the handle functions remain the same...
   const handleEditClick = (employee) => {
     if (!employee || !employee._id) {
       toast.error("Invalid employee data");
@@ -972,14 +1014,24 @@ const EmployeeList = ({
                 </TableHeader>
                 <TableBody>
                   {sortedEmployees.map((employee) => {
-                    const openingLeaves = Math.max(employee.paidLeaves?.available || 0, 0);
-                    const leavesAccrued = Math.max(employee.paidLeaves?.carriedForward || 0, 0);
-                    const leavesTaken = Math.max(employee.paidLeaves?.used || 0, 0);
-                    const closingLeaves = Math.max(openingLeaves + leavesAccrued - leavesTaken, 0);
+                    // ✅ CORRECTED LEAVES (O/C) CALCULATION
+                    const currentAvailable = Math.max(employee.paidLeaves?.available || 0, 0);
+                    const currentMonth = new Date().getMonth() + 1;
+                    const currentYear = new Date().getFullYear();
+                    
+                    const thisMonthLeave = employee.monthlyLeaves?.find(
+                      ml => ml.year === currentYear && ml.month === currentMonth
+                    );
+                    
+                    const leavesUsedThisMonth = thisMonthLeave?.taken || 0;
+                    
+                    // Opening = What they had at START of this month
+                    const openingLeaves = currentAvailable + leavesUsedThisMonth;
+                    
+                    // Closing = What they have RIGHT NOW (real-time)
+                    const closingLeaves = currentAvailable;
+                    
                     const isHighlighted = shouldHighlightEmployee(employee);
-
-                    if (employee.paidLeaves?.carriedForward < 0) {
-                                          }
 
                     return (
                       <TableRow
@@ -1015,6 +1067,7 @@ const EmployeeList = ({
                           ₹{getCurrentAdvance(employee).toFixed(2)}
                         </TableCell>
                         <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center bg-complementary hidden sm:table-cell">
+                          {/* ✅ FIXED: Corrected Leaves (O/C) Display */}
                           {openingLeaves}/{closingLeaves}
                         </TableCell>
                         <TableCell className="px-1 sm:px-3 py-2 text-sm sm:text-base text-center bg-complementary">
@@ -1253,6 +1306,7 @@ const EmployeeList = ({
         </CardContent>
       </Card>
 
+      {/* All dialogs remain the same... */}
       {employeeToEdit && (
         <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
           <EditDialog

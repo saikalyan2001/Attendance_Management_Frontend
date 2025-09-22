@@ -8,14 +8,11 @@ export const fetchAttendance = createAsyncThunk(
       const { auth } = getState();
       const params = { month, year, date, status, page, limit };
       
-      // ✅ Enhanced location filtering for SuperAdmin
       if (location && location !== "all") {
         params.location = location;
       }
-      // When location === "all", SuperAdmin fetches all attendance without location filter
       
       const response = await api.get("/superadmin/attendance", { params });
-      
       return response.data;
     } catch (error) {
       
@@ -24,17 +21,22 @@ export const fetchAttendance = createAsyncThunk(
   }
 );
 
+// ✅ UPDATED: fetchMonthlyAttendance now fetches employees with their full month attendance
 export const fetchMonthlyAttendance = createAsyncThunk(
   "superAdminAttendance/fetchMonthlyAttendance",
   async ({ month, year, location, page = 1, limit = 5 }, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState();
-      const params = { month, year, page, limit };
+      const params = { 
+        month, 
+        year, 
+        page, 
+        limit // ✅ This now limits EMPLOYEES, not attendance records
+      };
       if (location && location !== "all") {
         params.location = location;
       }
       const response = await api.get("/superadmin/attendance", { params });
-      
       return response.data;
     } catch (error) {
       
@@ -49,11 +51,9 @@ export const bulkMarkAttendance = createAsyncThunk(
     try {
       const { auth } = getState();
       
-      // ✅ Handle location filtering for attendance records
       const records = attendance.map((record) => {
         const processedRecord = { ...record };
         
-        // For SuperAdmin: if location is "all" or undefined, don't include location in record
         if (record.location === "all" || !record.location) {
           delete processedRecord.location;
         }
@@ -69,6 +69,34 @@ export const bulkMarkAttendance = createAsyncThunk(
     } catch (error) {
       
       return rejectWithValue(error.response?.data || { message: "Failed to mark attendance in bulk" });
+    }
+  }
+);
+
+export const bulkMarkAttendanceWithRefresh = createAsyncThunk(
+  "superAdminAttendance/bulkMarkAttendanceWithRefresh",
+  async ({ attendance, overwrite = false, refreshParams }, { dispatch, rejectWithValue }) => {
+    try {
+      
+      
+      const attendanceResult = await dispatch(bulkMarkAttendance({ 
+        attendance, 
+        overwrite 
+      })).unwrap();
+      
+      
+      
+      dispatch(setEmployeeRefreshTrigger());
+      
+      return {
+        ...attendanceResult,
+        refreshTriggered: true,
+        refreshParams,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      
+      return rejectWithValue(error);
     }
   }
 );
@@ -182,7 +210,6 @@ export const undoMarkAttendance = createAsyncThunk(
   }
 );
 
-// Optional: Superadmin-specific action to override attendance
 export const overrideAttendance = createAsyncThunk(
   "superAdminAttendance/overrideAttendance",
   async ({ id, status, reason }, { rejectWithValue }) => {
@@ -196,21 +223,66 @@ export const overrideAttendance = createAsyncThunk(
   }
 );
 
+export const refreshEmployeeData = createAsyncThunk(
+  "superAdminAttendance/refreshEmployeeData",
+  async ({ location, month, year }, { dispatch, rejectWithValue }) => {
+    try {
+      
+      return { success: true, location, month, year };
+    } catch (error) {
+      return rejectWithValue(error.message || "Failed to refresh employee data");
+    }
+  }
+);
+
+export const fetchWorkingDayPolicy = createAsyncThunk(
+  "superAdminAttendance/fetchWorkingDayPolicy",
+  async ({ locationId, date }, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/superadmin/attendance/working-day-policy", {
+        params: { locationId, date },
+      });
+      return response.data;
+    } catch (error) {
+      
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch working day policy"
+      );
+    }
+  }
+);
+
 const superAdminAttendanceSlice = createSlice({
   name: "superAdminAttendance",
   initialState: {
     attendance: [],
     pagination: null,
-    monthlyAttendance: [],
+    monthlyAttendance: [], // ✅ NEW: Will store {employee, attendance[]} structure
     monthlyPagination: null,
     attendanceRequests: [],
     requestsPagination: null,
     loading: false,
     error: null,
+    lastAttendanceUpdate: null,
+    employeeRefreshTrigger: 0,
+    workingDayPolicy: null,
+    workingDayPolicyLoading: false,
+    workingDayPolicyError: null,
   },
   reducers: {
     reset: (state) => {
       state.error = null;
+    },
+    setAttendanceUpdated: (state) => {
+      state.lastAttendanceUpdate = Date.now();
+      state.employeeRefreshTrigger = Date.now();
+    },
+    setEmployeeRefreshTrigger: (state) => {
+      state.employeeRefreshTrigger = Date.now();
+    },
+    clearWorkingDayPolicy: (state) => {
+      state.workingDayPolicy = null;
+      state.workingDayPolicyError = null;
     },
   },
   extraReducers: (builder) => {
@@ -240,12 +312,14 @@ const superAdminAttendanceSlice = createSlice({
           itemsPerPage: 5,
         };
       })
+      // ✅ UPDATED: Handle new {employee, attendance[]} structure
       .addCase(fetchMonthlyAttendance.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchMonthlyAttendance.fulfilled, (state, action) => {
         state.loading = false;
+        // ✅ NEW: Store the {employee, attendance[]} structure directly
         state.monthlyAttendance = action.payload.attendance || [];
         state.monthlyPagination = action.payload.pagination || {
           currentPage: 1,
@@ -253,7 +327,6 @@ const superAdminAttendanceSlice = createSlice({
           totalItems: 0,
           itemsPerPage: 5,
         };
-        
       })
       .addCase(fetchMonthlyAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -272,8 +345,23 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(bulkMarkAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(bulkMarkAttendance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.fulfilled, (state) => {
+        state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
@@ -283,6 +371,8 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(markAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(markAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -294,6 +384,8 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(editAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(editAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -330,6 +422,8 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(handleAttendanceRequest.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(handleAttendanceRequest.rejected, (state, action) => {
         state.loading = false;
@@ -364,6 +458,8 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(undoMarkAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(undoMarkAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -375,13 +471,28 @@ const superAdminAttendanceSlice = createSlice({
       })
       .addCase(overrideAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(overrideAttendance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+      .addCase(fetchWorkingDayPolicy.pending, (state) => {
+        state.workingDayPolicyLoading = true;
+        state.workingDayPolicyError = null;
+      })
+      .addCase(fetchWorkingDayPolicy.fulfilled, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicy = action.payload;
+      })
+      .addCase(fetchWorkingDayPolicy.rejected, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicyError = action.payload;
+        state.workingDayPolicy = null;
       });
   },
 });
 
-export const { reset } = superAdminAttendanceSlice.actions;
+export const { reset, setAttendanceUpdated, setEmployeeRefreshTrigger, clearWorkingDayPolicy } = superAdminAttendanceSlice.actions;
 export default superAdminAttendanceSlice.reducer;

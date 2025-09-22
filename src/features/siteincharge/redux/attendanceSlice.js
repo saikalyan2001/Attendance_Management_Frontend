@@ -19,7 +19,7 @@ export const markAttendance = createAsyncThunk(
         : attendance.map((rec) => rec._id);
       return { attendance, attendanceIds };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message ||
           error.message ||
           "Failed to mark attendance"
@@ -32,7 +32,7 @@ export const bulkMarkAttendance = createAsyncThunk(
   "siteInchargeAttendance/bulkMarkAttendance",
   async ({ attendance, overwrite }, { rejectWithValue }) => {
     try {
-            if (!Array.isArray(attendance)) {
+      if (!Array.isArray(attendance)) {
         throw new Error("Attendance must be an array");
       }
       const controller = new AbortController();
@@ -56,7 +56,7 @@ export const bulkMarkAttendance = createAsyncThunk(
         attendanceIds,
       };
     } catch (error) {
-            if (error.name === "AbortError") {
+      if (error.name === "AbortError") {
         return rejectWithValue("Request timed out");
       }
       return rejectWithValue({
@@ -71,6 +71,35 @@ export const bulkMarkAttendance = createAsyncThunk(
   }
 );
 
+// ✅ ADD: bulkMarkAttendanceWithRefresh function
+export const bulkMarkAttendanceWithRefresh = createAsyncThunk(
+  "siteInchargeAttendance/bulkMarkAttendanceWithRefresh",
+  async ({ attendance, overwrite = false, refreshParams }, { dispatch, rejectWithValue }) => {
+    try {
+      
+      
+      const attendanceResult = await dispatch(bulkMarkAttendance({ 
+        attendance, 
+        overwrite 
+      })).unwrap();
+      
+      
+      
+      dispatch(setEmployeeRefreshTrigger());
+      
+      return {
+        ...attendanceResult,
+        refreshTriggered: true,
+        refreshParams,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      
+      return rejectWithValue(error);
+    }
+  }
+);
+
 export const undoAttendance = createAsyncThunk(
   "siteInchargeAttendance/undoAttendance",
   async ({ attendanceIds }, { rejectWithValue }) => {
@@ -81,7 +110,7 @@ export const undoAttendance = createAsyncThunk(
       await api.delete("/siteincharge/attendance", { data: { attendanceIds } });
       return attendanceIds;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message ||
           error.message ||
           "Failed to undo attendance"
@@ -107,7 +136,6 @@ export const fetchAttendance = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance data"
       );
@@ -127,7 +155,6 @@ export const fetchMonthlyAttendance = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly attendance"
       );
@@ -142,7 +169,7 @@ export const requestAttendanceEdit = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-            const response = await api.post("/siteincharge/attendance/request-edit", {
+      const response = await api.post("/siteincharge/attendance/request-edit", {
         employeeId,
         location,
         date,
@@ -152,7 +179,7 @@ export const requestAttendanceEdit = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to request attendance edit"
       );
     }
@@ -171,7 +198,7 @@ export const fetchAttendanceEditRequests = createAsyncThunk(
         pagination: response.data.pagination || {},
       };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message ||
           'Failed to fetch attendance edit requests'
       );
@@ -191,12 +218,40 @@ export const calculateSalaryImpact = createAsyncThunk(
       );
       return response.data.salaryCalculations || [];
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to calculate salary impact"
       );
     }
   }
 );
+
+export const fetchWorkingDayPolicy = createAsyncThunk(
+  "siteInchargeAttendance/fetchWorkingDayPolicy",
+  async ({ locationId, date }, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/siteincharge/attendance/working-day-policy", {
+        params: { locationId, date },
+      });
+      return response.data;
+    } catch (error) {
+      
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch working day policy"
+      );
+    }
+  }
+);
+
+
+export const clearWorkingDayPolicy = () => ({
+  type: 'siteInchargeAttendance/clearWorkingDayPolicy'
+});
+
+
+// ✅ ADD: Employee refresh trigger action
+export const setEmployeeRefreshTrigger = () => ({
+  type: 'siteInchargeAttendance/setEmployeeRefreshTrigger'
+});
 
 const attendanceSlice = createSlice({
   name: "siteInchargeAttendance",
@@ -208,6 +263,11 @@ const attendanceSlice = createSlice({
     pagination: {},
     loading: false,
     error: null,
+    lastAttendanceUpdate: null,
+    employeeRefreshTrigger: 0, // ✅ ADD: Trigger for employee refresh
+        workingDayPolicy: null,
+    workingDayPolicyLoading: false,
+    workingDayPolicyError: null,
   },
   reducers: {
     reset: (state) => {
@@ -216,6 +276,18 @@ const attendanceSlice = createSlice({
     },
     resetMonthly: (state) => {
       state.monthlyAttendance = [];
+    },
+    setAttendanceUpdated: (state) => {
+      state.lastAttendanceUpdate = Date.now();
+      state.employeeRefreshTrigger = Date.now();
+    },
+    // ✅ ADD: Manual trigger for employee refresh
+    setEmployeeRefreshTrigger: (state) => {
+      state.employeeRefreshTrigger = Date.now();
+    },
+        clearWorkingDayPolicy: (state) => {
+      state.workingDayPolicy = null;
+      state.workingDayPolicyError = null;
     },
   },
   extraReducers: (builder) => {
@@ -240,6 +312,8 @@ const attendanceSlice = createSlice({
       .addCase(markAttendance.fulfilled, (state, action) => {
         state.loading = false;
         state.attendance.push(...action.payload.attendance);
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(markAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -252,8 +326,24 @@ const attendanceSlice = createSlice({
       .addCase(bulkMarkAttendance.fulfilled, (state, action) => {
         state.loading = false;
         state.attendance = action.payload.attendance;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(bulkMarkAttendance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // ✅ ADD: Handle bulkMarkAttendanceWithRefresh
+      .addCase(bulkMarkAttendanceWithRefresh.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.fulfilled, (state) => {
+        state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
@@ -266,6 +356,8 @@ const attendanceSlice = createSlice({
         state.attendance = state.attendance.filter(
           (record) => !action.payload.includes(record._id)
         );
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(undoAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -290,6 +382,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(requestAttendanceEdit.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(requestAttendanceEdit.rejected, (state, action) => {
         state.loading = false;
@@ -319,9 +413,23 @@ const attendanceSlice = createSlice({
       .addCase(calculateSalaryImpact.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+            .addCase(fetchWorkingDayPolicy.pending, (state) => {
+        state.workingDayPolicyLoading = true;
+        state.workingDayPolicyError = null;
+      })
+      .addCase(fetchWorkingDayPolicy.fulfilled, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicy = action.payload;
+      })
+      .addCase(fetchWorkingDayPolicy.rejected, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicyError = action.payload;
+        state.workingDayPolicy = null;
       });
   },
 });
 
-export const { reset, resetMonthly } = attendanceSlice.actions;
+// ✅ ADD: Export the new actions
+export const { reset, resetMonthly, setAttendanceUpdated } = attendanceSlice.actions;
 export default attendanceSlice.reducer;

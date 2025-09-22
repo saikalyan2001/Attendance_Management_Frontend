@@ -11,7 +11,6 @@ export const markAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data || { message: "Failed to mark attendance" }
       );
@@ -29,7 +28,6 @@ export const bulkMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data || { message: "Failed to mark attendance in bulk" }
       );
@@ -37,14 +35,41 @@ export const bulkMarkAttendance = createAsyncThunk(
   }
 );
 
-export const editAttendance = createAsyncThunk(
-  "attendance/editAttendance",
-  async ({ id, status }, { rejectWithValue }) => {
+export const bulkMarkAttendanceWithRefresh = createAsyncThunk(
+  "attendance/bulkMarkAttendanceWithRefresh",
+  async ({ attendance, overwrite = false, refreshParams }, { dispatch, rejectWithValue }) => {
     try {
-      const response = await api.put(`/admin/attendance/${id}`, { status });
-      return response.data;
+      
+      
+      const attendanceResult = await dispatch(bulkMarkAttendance({ 
+        attendance, 
+        overwrite 
+      })).unwrap();
+      
+      
+      
+      dispatch(setEmployeeRefreshTrigger());
+      
+      return {
+        ...attendanceResult,
+        refreshTriggered: true,
+        refreshParams,
+        timestamp: Date.now()
+      };
     } catch (error) {
       
+      return rejectWithValue(error);
+    }
+  }
+);
+
+export const editAttendance = createAsyncThunk(
+  "attendance/editAttendance",
+  async ({ id, status, date }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/admin/attendance/${id}`, { status, date });
+      return response.data;
+    } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to edit attendance"
       );
@@ -61,7 +86,6 @@ export const fetchAttendanceRequests = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance requests"
       );
@@ -79,7 +103,6 @@ export const handleAttendanceRequest = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to handle attendance request"
       );
@@ -89,16 +112,16 @@ export const handleAttendanceRequest = createAsyncThunk(
 
 export const requestAttendanceEdit = createAsyncThunk(
   "attendance/requestAttendanceEdit",
-  async ({ attendanceId, requestedStatus, reason }, { rejectWithValue }) => {
+  async ({ attendanceId, requestedStatus, reason, date }, { rejectWithValue }) => {
     try {
       const response = await api.post("/admin/attendance/requests", {
         attendanceId,
         requestedStatus,
         reason,
+        date,
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to request attendance edit"
       );
@@ -123,7 +146,6 @@ export const exportAttendance = createAsyncThunk(
       link.remove();
       return true;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to export attendance"
       );
@@ -140,7 +162,6 @@ export const undoMarkAttendance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to undo attendance"
       );
@@ -155,10 +176,8 @@ export const fetchAttendance = createAsyncThunk(
       const response = await api.get("/admin/attendance", {
         params: { month, year, location, date, status, page, limit },
       });
-       // Debug log
       return response.data;
     } catch (error) {
-      
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch attendance"
       );
@@ -166,20 +185,69 @@ export const fetchAttendance = createAsyncThunk(
   }
 );
 
+// ✅ UPDATED: fetchMonthlyAttendance now paginates employees, not attendance records
 export const fetchMonthlyAttendance = createAsyncThunk(
   "attendance/fetchMonthlyAttendance",
   async ({ month, year, location, page = 1, limit = 5 }, { rejectWithValue }) => {
     try {
-      const response = await api.get("/admin/attendance", {
-        params: { month, year, location, page, limit },
+      const params = { 
+        month, 
+        year, 
+        page, 
+        limit // ✅ This now limits EMPLOYEES, not attendance records
+      };
+      if (location && location !== "all") {
+        params.location = location;
+      }
+      const response = await api.get("/admin/attendance", { params });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch monthly attendance"
+      );
+    }
+  }
+);
+
+export const fetchWorkingDayPolicy = createAsyncThunk(
+  "attendance/fetchWorkingDayPolicy",
+  async ({ locationId, date }, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/admin/attendance/working-day-policy", {
+        params: { locationId, date },
       });
-      
       return response.data;
     } catch (error) {
       
       return rejectWithValue(
-        error.response?.data?.message || "Failed to fetch monthly attendance"
+        error.response?.data?.message || "Failed to fetch working day policy"
       );
+    }
+  }
+);
+
+export const overrideAttendance = createAsyncThunk(
+  "attendance/overrideAttendance",
+  async ({ id, status, reason }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/admin/attendance/override/${id}`, { status, reason });
+      return response.data;
+    } catch (error) {
+      
+      return rejectWithValue(error.response?.data?.message || "Failed to override attendance");
+    }
+  }
+);
+
+// ✅ NEW: Employee refresh trigger action
+export const refreshEmployeeData = createAsyncThunk(
+  "attendance/refreshEmployeeData",
+  async ({ location, month, year }, { dispatch, rejectWithValue }) => {
+    try {
+      
+      return { success: true, location, month, year };
+    } catch (error) {
+      return rejectWithValue(error.message || "Failed to refresh employee data");
     }
   }
 );
@@ -189,16 +257,33 @@ const attendanceSlice = createSlice({
   initialState: {
     attendance: [],
     pagination: null,
-    monthlyAttendance: [],
+    monthlyAttendance: [], // ✅ NEW: Will store {employee, attendance[]} structure  
     monthlyPagination: null,
     attendanceRequests: [],
-    requestsPagination: null, // Added for attendance requests pagination
+    requestsPagination: null,
     loading: false,
     error: null,
+    lastAttendanceUpdate: null,
+    employeeRefreshTrigger: 0, // ✅ ADD: Trigger for employee refresh
+    workingDayPolicy: null,
+    workingDayPolicyLoading: false,
+    workingDayPolicyError: null,
   },
   reducers: {
     reset: (state) => {
       state.error = null;
+    },
+    setAttendanceUpdated: (state) => {
+      state.lastAttendanceUpdate = Date.now();
+      state.employeeRefreshTrigger = Date.now();
+    },
+    // ✅ ADD: Manual trigger for employee refresh
+    setEmployeeRefreshTrigger: (state) => {
+      state.employeeRefreshTrigger = Date.now();
+    },
+    clearWorkingDayPolicy: (state) => {
+      state.workingDayPolicy = null;
+      state.workingDayPolicyError = null;
     },
   },
   extraReducers: (builder) => {
@@ -209,6 +294,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(undoMarkAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(undoMarkAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -239,20 +326,21 @@ const attendanceSlice = createSlice({
           itemsPerPage: 5,
         };
       })
+      // ✅ UPDATED: Handle new {employee, attendance[]} structure
       .addCase(fetchMonthlyAttendance.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchMonthlyAttendance.fulfilled, (state, action) => {
         state.loading = false;
+        // ✅ NEW: Store the {employee, attendance[]} structure directly
         state.monthlyAttendance = action.payload.attendance || [];
         state.monthlyPagination = action.payload.pagination || {
           currentPage: 1,
           totalPages: 1,
           totalItems: 0,
-          itemsPerPage: 10,
+          itemsPerPage: 5,
         };
-         // Debug log
       })
       .addCase(fetchMonthlyAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -262,7 +350,7 @@ const attendanceSlice = createSlice({
           currentPage: 1,
           totalPages: 1,
           totalItems: 0,
-          itemsPerPage: 10,
+          itemsPerPage: 5,
         };
       })
       .addCase(fetchAttendanceRequests.pending, (state) => {
@@ -296,6 +384,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(markAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(markAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -307,8 +397,23 @@ const attendanceSlice = createSlice({
       })
       .addCase(bulkMarkAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(bulkMarkAttendance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.fulfilled, (state) => {
+        state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
+      })
+      .addCase(bulkMarkAttendanceWithRefresh.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
@@ -318,6 +423,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(editAttendance.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(editAttendance.rejected, (state, action) => {
         state.loading = false;
@@ -329,6 +436,8 @@ const attendanceSlice = createSlice({
       })
       .addCase(handleAttendanceRequest.fulfilled, (state) => {
         state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
       })
       .addCase(handleAttendanceRequest.rejected, (state, action) => {
         state.loading = false;
@@ -356,9 +465,42 @@ const attendanceSlice = createSlice({
       .addCase(exportAttendance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+      .addCase(fetchWorkingDayPolicy.pending, (state) => {
+        state.workingDayPolicyLoading = true;
+        state.workingDayPolicyError = null;
+      })
+      .addCase(fetchWorkingDayPolicy.fulfilled, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicy = action.payload;
+      })
+      .addCase(fetchWorkingDayPolicy.rejected, (state, action) => {
+        state.workingDayPolicyLoading = false;
+        state.workingDayPolicyError = action.payload;
+        state.workingDayPolicy = null;
+      })
+      .addCase(overrideAttendance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(overrideAttendance.fulfilled, (state) => {
+        state.loading = false;
+        state.lastAttendanceUpdate = Date.now();
+        state.employeeRefreshTrigger = Date.now();
+      })
+      .addCase(overrideAttendance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
   },
 });
 
-export const { reset } = attendanceSlice.actions;
+// ✅ UPDATED: Export all actions including the new ones
+export const { 
+  reset, 
+  setAttendanceUpdated, 
+  setEmployeeRefreshTrigger, 
+  clearWorkingDayPolicy 
+} = attendanceSlice.actions;
+
 export default attendanceSlice.reducer;

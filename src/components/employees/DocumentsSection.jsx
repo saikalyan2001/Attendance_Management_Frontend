@@ -39,10 +39,9 @@ const getFileIcon = (fileName) => {
   return <FileIcon />;
 };
 
-// Normalize file system path to URL path
+// ✅ UPDATED: Normalize file system path to URL path (for legacy files only)
 const normalizeDocPath = (docPath) => {
   if (!docPath || typeof docPath !== 'string' || docPath.trim() === '') {
-    
     return null;
   }
   let normalized = docPath.replace(/\\/g, '/');
@@ -97,7 +96,6 @@ const formatUploadedAt = (uploadedAt) => {
   try {
     return format(new Date(uploadedAt), 'MMM dd, yyyy, h:mm a');
   } catch (err) {
-    
     return 'Unknown';
   }
 };
@@ -174,40 +172,61 @@ const DocumentsSection = ({
     };
   }, [previewUrls, previewUrl]);
 
-  // Filter and sort documents
-  const processedDocuments = useMemo(() => {
-    if (!documents || !Array.isArray(documents)) return [];
+ // ✅ UPDATED: Filter documents - accept both Google Drive IDs in path and legacy paths
+const processedDocuments = useMemo(() => {
+  if (!documents || !Array.isArray(documents)) return [];
 
-    let filtered = documents.map((doc) => ({
+  let filtered = documents.map((doc) => {
+    let normalizedPath = null;
+    
+    if (doc.path && !doc.path.startsWith('/')) {
+      // Google Drive ID stored in path field
+      normalizedPath = doc.path;
+    } else if (doc.webViewLink) {
+      // Google Drive document with direct link
+      normalizedPath = doc.webViewLink;  
+    } else if (doc.googleDriveId) {
+      // Separate googleDriveId field
+      normalizedPath = doc.googleDriveId;
+    } else if (doc.path && doc.path.startsWith('/')) {
+      // Legacy local file - still include in list but won't work
+      normalizedPath = doc.path;
+    }
+    
+    return {
       ...doc,
-      normalizedPath: normalizeDocPath(doc.path),
-    })).filter((doc) => doc.normalizedPath);
+      normalizedPath: normalizedPath,
+    };
+  }).filter((doc) => {
+    // Accept documents with any valid path/ID
+    return doc.path && doc.path.trim() !== '';
+  });
 
-    // Apply local search if no external search handler
-    if (!onSearchDocuments && localSearchQuery) {
-      filtered = filtered.filter((doc) => 
-        doc.name && doc.name.toLowerCase().includes(localSearchQuery.toLowerCase())
-      );
-    }
+  // Rest of your existing search and sort logic...
+  if (!onSearchDocuments && localSearchQuery) {
+    filtered = filtered.filter((doc) => 
+      doc.name && doc.name.toLowerCase().includes(localSearchQuery.toLowerCase())
+    );
+  }
 
-    // Apply sorting if enabled
-    if (showSorting) {
-      filtered.sort((a, b) => {
-        let aValue, bValue;
-        if (sortField === 'name') {
-          aValue = a.name?.toLowerCase() || '';
-          bValue = b.name?.toLowerCase() || '';
-        } else if (sortField === 'uploadedAt') {
-          aValue = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
-          bValue = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
-        }
-        if (aValue === bValue) return 0;
-        return sortOrder === 'asc' ? (aValue < bValue ? -1 : 1) : (aValue > bValue ? -1 : 1);
-      });
-    }
+  if (showSorting) {
+    filtered.sort((a, b) => {
+      let aValue, bValue;
+      if (sortField === 'name') {
+        aValue = a.name?.toLowerCase() || '';
+        bValue = b.name?.toLowerCase() || '';
+      } else if (sortField === 'uploadedAt') {
+        aValue = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+        bValue = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+      }
+      if (aValue === bValue) return 0;
+      return sortOrder === 'asc' ? (aValue < bValue ? -1 : 1) : (aValue > bValue ? -1 : 1);
+    });
+  }
 
-    return filtered;
-  }, [documents, localSearchQuery, sortField, sortOrder, showSorting, onSearchDocuments]);
+  return filtered;
+}, [documents, localSearchQuery, sortField, sortOrder, showSorting, onSearchDocuments]);
+
 
   const handleSearchChange = (e) => {
     setLocalSearchQuery(e.target.value);
@@ -300,7 +319,6 @@ const DocumentsSection = ({
       }
       
     } catch (err) {
-      
       toast.dismiss();
       const errorMessage = err?.message || 'Failed to upload documents';
       toast.error(errorMessage, {
@@ -354,7 +372,6 @@ const DocumentsSection = ({
 
       await uploadForm.handleSubmit(handleDocumentSubmit)();
     } catch (error) {
-      
       toast.dismiss();
       toast.error('Error submitting form, please try again', {
         id: `form-submit-error-${Date.now()}`,
@@ -367,7 +384,6 @@ const DocumentsSection = ({
 
   const handlePreviewDocument = (file) => {
     if (!file) {
-      
       toast.error('No file selected for preview', {
         id: 'preview-error',
         duration: autoDismissDuration,
@@ -400,7 +416,6 @@ const DocumentsSection = ({
         });
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (err) {
-        
         toast.dismiss();
         toast.error('Failed to open document for preview', {
           id: 'preview-error',
@@ -410,104 +425,9 @@ const DocumentsSection = ({
         });
       }
     } else {
-      
       toast.dismiss();
       toast.error('Invalid file format for preview', {
         id: 'preview-error',
-        duration: autoDismissDuration,
-        position: 'top-center',
-        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
-      });
-    }
-  };
-
-  const fetchDocumentForPreview = async (docPath, docName) => {
-    try {
-      const normalizedDocPath = normalizeDocPath(docPath);
-      if (!normalizedDocPath || !normalizedDocPath.startsWith('/Uploads/documents')) {
-        throw new Error('Invalid document path after normalization');
-      }
-
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`${baseUrl}${normalizedDocPath}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to fetch document: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const blob = await response.blob();
-      const file = new File([blob], docName || 'document', { type: blob.type });
-      setPreviewDocument(file);
-      handlePreviewDocument(file);
-    } catch (err) {
-      
-      toast.error(`Failed to fetch document for preview: ${err.message}`, {
-        id: 'preview-error',
-        duration: autoDismissDuration,
-        position: 'top-center',
-        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
-      });
-    }
-  };
-
-  const handleDownloadDocument = async (docPath, docName) => {
-    try {
-      const normalizedDocPath = normalizeDocPath(docPath);
-      if (!normalizedDocPath || !normalizedDocPath.startsWith('/Uploads/documents')) {
-        throw new Error('Invalid document path after normalization');
-      }
-
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`${baseUrl}${normalizedDocPath}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/octet-stream',
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to download document: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application') && !contentType.includes('image')) {
-        throw new Error(`Invalid content type received: ${contentType}`);
-      }
-
-      const blob = await response.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error('Received empty or invalid file data');
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = docName || 'document';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.success(`Downloaded ${docName || 'document'} successfully`, {
-        id: 'download-success',
-        duration: autoDismissDuration,
-        position: 'top-center',
-        style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
-      });
-    } catch (err) {
-      
-      toast.error(`Failed to download document: ${err.message}`, {
-        id: 'download-error',
         duration: autoDismissDuration,
         position: 'top-center',
         style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
@@ -772,16 +692,94 @@ const DocumentsSection = ({
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => fetchDocumentForPreview(doc.path, doc.name)}
-                                      className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
-                                      aria-label={`Preview ${doc.name || 'document'}`}
-                                      disabled={!doc.normalizedPath}
-                                    >
-                                      <Eye className="h-4 w-4 sm:h-5 sm:w-5 mr-1 xs:mr-2" />
-                                      Preview
-                                    </Button>
+                                    {/* ✅ UPDATED: Google Drive-aware Preview Button */}
+
+                                    {/* ✅ UPDATED: Preview Button - Get link first, then open */}
+<Button
+  variant="outline"
+  onClick={async () => {
+    
+    
+    if (doc.path && !doc.path.startsWith('/')) {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          toast.error('Authentication token not found. Please login again.', {
+            id: 'auth-error',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+          return;
+        }
+
+        // ✅ NEW: Get link as JSON instead of direct fetch
+        toast.loading('Getting preview link...', { id: 'preview-loading' });
+
+        const response = await fetch(`${baseUrl}/api/files/${doc.path}/link?type=view`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        toast.dismiss('preview-loading');
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const linkData = await response.json();
+        
+        if (linkData.success && linkData.link) {
+          // ✅ Open Google Drive link directly (no CORS issues)
+          window.open(linkData.link, '_blank');
+          
+          toast.success('Document opened in new tab', {
+            id: 'preview-success',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
+          });
+        } else {
+          throw new Error('Failed to get preview link');
+        }
+
+      } catch (err) {
+        toast.dismiss('preview-loading');
+        
+        toast.error(`Failed to open document: ${err.message}`, {
+          id: 'preview-error',
+          duration: autoDismissDuration,
+          position: 'top-center',
+          style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+        });
+      }
+    } else if (doc.webViewLink) {
+      // Direct Google Drive preview link
+      window.open(doc.webViewLink, '_blank');
+      toast.success('Document opened in new tab', { id: 'preview-success' });
+    } else {
+      
+      toast.error('Preview not available - document data missing', {
+        id: 'preview-error',
+        duration: autoDismissDuration,
+        position: 'top-center',
+        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+      });
+    }
+  }}
+  className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+  aria-label={`Preview ${doc.name || 'document'}`}
+  disabled={!doc.path}
+>
+  <Eye className="h-4 w-4 sm:h-5 sm:w-5 mr-1 xs:mr-2" />
+  Preview
+</Button>
+
+
+
                                   </TooltipTrigger>
                                   <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
                                     Preview document
@@ -791,15 +789,92 @@ const DocumentsSection = ({
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => handleDownloadDocument(doc.path, doc.name)}
-                                      className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
-                                      aria-label={`Download ${doc.name || 'document'}`}
-                                      disabled={!doc.normalizedPath}
-                                    >
-                                      Download
-                                    </Button>
+                                    {/* ✅ UPDATED: Google Drive-aware Download Button */}
+                                    {/* ✅ UPDATED: Download Button - Get link first, then open */}
+<Button
+  variant="outline"
+  onClick={async () => {
+    
+    
+    if (doc.path && !doc.path.startsWith('/')) {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          toast.error('Authentication token not found. Please login again.', {
+            id: 'auth-error',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+          });
+          return;
+        }
+
+        // ✅ NEW: Get download link as JSON
+        toast.loading('Getting download link...', { id: 'download-loading' });
+
+        const response = await fetch(`${baseUrl}/api/files/${doc.path}/link?type=download`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        toast.dismiss('download-loading');
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const linkData = await response.json();
+        
+        if (linkData.success && linkData.link) {
+          // ✅ Open Google Drive download link directly (no CORS issues)
+          window.open(linkData.link, '_blank');
+          
+          toast.success(`Downloaded ${doc.name || 'document'} successfully`, {
+            id: 'download-success',
+            duration: autoDismissDuration,
+            position: 'top-center',
+            style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
+          });
+        } else {
+          throw new Error('Failed to get download link');
+        }
+
+      } catch (err) {
+        toast.dismiss('download-loading');
+        
+        toast.error(`Failed to download document: ${err.message}`, {
+          id: 'download-error',
+          duration: autoDismissDuration,
+          position: 'top-center',
+          style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+        });
+      }
+    } else if (doc.webContentLink) {
+      // Direct Google Drive download link
+      window.open(doc.webContentLink, '_blank');
+      toast.success(`Downloaded ${doc.name || 'document'} successfully`, { id: 'download-success' });
+    } else {
+      
+      toast.error('Download not available - document data missing', {
+        id: 'download-error',
+        duration: autoDismissDuration,
+        position: 'top-center',
+        style: { background: '#fff', color: '#dc3545', border: '1px solid #dc3545' },
+      });
+    }
+  }}
+  className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-2 xs:px-3 sm:px-4 py-1 xs:py-2 text-xs xs:text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2 min-h-[36px]"
+  aria-label={`Download ${doc.name || 'document'}`}
+  disabled={!doc.path}
+>
+  Download
+</Button>
+
+
+
                                   </TooltipTrigger>
                                   <TooltipContent className="bg-complementary text-body border-accent text-xs xs:text-sm sm:text-base">
                                     Download document
@@ -1102,7 +1177,6 @@ const DocumentsSection = ({
                 alt={`Preview of ${previewDocument.name}`}
                 className="max-w-full max-h-[60vh] object-contain rounded-md"
                 onError={(e) => {
-                  
                   toast.error('Failed to load image preview', {
                     id: 'image-load-error',
                     duration: autoDismissDuration,
@@ -1135,7 +1209,24 @@ const DocumentsSection = ({
             </Button>
             {previewDocument && (
               <Button
-                onClick={() => handleDownloadDocument(URL.createObjectURL(previewDocument), previewDocument.name)}
+                onClick={() => {
+                  // ✅ NEW: Use Google Drive download for preview dialog as well
+                  const url = URL.createObjectURL(previewDocument);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = previewDocument.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                  
+                  toast.success(`Downloaded ${previewDocument.name} successfully`, {
+                    id: 'download-success',
+                    duration: autoDismissDuration,
+                    position: 'top-center',
+                    style: { background: '#fff', color: '#28a745', border: '1px solid #28a745' },
+                  });
+                }}
                 className="bg-accent text-body hover:bg-accent-hover rounded-md text-xs xs:text-sm sm:text-base py-1 xs:py-1.5 sm:py-2 px-2 xs:px-3 sm:px-4 transition-all duration-300 min-h-[32px] xs:min-h-[36px]"
                 aria-label={`Download ${previewDocument.name}`}
               >

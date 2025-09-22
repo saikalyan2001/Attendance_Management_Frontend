@@ -1,3 +1,4 @@
+// src/features/superadmin/pages/SuperAdminEditEmployeeDialog.jsx
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateEmployee, reset as resetEmployees } from '../redux/superadminEmployeeSlice';
@@ -7,7 +8,7 @@ import { updateEmployeeSchema } from '../../../components/employees/employeeSche
 const SuperAdminEditEmployeeDialog = ({ open, onOpenChange, employee }) => {
   const dispatch = useDispatch();
   const { loading: employeesLoading } = useSelector((state) => state.superadminEmployees);
-
+  
   const additionalFields = [
     {
       name: 'role',
@@ -18,7 +19,7 @@ const SuperAdminEditEmployeeDialog = ({ open, onOpenChange, employee }) => {
   ];
 
   if (!employee || !employee._id) {
-    return null; // Prevent rendering if employee is invalid
+    return null;
   }
 
   return (
@@ -27,7 +28,7 @@ const SuperAdminEditEmployeeDialog = ({ open, onOpenChange, employee }) => {
       onOpenChange={onOpenChange}
       employee={employee}
       dispatchAction={(data) => dispatch(updateEmployee(data))}
-      resetAction={() => dispatch(resetEmployees())}
+      resetAction={() => {}} // ✅ DISABLED: Prevent state reset that could trigger refetches
       titlePrefix="SuperAdmin Edit Employee"
       additionalFields={additionalFields}
       isLoading={employeesLoading}

@@ -1,7 +1,8 @@
+// src/features/admin/pages/Attendance.jsx
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchLocations } from '../redux/locationsSlice';
-import { fetchEmployees, reset as resetEmployees } from '../redux/employeeSlice';
+import { fetchEmployees, reset as resetEmployees, clearSuccess } from '../redux/employeeSlice';
 import Layout from '../../../components/layout/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -16,15 +17,33 @@ const Attendance = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { locations, loading: locationsLoading, error: locationsError } = useSelector((state) => state.adminLocations);
-  const { employees, loading: employeesLoading, error: employeesError } = useSelector((state) => state.adminEmployees);
+  const { employees, loading: employeesLoading, error: employeesError, success: employeeSuccess } = useSelector((state) => state.adminEmployees);
   const { user, isLoading } = useSelector((state) => state.auth);
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [location, setLocation] = useState('all');
+  const [location, setLocation] = useState(''); // ✅ Admin starts with empty location (must select)
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState('mark');
   const [isDelayLoading, setIsDelayLoading] = useState(true);
+
+  // ✅ ADD: Clear success state when component unmounts or tab changes
+  useEffect(() => {
+    return () => {
+      if (employeeSuccess) {
+        dispatch(clearSuccess());
+      }
+    };
+  }, [employeeSuccess, dispatch]);
+
+  // ✅ ADD: Reset success when switching tabs
+  useEffect(() => {
+    if (employeeSuccess) {
+      setTimeout(() => {
+        dispatch(clearSuccess());
+      }, 1000);
+    }
+  }, [activeTab, employeeSuccess, dispatch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -42,7 +61,10 @@ const Attendance = () => {
       return;
     }
     dispatch(fetchLocations());
-    dispatch(fetchEmployees({ location }));
+    // ✅ ENHANCED: Only fetch employees if location is selected
+    if (location && location !== 'all') {
+      dispatch(fetchEmployees({ location }));
+    }
   }, [dispatch, user, navigate, location]);
 
   useEffect(() => {
@@ -65,7 +87,7 @@ const Attendance = () => {
     }`;
 
   return (
-    <Layout title="Attendance">
+    <Layout title="Admin Attendance">
       {(locationsError || employeesError) && (
         <Alert className="mb-6 border-error bg-error text-error w-full max-w-full">
           <AlertDescription>{locationsError || employeesError}</AlertDescription>

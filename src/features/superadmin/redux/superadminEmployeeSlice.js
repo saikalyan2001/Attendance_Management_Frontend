@@ -6,19 +6,17 @@ import { fetchLocations } from "../redux/locationsSlice";
 export const fetchEmployees = createAsyncThunk(
   "superadminEmployees/fetchEmployees",
   async (
-    { location, status, department, search, month, year, page = 1, limit = 10, isDeleted }, // ✅ Add isDeleted
+    { location, status, department, search, month, year, page = 1, limit = 10, isDeleted },
     { rejectWithValue }
   ) => {
     try {
       const params = {};
       if (location && location !== "all") params.location = location;
       
-      // ✅ Handle status and isDeleted separately
       if (status && status !== "all" && status !== "deleted") {
         params.status = status;
       }
       
-      // ✅ Handle isDeleted explicitly
       if (isDeleted !== undefined) {
         params.isDeleted = isDeleted;
       }
@@ -33,14 +31,12 @@ export const fetchEmployees = createAsyncThunk(
       const response = await api.get("/superadmin/employees", { params });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employees"
       );
     }
   }
 );
-
-
 
 export const fetchEmployeeById = createAsyncThunk(
   "superadminEmployees/fetchEmployeeById",
@@ -48,19 +44,19 @@ export const fetchEmployeeById = createAsyncThunk(
     try {
       const employeeId = typeof arg === "string" ? arg : arg.id;
       if (!employeeId) {
-        
         throw new Error("No employee ID provided");
       }
       const id = String(employeeId);
       if (!/^[0-9a-fA-F]{24}$/.test(id)) {
-        
         throw new Error("Invalid employee ID format");
       }
       
-      const response = await api.get(`/superadmin/employees/${id}`);
+      // ✅ ENHANCED: Add cache busting for fresh employee data
+      const params = { _cacheBuster: Date.now() };
+      const response = await api.get(`/superadmin/employees/${id}`, { params });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data || {
           message: error.message || "Failed to fetch employee",
         }
@@ -80,7 +76,7 @@ export const updateEmployeeAdvance = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to update employee advance"
       );
     }
@@ -99,13 +95,12 @@ export const fetchEmployeeAdvances = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee advances"
       );
     }
   }
 );
-
 
 export const fetchMonthlyLeaves = createAsyncThunk(
   "superadminEmployees/fetchMonthlyLeaves",
@@ -119,13 +114,12 @@ export const fetchMonthlyLeaves = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch monthly leaves"
       );
     }
   }
 );
-
 
 export const registerEmployee = createAsyncThunk(
   "superadminEmployees/registerEmployee",
@@ -149,27 +143,32 @@ export const registerEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data || error.message || "Failed to register employee" 
       );
     }
   }
 );
 
+// ✅ ENHANCED: Update employee with proper leave calculation handling
 export const updateEmployee = createAsyncThunk(
   "superadminEmployees/updateEmployee",
-  async ({ id, data }, { rejectWithValue }) => {
+  async ({ id, data }, { rejectWithValue, dispatch }) => {
     try {
       const response = await api.put(`/superadmin/employees/${id}`, data);
+      
+      // ✅ ENHANCED: Force refresh employee data after update to get latest leave calculations
+      
+      await dispatch(fetchEmployeeById(id));
+      
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to update employee"
       );
     }
   }
 );
-
 
 export const deactivateEmployee = createAsyncThunk(
   "superadminEmployees/deactivateEmployee",
@@ -178,7 +177,7 @@ export const deactivateEmployee = createAsyncThunk(
       const response = await api.put(`/superadmin/employees/${id}/deactivate`);
       return { id, message: response.data.message };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to deactivate employee"
       );
     }
@@ -195,7 +194,7 @@ export const transferEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to transfer employee"
       );
     }
@@ -211,7 +210,7 @@ export const rejoinEmployee = createAsyncThunk(
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to rejoin employee"
       );
     }
@@ -225,7 +224,7 @@ export const getEmployeeHistory = createAsyncThunk(
       const response = await api.get(`/superadmin/employees/${id}/history`);
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee history"
       );
     }
@@ -258,10 +257,10 @@ export const addEmployeeDocuments = createAsyncThunk(
           totalItems: 0,
           itemsPerPage: 5,
         },
-        employee: response.data.employee, // Include employee for state updates
+        employee: response.data.employee,
       };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data || { message: "Failed to add employee documents" }
       );
     }
@@ -283,7 +282,7 @@ export const fetchEmployeeAttendance = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee attendance"
       );
     }
@@ -297,30 +296,28 @@ export const fetchSettings = createAsyncThunk(
       const response = await api.get("/superadmin/employees/settings");
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch settings"
       );
     }
   }
 );
 
-
 export const registerEmployeesFromExcel = createAsyncThunk(
   "superadminEmployees/registerEmployeesFromExcel",
   async ({ excelFile }, { rejectWithValue }) => {
     try {
       if (!(excelFile instanceof File)) {
-        
         throw new Error("No valid Excel file provided");
       }
-            const formData = new FormData();
+      const formData = new FormData();
       formData.append("excelFile", excelFile, excelFile.name);
       const response = await api.post("/superadmin/employees/excel", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data || {
           message: error.message || "Failed to register employees from Excel",
         }
@@ -340,7 +337,7 @@ export const fetchDepartments = createAsyncThunk(
       });
       return response.data.departments;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch departments"
       );
     }
@@ -351,12 +348,11 @@ export const deleteEmployee = createAsyncThunk(
   "superadminEmployees/deleteEmployee",
   async (id, { rejectWithValue, dispatch }) => {
     try {
-      
       const response = await api.delete(`/superadmin/employees/${id}`);
       await dispatch(fetchLocations()).unwrap();
       return { id, message: response.data.message };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to delete employee"
       );
     }
@@ -367,17 +363,15 @@ export const restoreEmployee = createAsyncThunk(
   "superadminEmployees/restoreEmployee",
   async (id, { rejectWithValue }) => {
     try {
-      
       const response = await api.put(`/superadmin/employees/${id}/restore`);
       return response.data;
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to restore employee"
       );
     }
   }
 );
-
 
 export const fetchEmployeeDocuments = createAsyncThunk(
   "superadminEmployees/fetchEmployeeDocuments",
@@ -386,7 +380,6 @@ export const fetchEmployeeDocuments = createAsyncThunk(
       const response = await api.get(`/superadmin/employees/${id}/documents`, {
         params: { page, limit, searchQuery },
       });
-      // Adjust the response to match the expected structure
       return {
         documents: response.data.employee.documents || [],
         pagination: response.data.pagination || {
@@ -397,9 +390,28 @@ export const fetchEmployeeDocuments = createAsyncThunk(
         },
       };
     } catch (error) {
-            return rejectWithValue(
+      return rejectWithValue(
         error.response?.data?.message || "Failed to fetch employee documents"
       );
+    }
+  }
+);
+
+// ✅ ENHANCED: Force refresh with cache busting
+export const forceRefreshEmployees = createAsyncThunk(
+  "superadminEmployees/forceRefreshEmployees",
+  async (params, { dispatch, rejectWithValue }) => {
+    try {
+      
+      const result = await dispatch(fetchEmployees({
+        ...params,
+        page: 1,          
+        limit: 1000,    
+        _cacheBuster: Date.now()
+      })).unwrap();
+      return result;
+    } catch (error) {
+      return rejectWithValue(error);
     }
   }
 );
@@ -407,13 +419,13 @@ export const fetchEmployeeDocuments = createAsyncThunk(
 export const superadminEmployeeSlice = createSlice({
   name: "superadminEmployees",
   initialState: {
+    finalizationStatus: {}, 
     employees: [],
     monthlyLeaves: [],
     currentEmployee: null,
     history: null,
-    documents: [], // Add documents array to store paginated documents
+    documents: [],
     documentsPagination: {
-      // Add documents-specific pagination state
       currentPage: 1,
       totalPages: 1,
       totalItems: 0,
@@ -435,6 +447,7 @@ export const superadminEmployeeSlice = createSlice({
     success: false,
     successType: null,
     successMessage: null,
+    lastUpdated: null,
     pagination: {
       currentPage: 1,
       totalPages: 1,
@@ -446,9 +459,10 @@ export const superadminEmployeeSlice = createSlice({
       totalPages: 1,
       totalItems: 0,
       itemsPerPage: 5,
-        sortField: "year",
+      sortField: "year",
       sortOrder: "desc",
     },
+    attendanceUpdateTrigger: 0,
   },
   reducers: {
     setEmployees: (state, action) => {
@@ -502,15 +516,96 @@ export const superadminEmployeeSlice = createSlice({
         totalPages: 1,
         totalItems: 0,
         itemsPerPage: 5,
-            sortField: "year",
+        sortField: "year",
         sortOrder: "desc",
       };
       state.monthlyLeaves = [];
     },
+    clearSuccess: (state) => {
+      state.success = false;
+      state.successType = null;
+      state.successMessage = null;
+    },
+    setLastUpdated: (state) => {
+      state.lastUpdated = Date.now();
+    },
+    setAttendanceUpdateTrigger: (state) => {
+      state.attendanceUpdateTrigger = Date.now();
+    },
+    // ✅ ENHANCED: Update individual employee with proper leave data merging
+    updateEmployeeInList: (state, action) => {
+      const updatedEmployee = action.payload;
+      const index = state.employees.findIndex(emp => emp._id === updatedEmployee._id);
+      if (index !== -1) {
+        ('🔄 Updating employee in list with fresh data:', {
+          employeeId: updatedEmployee.employeeId,
+          oldUsed: state.employees[index].paidLeaves?.used,
+          newUsed: updatedEmployee.paidLeaves?.used,
+          oldAvailable: state.employees[index].paidLeaves?.available,
+          newAvailable: updatedEmployee.paidLeaves?.available
+        });
+        
+        state.employees[index] = {
+          ...state.employees[index],
+          ...updatedEmployee,
+          paidLeaves: updatedEmployee.paidLeaves,
+          monthlyLeaves: updatedEmployee.monthlyLeaves
+        };
+      }
+      if (state.currentEmployee?._id === updatedEmployee._id) {
+        
+        state.currentEmployee = {
+          ...state.currentEmployee,
+          ...updatedEmployee
+        };
+      }
+    },
+     updateFinalizationStatus: (state, action) => {
+      const { employeeId, year, month, isFinalized, finalizedAt } = action.payload;
+      const key = `${employeeId}-${year}-${month}`;
+      state.finalizationStatus[key] = { isFinalized, finalizedAt };
+      
+      // Update employee in list if it exists
+      const employeeIndex = state.employees.findIndex(emp => emp._id === employeeId);
+      if (employeeIndex !== -1) {
+        const monthlyLeaveIndex = state.employees[employeeIndex].monthlyLeaves?.findIndex(
+          ml => ml.year === year && ml.month === month
+        );
+        if (monthlyLeaveIndex !== -1) {
+          state.employees[employeeIndex].monthlyLeaves[monthlyLeaveIndex].isFinalized = isFinalized;
+          state.employees[employeeIndex].monthlyLeaves[monthlyLeaveIndex].finalizedAt = finalizedAt;
+        }
+      }
+      
+      // Update current employee if it matches
+      if (state.currentEmployee?._id === employeeId) {
+        const currentMonthlyLeaveIndex = state.currentEmployee.monthlyLeaves?.findIndex(
+          ml => ml.year === year && ml.month === month
+        );
+        if (currentMonthlyLeaveIndex !== -1) {
+          state.currentEmployee.monthlyLeaves[currentMonthlyLeaveIndex].isFinalized = isFinalized;
+          state.currentEmployee.monthlyLeaves[currentMonthlyLeaveIndex].finalizedAt = finalizedAt;
+        }
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
-       .addCase(fetchEmployees.pending, (state) => {
+.addCase(forceRefreshEmployees.fulfilled, (state, action) => {
+
+  
+  state.employees = action.payload.employees || [];
+  state.pagination = action.payload.pagination || state.pagination;
+  state.lastUpdated = Date.now();
+  
+  // ✅ Log sample employee data for debugging
+  if (action.payload.employees?.length > 0) {
+    const sampleEmployee = action.payload.employees[0];
+   
+  }
+})
+
+      .addCase(fetchEmployees.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
@@ -548,14 +643,29 @@ export const superadminEmployeeSlice = createSlice({
         state.error = action.payload;
         state.monthlyLeaves = [];
       })
-        .addCase(fetchEmployeeById.pending, (state) => {
+      .addCase(fetchEmployeeById.pending, (state) => {
         state.loading = true;
         state.error = null;
         state.currentEmployee = null;
       })
+      // ✅ ENHANCED: Handle fetchEmployeeById with proper logging
       .addCase(fetchEmployeeById.fulfilled, (state, action) => {
+        ('✅ fetchEmployeeById.fulfilled - Fresh employee data received:', {
+          employeeId: action.payload.employeeId,
+          available: action.payload.paidLeaves?.available,
+          used: action.payload.paidLeaves?.used,
+          monthlyLeavesCount: action.payload.monthlyLeaves?.length || 0
+        });
+        
         state.loading = false;
-        state.currentEmployee = action.payload;
+        state.currentEmployee = { ...action.payload };
+        
+        // ✅ Also update the employee in the list if it exists
+        const index = state.employees.findIndex(emp => emp._id === action.payload._id);
+        if (index !== -1) {
+          
+          state.employees[index] = { ...action.payload };
+        }
       })
       .addCase(fetchEmployeeById.rejected, (state, action) => {
         state.loading = false;
@@ -587,16 +697,31 @@ export const superadminEmployeeSlice = createSlice({
         state.success = false;
         state.successMessage = null;
       })
+      // ✅ ENHANCED: Handle updateEmployee.fulfilled with proper data flow
       .addCase(updateEmployee.fulfilled, (state, action) => {
+        ('✅ updateEmployee.fulfilled - Employee updated:', {
+          employeeId: action.payload.employeeId,
+          available: action.payload.paidLeaves?.available,
+          used: action.payload.paidLeaves?.used
+        });
+        
         state.loading = false;
         state.success = true;
         state.successMessage = "Employee updated successfully";
+        state.lastUpdated = Date.now();
+        
+        // ✅ Update employee in list
         const index = state.employees.findIndex(
           (emp) => emp._id === action.payload._id
         );
-        if (index !== -1) state.employees[index] = action.payload;
-        if (state.currentEmployee?._id === action.payload._id)
+        if (index !== -1) {
+          state.employees[index] = action.payload;
+        }
+        
+        // ✅ Update currentEmployee if it's the same
+        if (state.currentEmployee?._id === action.payload._id) {
           state.currentEmployee = action.payload;
+        }
       })
       .addCase(updateEmployee.rejected, (state, action) => {
         state.loading = false;
@@ -627,7 +752,6 @@ export const superadminEmployeeSlice = createSlice({
             (action.payload.advances?.length || 0) / state.advancesPagination.itemsPerPage
           ),
         };
-        // Only update advancesPagination if values have changed
         if (
           state.advancesPagination.totalItems !== newPagination.totalItems ||
           state.advancesPagination.totalPages !== newPagination.totalPages
@@ -670,7 +794,7 @@ export const superadminEmployeeSlice = createSlice({
       .addCase(rejoinEmployee.pending, (state) => {
         state.loading = true;
         state.error = null;
-        state.success = false; // File: src/features/superadmin/redux/superadminEmployeeSlice.js (continued)
+        state.success = false;
         state.successMessage = null;
       })
       .addCase(rejoinEmployee.fulfilled, (state, action) => {
@@ -710,7 +834,7 @@ export const superadminEmployeeSlice = createSlice({
         state.success = false;
         state.successMessage = null;
       })
-           .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
+      .addCase(addEmployeeDocuments.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
         state.successMessage =
@@ -723,7 +847,6 @@ export const superadminEmployeeSlice = createSlice({
         if (state.currentEmployee?._id === employee._id) {
           state.currentEmployee = employee;
         }
-        // Update documents and pagination
         state.documents = employee.documents || [];
         state.documentsPagination = action.payload.pagination || {
           currentPage: 1,
@@ -778,7 +901,7 @@ export const superadminEmployeeSlice = createSlice({
         state.error = action.payload;
         state.settings = null;
       })
-.addCase(fetchEmployeeAdvances.pending, (state) => {
+      .addCase(fetchEmployeeAdvances.pending, (state) => {
         state.loading = true;
         state.error = null;
         state.advances = [];
@@ -786,7 +909,6 @@ export const superadminEmployeeSlice = createSlice({
       .addCase(fetchEmployeeAdvances.fulfilled, (state, action) => {
         state.loading = false;
         state.advances = action.payload.advances || [];
-        // Only update advancesPagination if values have changed
         if (
           state.advancesPagination.currentPage !== action.payload.pagination.currentPage ||
           state.advancesPagination.itemsPerPage !== action.payload.pagination.itemsPerPage ||
@@ -918,9 +1040,18 @@ export const superadminEmployeeSlice = createSlice({
           totalItems: 0,
           itemsPerPage: 5,
         };
-      })
+      });
   },
 });
 
-export const { setEmployees, reset } = superadminEmployeeSlice.actions;
+export const { 
+  setEmployees, 
+  reset, 
+  clearSuccess, 
+  setLastUpdated, 
+  setAttendanceUpdateTrigger, 
+  updateEmployeeInList,
+  updateFinalizationStatus 
+} = superadminEmployeeSlice.actions;
+
 export default superadminEmployeeSlice.reducer;

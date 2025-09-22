@@ -1,19 +1,26 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../../utils/api';
 
+// In locationsSlice.js - update fetchLocations
 export const fetchLocations = createAsyncThunk(
   'superAdminLocations/fetchLocations',
-  async (_, { rejectWithValue }) => {
+  async (filters = {}, { rejectWithValue }) => { // ✅ NEW: Accept filters
     try {
-      const response = await api.get('/superadmin/locations');
+      const params = {};
+      
+      // ✅ NEW: Add filtering parameters
+      if (filters.role) params.role = filters.role;
+      if (filters.filter) params.filter = filters.filter;
+      if (filters.attendanceOnly) params.filter = 'attendance_enabled';
+      
+      const response = await api.get('/superadmin/locations', { params });
       return response.data;
     } catch (error) {
-      
-      // Use error.message directly since the interceptor transforms it
       return rejectWithValue(error.message || 'Failed to fetch locations');
     }
   }
 );
+
 
 export const fetchPaginatedLocations = createAsyncThunk(
   'superAdminLocations/fetchPaginatedLocations',

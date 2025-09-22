@@ -102,7 +102,7 @@ const LeaveTable = ({
       return [
         `${emp.name || "Unknown"} (${emp.employeeId || "N/A"})`,
         emp.location?.name || "Unknown",
-        monthlyLeave.available ?? 0,
+        Math.max(0, monthlyLeave.available ?? 0), // ✅ FIXED: Show 0 instead of negative
         monthlyLeave.taken ?? 0,
         monthlyLeave.carriedForward ?? 0,
       ];
@@ -174,7 +174,7 @@ const LeaveTable = ({
       return {
         Employee: `${emp.name || "Unknown"} (${emp.employeeId || "N/A"})`,
         Location: emp.location?.name || "Unknown",
-        Available: monthlyLeave.available ?? 0,
+        Available: Math.max(0, monthlyLeave.available ?? 0), // ✅ FIXED: Show 0 instead of negative
         Used: monthlyLeave.taken ?? 0,
         "Carried Forward": monthlyLeave.carriedForward ?? 0,
       };
@@ -272,7 +272,7 @@ const LeaveTable = ({
         bValue = b.location?.name?.toLowerCase() || "";
       } else {
         const aMonthlyLeave = a.monthlyLeaves[0] || {};
-        const bMonthlyLeave = b.monthlyLeaves || {};
+        const bMonthlyLeave = b.monthlyLeaves[0] || {};
         aValue = aMonthlyLeave[key] ?? 0;
         bValue = bMonthlyLeave[key] ?? 0;
       }
@@ -435,7 +435,7 @@ const LeaveTable = ({
                           {emp.location?.name || "Unknown"}
                         </TableCell>
                         <TableCell className="text-sm md:text-base text-body px-4 py-3">
-                          {monthlyLeave.available ?? 0}
+                          {Math.max(0, monthlyLeave.available ?? 0)}
                         </TableCell>
                         <TableCell className="text-sm md:text-base text-body px-4 py-3">
                           {monthlyLeave.taken ?? 0}

@@ -8,6 +8,8 @@ import {
   reset as resetEmployees,
   fetchEmployeeAdvances,
   fetchEmployeeDocuments,
+  fetchEmployees,
+  reset
 } from '../redux/superadminEmployeeSlice';
 import { fetchSettings } from '../redux/settingsSlice';
 import Layout from '../../../components/layout/Layout';
@@ -104,21 +106,58 @@ const SuperAdminEmployeeProfile = () => {
   }));
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
+  // ✅ FIXED: Location-aware total yearly paid leaves calculation
   const totalYearlyPaidLeaves = useMemo(() => {
-    if (!currentEmployee?.joinDate || !settings?.paidLeavesPerYear) {
-      return settings?.paidLeavesPerYear || 0;
+    
+    
+    
+    
+    if (!currentEmployee?.joinDate || !settings) {
+      
+      return settings?.paidLeavesPerYear || 24;
     }
+
+    // ✅ NEW: Check for location-specific leave settings first
+    let paidLeavesPerYear = settings.paidLeavesPerYear || 24; // Default fallback
+    
+    if (settings.locationLeaveSettings && settings.locationLeaveSettings.length > 0 && currentEmployee.location) {
+      const employeeLocationId = currentEmployee.location._id || currentEmployee.location;
+      
+      const locationSetting = settings.locationLeaveSettings.find(
+        setting => {
+          const settingLocationId = setting.location._id || setting.location;
+          return settingLocationId.toString() === employeeLocationId.toString();
+        }
+      );
+      
+      if (locationSetting) {
+        paidLeavesPerYear = locationSetting.paidLeavesPerYear;
+        
+      } else {
+        
+      }
+    } else {
+      
+    }
+
+    // Calculate pro-rated leaves for employees who joined this year
     const joinDate = new Date(currentEmployee.joinDate);
     const joinYear = joinDate.getFullYear();
     const joinMonth = joinDate.getMonth();
     const currentYear = new Date().getFullYear();
+    
     if (joinYear === currentYear) {
       const remainingMonths = 12 - joinMonth;
-      return Math.round((settings.paidLeavesPerYear * remainingMonths) / 12);
+      const proRatedLeaves = Math.round((paidLeavesPerYear * remainingMonths) / 12);
+      
+      return proRatedLeaves;
     }
-    return settings.paidLeavesPerYear;
-  }, [currentEmployee?.joinDate, settings?.paidLeavesPerYear]);
+    
+    
+    return paidLeavesPerYear;
+  }, [currentEmployee?.joinDate, currentEmployee?.location, settings?.paidLeavesPerYear, settings?.locationLeaveSettings]);
 
+  // ✅ ADD: Refresh settings when component mounts and when tab changes
   useEffect(() => {
     if (user?.role !== 'super_admin') {
       navigate('/login');
@@ -127,12 +166,14 @@ const SuperAdminEmployeeProfile = () => {
 
     const employeeId = String(id);
     if (!/^[0-9a-fA-F]{24}$/.test(employeeId)) {
-      
       toast.error('Invalid employee ID format', { id: 'invalid-employee-id', duration: 5000, position: 'top-center' });
       navigate('/superadmin/employees');
       return;
     }
 
+    // ✅ ALWAYS fetch fresh settings
+    dispatch(fetchSettings());
+    dispatch(reset());
     dispatch(fetchEmployeeById(employeeId));
     dispatch(
       fetchEmployeeAttendance({
@@ -145,6 +186,7 @@ const SuperAdminEmployeeProfile = () => {
         sortOrder,
       })
     );
+    
     if (activeTab === 'advances') {
       dispatch(
         fetchEmployeeAdvances({
@@ -166,7 +208,6 @@ const SuperAdminEmployeeProfile = () => {
         })
       );
     }
-    dispatch(fetchSettings());
 
     return () => {
       dispatch(resetEmployees());
@@ -188,6 +229,27 @@ const SuperAdminEmployeeProfile = () => {
     sortField,
     sortOrder,
   ]);
+
+  // ✅ ADD: Refresh settings when profile tab is active
+  useEffect(() => {
+    if (activeTab === 'profile') {
+      
+      dispatch(fetchSettings());
+    }
+  }, [activeTab, dispatch]);
+
+  // ✅ ADD: Refresh settings when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        
+        dispatch(fetchSettings());
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [dispatch]);
 
   useEffect(() => {
     if (settingsError) {
@@ -270,13 +332,15 @@ const SuperAdminEmployeeProfile = () => {
         },
       };
       await dispatch(updateEmployee({ id, data: employeeData })).unwrap();
+      // ✅ Refresh both employees and settings after update
+      dispatch(fetchEmployees({ location: 'all' }));
+      dispatch(fetchSettings());
       toast.success('Employee updated successfully', {
         id: 'edit-success',
         duration: autoDismissDuration,
         position: 'top-center',
       });
     } catch (err) {
-      
       toast.error(err.message || 'Failed to update employee', {
         id: 'form-submit-error',
         duration: autoDismissDuration,
@@ -307,7 +371,11 @@ const SuperAdminEmployeeProfile = () => {
       <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Button
           variant="outline"
-          onClick={() => navigate('/superadmin/employees')}
+          onClick={() => {
+            // ✅ Refresh settings when going back
+            dispatch(fetchSettings());
+            navigate('/superadmin/employees');
+          }}
           className="border-accent text-accent hover:bg-accent-hover hover:text-body rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-sm sm:text-base transition-all duration-300 focus:ring-2 focus:ring-accent focus:ring-offset-2"
           aria-label="Go back to employee list"
         >
@@ -387,7 +455,6 @@ const SuperAdminEmployeeProfile = () => {
               handleSort={handleSort}
               fetchAttendance={fetchEmployeeAttendance}
               dispatch={dispatch}
-             
               role="superadmin"
             />
           )}
@@ -408,56 +475,56 @@ const SuperAdminEmployeeProfile = () => {
               itemsPerPage={ADVANCES_ITEMS_PER_PAGE}
             />
           )}
-         {activeTab === 'documents' && (
-  <DocumentsSection
-    documents={documents}
-    documentsPagination={documentsPagination}
-    employeeName={currentEmployee.name}
-    employeeId={id}
-    isLoading={loading}
-    currentPage={documentsCurrentPage}
-    searchQuery={documentsSearchQuery}
-    setCurrentPage={setDocumentsCurrentPage}
-    setSearchQuery={setDocumentsSearchQuery}
-    itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
-    showSearch={true}
-    showUpload={true}
-    showSorting={false}
-    onUploadDocuments={async (documents) => {
-      await dispatch(addEmployeeDocuments({ 
-        id, 
-        documents, 
-        page: 1, 
-        limit: DOCUMENTS_ITEMS_PER_PAGE 
-      })).unwrap();
-      await dispatch(fetchEmployeeDocuments({ 
-        id, 
-        page: 1, 
-        limit: DOCUMENTS_ITEMS_PER_PAGE, 
-        searchQuery: documentsSearchQuery 
-      })).unwrap();
-    }}
-    onSearchDocuments={(query) => {
-      setDocumentsSearchQuery(query);
-      setDocumentsCurrentPage(1);
-      dispatch(fetchEmployeeDocuments({
-        id,
-        page: 1,
-        limit: DOCUMENTS_ITEMS_PER_PAGE,
-        searchQuery: query,
-      }));
-    }}
-    onPageChange={(page) => {
-      setDocumentsCurrentPage(page);
-      dispatch(fetchEmployeeDocuments({
-        id,
-        page,
-        limit: DOCUMENTS_ITEMS_PER_PAGE,
-        searchQuery: documentsSearchQuery,
-      }));
-    }}
-  />
-)}
+          {activeTab === 'documents' && (
+            <DocumentsSection
+              documents={documents}
+              documentsPagination={documentsPagination}
+              employeeName={currentEmployee.name}
+              employeeId={id}
+              isLoading={loading}
+              currentPage={documentsCurrentPage}
+              searchQuery={documentsSearchQuery}
+              setCurrentPage={setDocumentsCurrentPage}
+              setSearchQuery={setDocumentsSearchQuery}
+              itemsPerPage={DOCUMENTS_ITEMS_PER_PAGE}
+              showSearch={true}
+              showUpload={true}
+              showSorting={false}
+              onUploadDocuments={async (documents) => {
+                await dispatch(addEmployeeDocuments({ 
+                  id, 
+                  documents, 
+                  page: 1, 
+                  limit: DOCUMENTS_ITEMS_PER_PAGE 
+                })).unwrap();
+                await dispatch(fetchEmployeeDocuments({ 
+                  id, 
+                  page: 1, 
+                  limit: DOCUMENTS_ITEMS_PER_PAGE, 
+                  searchQuery: documentsSearchQuery 
+                })).unwrap();
+              }}
+              onSearchDocuments={(query) => {
+                setDocumentsSearchQuery(query);
+                setDocumentsCurrentPage(1);
+                dispatch(fetchEmployeeDocuments({
+                  id,
+                  page: 1,
+                  limit: DOCUMENTS_ITEMS_PER_PAGE,
+                  searchQuery: query,
+                }));
+              }}
+              onPageChange={(page) => {
+                setDocumentsCurrentPage(page);
+                dispatch(fetchEmployeeDocuments({
+                  id,
+                  page,
+                  limit: DOCUMENTS_ITEMS_PER_PAGE,
+                  searchQuery: documentsSearchQuery,
+                }));
+              }}
+            />
+          )}
         </div>
       </div>
     </Layout>

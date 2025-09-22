@@ -14,13 +14,16 @@ export const useAttendanceActions = (role, actions) => {
       // Role-based location filtering
       let matchesLocation = true;
       
-      if (role === 'super_admin') {
-        // ✅ SuperAdmin: filter by location if selected, otherwise show all
-        if (location && location !== 'all') {
-          const selectedLocation = locations?.find(loc => loc._id === location);
-          matchesLocation = emp.location?._id?.toString() === location || 
-                           emp.location?.name === selectedLocation?.name;
-        }
+if (role === 'super_admin') {
+  if (!location || location === 'select') {
+    // ✅ Force location selection - show no employees
+    matchesLocation = false;
+  } else {
+    // Filter by specific location only
+    const selectedLocation = locations?.find(loc => loc._id === location);
+    matchesLocation = emp.location?._id?.toString() === location || 
+                     emp.location?.name === selectedLocation?.name;
+  }
         // If location === 'all', SuperAdmin sees all employees (matchesLocation stays true)
       } else if (role === 'admin') {
         // Admin must select specific location
@@ -144,57 +147,109 @@ const fetchInitialData = useCallback(async (params) => {
     filterEmployees,
     validateSubmission,
     prepareRecords,
-    submitAttendance: useCallback(async (data) => {
-      const { records, remaining, overwrite } = data;
-      const allRecords = [...records, ...remaining];
-      
-      // ✅ Filter out records with undefined location for SuperAdmin "all" selection
-      const validRecords = allRecords.map(record => {
-        if (role === 'super_admin' && !record.location) {
-          // For SuperAdmin with "all" locations, we might need to handle this differently
-          // depending on your backend API requirements
-          return record;
-        }
-        return record;
-      });
-      
-      const result = await dispatch(actions.bulkMarkAttendance({
-        attendance: validRecords,
-        overwrite
-      })).unwrap();
+  submitAttendance: useCallback(async (data) => {
+  const { records, remaining, overwrite } = data;
+  const allRecords = [...records, ...remaining];
+  
+  const validRecords = allRecords.map(record => {
+    if (role === 'super_admin' && !record.location) {
+      return record;
+    }
+    return record;
+  });
+  
+  try {
+    const result = await dispatch(actions.bulkMarkAttendance({
+      attendance: validRecords,
+      overwrite
+    })).unwrap();
 
-      const statusCounts = records.reduce((acc, record) => ({
-        ...acc,
-        [record.status]: (acc[record.status] || 0) + 1,
-      }), {});
-      
-      const statusMessage = Object.entries(statusCounts)
-        .map(([status, count]) => `${count} as ${status}`)
-        .join(', ');
-      
-      const message = records.length > 0 
-        ? `Marked ${records.length} employee(s): ${statusMessage}, and ${remaining.length} as Present`
-        : `Marked all ${remaining.length} employee(s) as Present`;
-      
-      return { ...result, message };
-    }, [dispatch, actions, role]),
+    const statusCounts = records.reduce((acc, record) => ({
+      ...acc,
+      [record.status]: (acc[record.status] || 0) + 1,
+    }), {});
+    
+    const statusMessage = Object.entries(statusCounts)
+      .map(([status, count]) => `${count} as ${status}`)
+      .join(', ');
+    
+    const message = records.length > 0 
+      ? `Marked ${records.length} employee(s): ${statusMessage}, and ${remaining.length} as Present`
+      : `Marked all ${remaining.length} employee(s) as Present`;
+    
+    return { ...result, message };
+  } catch (error) {
+    // ✅ FIXED: Ensure proper error message is thrown
+    const errorMessage = typeof error === 'string' ? error :
+                        error?.message || 
+                        "Failed to submit attendance";
+    throw new Error(errorMessage);
+  }
+}, [dispatch, actions, role]),
     fetchInitialData,
-    refreshData: useCallback(async (params) => {
-      await fetchInitialData(params);
-      
-      // Refresh attendance data
-      if (params.selectedDate && actions.fetchAttendance) {
-        const dateStr = params.selectedDate.toISOString().split('T')[0];
-        const locationParam = role === 'siteincharge' ? params.locationId : 
-                             (role === 'super_admin' && params.location === 'all' ? undefined : params.location);
-        
-        await dispatch(actions.fetchAttendance({ 
-          date: dateStr, 
-          location: locationParam, 
-          month: params.month, 
-          year: params.year 
+ // In src/hooks/useAttendanceActions.js
+// ✅ FIXED: src/hooks/useAttendanceActions.js
+refreshData: useCallback(async (params) => {
+  const { location, locationId, month, year, selectedDate } = params;
+  
+  try {
+    // ✅ CRITICAL: Force refresh employee data with latest monthly calculations
+    if (role === 'super_admin') {
+      // ✅ Use forceRefreshEmployees to ensure fresh data
+      await dispatch(actions.forceRefreshEmployees({
+        location: location === 'all' ? undefined : location,
+        month,
+        year,
+        page: 1,
+        limit: 1000,
+        _cacheBuster: Date.now(),
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }));
+    } else if (role === 'admin') {
+      if (location && location !== 'all') {
+        await dispatch(actions.forceRefreshEmployees({
+          location,
+          month,
+          year,
+          page: 1,
+          limit: 1000,
+          _cacheBuster: Date.now(),
         }));
       }
-    }, [fetchInitialData, dispatch, actions, role])
+    } else if (role === 'siteincharge') {
+      if (locationId) {
+        await dispatch(actions.forceRefreshEmployees({
+          location: locationId,
+          status: 'active',
+          page: 1,
+          limit: 1000,
+          _cacheBuster: Date.now(),
+        }));
+      }
+    }
+    // ✅ Also refresh attendance data if needed
+    if (selectedDate && actions.fetchAttendance) {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const locationParam = role === 'siteincharge' ? locationId : 
+                           (role === 'super_admin' && location === 'all' ? undefined : location);
+      
+      await dispatch(actions.fetchAttendance({ 
+        date: dateStr, 
+        location: locationParam, 
+        month, 
+        year,
+        _cacheBuster: Date.now(),
+      }));
+    }
+
+  } catch (error) {
+    throw error; // Re-throw so calling code can handle
+  }
+}, [dispatch, actions, role])
+
   };
 };

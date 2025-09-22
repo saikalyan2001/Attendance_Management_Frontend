@@ -1,6 +1,18 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../../utils/api';
 
+export const fetchLocations = createAsyncThunk(
+  'superAdminSettings/fetchLocations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/superadmin/locations');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch locations');
+    }
+  }
+);
+
 export const fetchSettings = createAsyncThunk(
   'superAdminSettings/fetchSettings',
   async (_, { rejectWithValue }) => {
@@ -41,9 +53,11 @@ const settingsSlice = createSlice({
   name: 'superAdminSettings',
   initialState: {
     settings: null,
+    locations: [],
     loadingFetch: false,
     loadingUpdate: false,
     loadingLeaves: false,
+    loadingLocations: false,
     error: null,
     successUpdate: false,
     successLeaves: false,
@@ -97,7 +111,19 @@ const settingsSlice = createSlice({
         state.loadingLeaves = false;
         state.error = action.payload;
         state.successLeaves = false;
-      });
+      })
+       .addCase(fetchLocations.pending, (state) => {
+        state.loadingLocations = true;
+        state.error = null;
+      })
+      .addCase(fetchLocations.fulfilled, (state, action) => {
+        state.loadingLocations = false;
+        state.locations = action.payload;
+      })
+      .addCase(fetchLocations.rejected, (state, action) => {
+        state.loadingLocations = false;
+        state.error = action.payload;
+      })
   },
 });
 
